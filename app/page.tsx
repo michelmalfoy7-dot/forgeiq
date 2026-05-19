@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ChevronRight, Dumbbell, Brain, BarChart2, Check, ChevronDown } from 'lucide-react'
+import { WaitlistForm } from '@/components/WaitlistForm'
 
 // ── Données ────────────────────────────────────────────────────────
 const FEATURES = [
@@ -463,6 +464,20 @@ export default function LandingPage() {
         <p className="mt-4 text-xs" style={{ color: 'var(--fiq-muted)' }}>
           Essai 14 jours · Sans carte bancaire · Annulation en 1 clic
         </p>
+      </section>
+
+      {/* ── NEWSLETTER / RESTEZ INFORMÉ ──────────────────────── */}
+      <section className="py-14 px-4" style={{ borderTop: '1px solid var(--fiq-border)' }}>
+        <div className="max-w-md mx-auto text-center">
+          <p className="fiq-label mb-2" style={{ color: 'var(--fiq-accent)' }}>Newsletter fitness</p>
+          <h2 className="text-2xl font-black mb-2" style={{ letterSpacing: '-0.03em' }}>
+            1 conseil IA par semaine
+          </h2>
+          <p className="text-sm mb-6" style={{ color: 'var(--fiq-muted)' }}>
+            Récupération, nutrition, programmation — condensé en 2 min. Zéro spam.
+          </p>
+          <WaitlistForm />
+        </div>
       </section>
 
       {/* ── H. FOOTER ────────────────────────────────────────── */}

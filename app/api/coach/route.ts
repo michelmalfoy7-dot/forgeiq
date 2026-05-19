@@ -7,6 +7,10 @@ export const dynamic = 'force-dynamic'
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 const PROTEIN_TARGET = 160
+// Limite mensuelle de messages coach (utilisateurs non-Pro)
+const FREE_MONTHLY_LIMIT = 30
+// Nombre de messages d'historique injectés dans le contexte
+const HISTORY_LIMIT = 8
 
 function buildSystemPrompt(ctx: {
   displayName: string
@@ -91,6 +95,30 @@ export async function POST(req: NextRequest) {
     const userMessage: string = body.message ?? ''
     if (!userMessage.trim()) return NextResponse.json({ data: null, error: 'Message vide' }, { status: 400 })
 
+    // Vérifier la limite mensuelle de messages coach
+    const startOfMonth = new Date()
+    startOfMonth.setDate(1)
+    startOfMonth.setHours(0, 0, 0, 0)
+
+    const { count: monthlyCount } = await supabase
+      .from('coach_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('role', 'user')
+      .gte('created_at', startOfMonth.toISOString())
+
+    // TODO Sprint 4 : vérifier si l'utilisateur est Pro (Stripe) pour lever la limite
+    const isPro = false
+    if (!isPro && (monthlyCount ?? 0) >= FREE_MONTHLY_LIMIT) {
+      return NextResponse.json({
+        data: null,
+        error: `Limite de ${FREE_MONTHLY_LIMIT} messages coach atteinte ce mois-ci. Passez en Pro pour un accès illimité.`,
+        limitReached: true,
+        count: monthlyCount,
+        limit: FREE_MONTHLY_LIMIT,
+      }, { status: 429 })
+    }
+
     const today = new Date().toISOString().split('T')[0]
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
 
@@ -118,13 +146,13 @@ export async function POST(req: NextRequest) {
         .order('value', { ascending: false }).limit(10),
     ])
 
-    // Récupérer l'historique de conversation (10 derniers échanges)
+    // Récupérer les derniers échanges uniquement (coût tokens maîtrisé)
     const { data: history } = await supabase
       .from('coach_messages')
       .select('role, content')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(20)
+      .limit(HISTORY_LIMIT)
 
     const systemPrompt = buildSystemPrompt({
       displayName: profile?.display_name ?? 'Athlète',
@@ -142,7 +170,7 @@ export async function POST(req: NextRequest) {
       topPRs: topPRs ?? [],
     })
 
-    // Construire l'historique pour Claude (ordre chronologique)
+    // Construire l'historique pour Claude (ordre chronologique, fenêtre glissante)
     const messages: Anthropic.MessageParam[] = [
       ...((history ?? []).reverse().map(m => ({
         role: m.role as 'user' | 'assistant',
@@ -167,7 +195,7 @@ export async function POST(req: NextRequest) {
         try {
           const claudeStream = anthropic.messages.stream({
             model: 'claude-sonnet-4-20250514',
-            max_tokens: 1024,
+            max_tokens: 800,
             system: systemPrompt,
             messages,
           })
@@ -202,6 +230,9 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'text/plain; charset=utf-8',
         'Transfer-Encoding': 'chunked',
         'X-Content-Type-Options': 'nosniff',
+        // Exposer le compteur mensuel dans les headers pour le client
+        'X-Coach-Count': String((monthlyCount ?? 0) + 1),
+        'X-Coach-Limit': String(FREE_MONTHLY_LIMIT),
       },
     })
   } catch {
