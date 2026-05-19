@@ -49,7 +49,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/progress') ||
     pathname.startsWith('/programs') ||
     pathname.startsWith('/coach') ||
-    pathname.startsWith('/profile')
+    pathname.startsWith('/profile') ||
+    pathname.startsWith('/pricing')
 
   if (!user && isAppRoute) {
     const url = request.nextUrl.clone()

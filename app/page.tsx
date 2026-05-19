@@ -358,25 +358,26 @@ export default function LandingPage() {
           Simple et honnête.
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {/* FREE */}
           <div className="fiq-card space-y-4">
             <div>
               <p className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>Gratuit</p>
               <p className="text-3xl font-black fiq-data mt-1" style={{ color: 'var(--fiq-text)' }}>
-                0€<span className="text-sm font-normal" style={{ color: 'var(--fiq-muted)' }}>/mois</span>
+                $0<span className="text-sm font-normal" style={{ color: 'var(--fiq-muted)' }}>/mois</span>
               </p>
             </div>
             <ul className="space-y-2">
               {[
                 'Logger tes séances',
-                '3 programmes inclus',
+                '12 programmes inclus',
                 'Bilan quotidien',
                 'Suivi du poids EWMA',
                 'Records personnels',
+                '5 messages coach IA/mois',
               ].map((f, i) => (
                 <li key={i} className="flex items-center gap-2 text-sm" style={{ color: 'var(--fiq-muted)' }}>
-                  <Check className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
+                  <Check className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--fiq-muted)' }} />
                   {f}
                 </li>
               ))}
@@ -400,19 +401,19 @@ export default function LandingPage() {
               <p className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>Pro</p>
               <div className="flex items-baseline gap-2 mt-1">
                 <p className="text-3xl font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
-                  $4.99<span className="text-sm font-normal" style={{ color: 'var(--fiq-muted)' }}>/mois</span>
+                  $7.99<span className="text-sm font-normal" style={{ color: 'var(--fiq-muted)' }}>/mois</span>
                 </p>
-                <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>ou $39.99/an</span>
               </div>
+              <p className="text-xs mt-1" style={{ color: 'var(--fiq-muted)' }}>ou $59.99/an — économise 37%</p>
             </div>
             <ul className="space-y-2">
               {[
                 'Tout du plan gratuit',
                 'Coach IA illimité (Claude)',
-                '12 programmes + custom',
-                'Analytics avancés',
-                'Alertes IA sur 7 jours',
-                'Confetti & badges PRs',
+                'Suggestions séances adaptatives',
+                'Alertes IA contextuelles',
+                'Programme custom',
+                'Historique illimité',
               ].map((f, i) => (
                 <li key={i} className="flex items-center gap-2 text-sm" style={{ color: 'var(--fiq-text)' }}>
                   <Check className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
@@ -420,14 +421,46 @@ export default function LandingPage() {
                 </li>
               ))}
             </ul>
-            <Link href="/register"
+            <Link href="/pricing"
               className="flex items-center justify-center py-3 rounded-xl font-black text-sm"
               style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
               Essai 14 jours gratuit
             </Link>
-            <p className="text-center text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
-              Accès à vie disponible · $99 une fois
-            </p>
+          </div>
+
+          {/* LIFETIME */}
+          <div className="rounded-2xl p-5 space-y-4 relative overflow-hidden"
+            style={{ background: 'var(--fiq-card)', border: '1px solid #FF6B3544' }}>
+            <div
+              className="absolute top-3 right-3 text-[10px] font-black px-2 py-1 rounded-full"
+              style={{ background: '#FF6B3522', color: '#FF6B35' }}>
+              BEST VALUE
+            </div>
+            <div>
+              <p className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>Lifetime</p>
+              <p className="text-3xl font-black fiq-data mt-1" style={{ color: '#FF6B35' }}>
+                $149<span className="text-sm font-normal" style={{ color: 'var(--fiq-muted)' }}> une fois</span>
+              </p>
+              <p className="text-xs mt-1" style={{ color: 'var(--fiq-muted)' }}>Accès à vie · aucun abonnement</p>
+            </div>
+            <ul className="space-y-2">
+              {[
+                'Tout le plan Pro',
+                'Accès à toutes les futures features',
+                'Support prioritaire',
+                'Badge Founder exclusif',
+              ].map((f, i) => (
+                <li key={i} className="flex items-center gap-2 text-sm" style={{ color: 'var(--fiq-text)' }}>
+                  <Check className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#FF6B35' }} />
+                  {f}
+                </li>
+              ))}
+            </ul>
+            <Link href="/pricing"
+              className="flex items-center justify-center py-3 rounded-xl font-black text-sm"
+              style={{ background: '#FF6B3520', border: '1px solid #FF6B3544', color: '#FF6B35' }}>
+              Obtenir l'accès à vie
+            </Link>
           </div>
         </div>
       </section>
