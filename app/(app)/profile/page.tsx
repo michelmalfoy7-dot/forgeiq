@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { ProfileClient } from '@/components/profile/ProfileClient'
 
 export const dynamic = 'force-dynamic'
@@ -49,6 +50,32 @@ export default async function ProfilePage() {
       <div className="pt-4 mb-6">
         <p className="fiq-label">Compte</p>
         <h1 className="text-2xl fiq-display mt-1" style={{ color: 'var(--fiq-text)' }}>Mon profil</h1>
+      </div>
+
+      {/* Raccourcis rapides */}
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <Link
+          href="/exercises"
+          className="rounded-2xl p-4 flex flex-col gap-2"
+          style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}
+        >
+          <span className="text-2xl">🏋️</span>
+          <div>
+            <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Exercices</p>
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>+250 exercices</p>
+          </div>
+        </Link>
+        <Link
+          href="/programs"
+          className="rounded-2xl p-4 flex flex-col gap-2"
+          style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}
+        >
+          <span className="text-2xl">📋</span>
+          <div>
+            <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Programmes</p>
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Entraînements guidés</p>
+          </div>
+        </Link>
       </div>
 
       <ProfileClient

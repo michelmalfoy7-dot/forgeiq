@@ -343,6 +343,20 @@ export default async function DashboardPage() {
             <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Voir mes stats</p>
           </div>
         </Link>
+        <Link href="/exercises" className="fiq-card flex items-center gap-3">
+          <Dumbbell className="w-5 h-5" style={{ color: 'var(--fiq-orange)' }} />
+          <div>
+            <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>Exercices</p>
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>+250 exercices</p>
+          </div>
+        </Link>
+        <Link href="/programs" className="fiq-card flex items-center gap-3">
+          <ClipboardList className="w-5 h-5" style={{ color: '#A855F7' }} />
+          <div>
+            <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>Programmes</p>
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Guidés & custom</p>
+          </div>
+        </Link>
       </div>
     </div>
   )

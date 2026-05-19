@@ -48,6 +48,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/checkin') ||
     pathname.startsWith('/progress') ||
     pathname.startsWith('/programs') ||
+    pathname.startsWith('/exercises') ||
     pathname.startsWith('/coach') ||
     pathname.startsWith('/profile') ||
     pathname.startsWith('/pricing')
