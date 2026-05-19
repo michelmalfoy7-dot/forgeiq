@@ -107,8 +107,14 @@ export async function POST(req: NextRequest) {
       .eq('role', 'user')
       .gte('created_at', startOfMonth.toISOString())
 
-    // TODO Sprint 4 : vérifier si l'utilisateur est Pro (Stripe) pour lever la limite
-    const isPro = false
+    // Vérifier statut Pro via Stripe (webhook met à jour profiles.subscription_status)
+    const { data: subProfile } = await supabase
+      .from('profiles')
+      .select('subscription_status')
+      .eq('id', user.id)
+      .single()
+
+    const isPro = subProfile?.subscription_status === 'pro' || subProfile?.subscription_status === 'lifetime'
     if (!isPro && (monthlyCount ?? 0) >= FREE_MONTHLY_LIMIT) {
       return NextResponse.json({
         data: null,
