@@ -52,9 +52,11 @@ const PLANS = [
 
 export default function PricingPage() {
   const [loading, setLoading] = useState<string | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   async function handleCheckout(plan: 'monthly' | 'annual' | 'lifetime') {
     setLoading(plan)
+    setErrorMsg(null)
     try {
       const res = await fetch('/api/stripe/checkout', {
         method: 'POST',
@@ -63,9 +65,11 @@ export default function PricingPage() {
       })
       const { data, error } = await res.json()
       if (error) throw new Error(error)
+      if (!data?.url) throw new Error('URL de paiement manquante')
       window.location.href = data.url
     } catch (err) {
       console.error(err)
+      setErrorMsg('Une erreur est survenue. Réessaie dans quelques secondes.')
       setLoading(null)
     }
   }
@@ -121,6 +125,16 @@ export default function PricingPage() {
           </div>
         </div>
       </div>
+
+      {/* Message d'erreur */}
+      {errorMsg && (
+        <div
+          className="rounded-xl px-4 py-3 mb-4 text-sm"
+          style={{ background: '#EF444415', border: '1px solid #EF444433', color: '#EF4444' }}
+        >
+          ⚠️ {errorMsg}
+        </div>
+      )}
 
       {/* Plans */}
       <div className="flex flex-col gap-3">
