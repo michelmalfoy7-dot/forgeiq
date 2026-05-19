@@ -68,8 +68,9 @@ export default function PricingPage() {
       if (!data?.url) throw new Error('URL de paiement manquante')
       window.location.href = data.url
     } catch (err) {
-      console.error(err)
-      setErrorMsg('Une erreur est survenue. Réessaie dans quelques secondes.')
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('Checkout error:', msg)
+      setErrorMsg('Erreur : ' + msg)
       setLoading(null)
     }
   }
