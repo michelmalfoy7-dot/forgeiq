@@ -1,0 +1,41 @@
+import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
+
+export const dynamic = 'force-dynamic'
+
+export async function POST() {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
+
+    // Supprimer dans l'ordre pour respecter les FK
+    await Promise.all([
+      supabase.from('workout_sets').delete().eq('workout_id',
+        supabase.from('workouts').select('id').eq('user_id', user.id) as unknown as string
+      ),
+      supabase.from('coach_messages').delete().eq('user_id', user.id),
+      supabase.from('personal_records').delete().eq('user_id', user.id),
+      supabase.from('daily_logs').delete().eq('user_id', user.id),
+    ])
+
+    // Supprimer les séries via les workouts de l'user
+    const { data: userWorkouts } = await supabase
+      .from('workouts').select('id').eq('user_id', user.id)
+    if (userWorkouts?.length) {
+      await supabase.from('workout_sets').delete()
+        .in('workout_id', userWorkouts.map(w => w.id))
+    }
+    await supabase.from('workouts').delete().eq('user_id', user.id)
+
+    // Reset programme actuel
+    await supabase.from('profiles').update({
+      current_program_id: null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', user.id)
+
+    return NextResponse.json({ data: { reset: true }, error: null })
+  } catch {
+    return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
+  }
+}

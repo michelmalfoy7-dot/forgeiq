@@ -1,0 +1,168 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* ============================================================
+   ForgeIQ Design System — Palette custom (toujours dark mode)
+   ============================================================ */
+:root {
+  /* Shadcn tokens mappés sur la palette ForgeIQ */
+  --background: #0A0C0F;
+  --foreground: #F0F2F5;
+  --card: #161A21;
+  --card-foreground: #F0F2F5;
+  --popover: #111318;
+  --popover-foreground: #F0F2F5;
+  --primary: #B4FF4A;
+  --primary-foreground: #0A0C0F;
+  --secondary: #1F242E;
+  --secondary-foreground: #F0F2F5;
+  --muted: #111318;
+  --muted-foreground: #6B7280;
+  --accent: #B4FF4A;
+  --accent-foreground: #0A0C0F;
+  --destructive: #EF4444;
+  --border: #1F242E;
+  --input: #111318;
+  --ring: #B4FF4A;
+  --radius: 0.75rem;
+
+  /* Variables ForgeIQ custom */
+  --bg: #0A0C0F;
+  --surface: #111318;
+  --fiq-card: #161A21;
+  --fiq-border: #1F242E;
+  --fiq-accent: #B4FF4A;
+  --fiq-accent-dim: #7CB82F;
+  --fiq-blue: #3D8BFF;
+  --fiq-orange: #FF6B35;
+  --fiq-red: #EF4444;
+  --fiq-yellow: #F59E0B;
+  --fiq-text: #F0F2F5;
+  --fiq-muted: #6B7280;
+  --fiq-faint: #1A1F2A;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* ============================================================
+   Utilitaires ForgeIQ
+   ============================================================ */
+@layer utilities {
+  /* Typographie */
+  .fiq-display {
+    font-weight: 900;
+    letter-spacing: -0.03em;
+  }
+  .fiq-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fiq-muted);
+  }
+  .fiq-data {
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+  }
+
+  /* Cards */
+  .fiq-card {
+    border-radius: 16px;
+    border: 1px solid var(--fiq-border);
+    background: var(--fiq-card);
+    padding: 1rem;
+  }
+
+  /* AlertBars */
+  .fiq-alert-red {
+    border-left: 3px solid var(--fiq-red);
+    background: #EF444412;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+  }
+  .fiq-alert-yellow {
+    border-left: 3px solid var(--fiq-yellow);
+    background: #F59E0B12;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+  }
+  .fiq-alert-green {
+    border-left: 3px solid var(--fiq-accent);
+    background: #B4FF4A12;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+  }
+  .fiq-alert-blue {
+    border-left: 3px solid var(--fiq-blue);
+    background: #3D8BFF12;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+  }
+
+  /* Safe area pour bottom nav mobile */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .mb-nav {
+    margin-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+}
