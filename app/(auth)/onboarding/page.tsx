@@ -80,7 +80,11 @@ export default function OnboardingPage() {
   }
 
   async function finish() {
-    if (!data.program_slug) return
+    // Utilise la sélection explicite OU le premier programme recommandé par défaut
+    const programs = getRecommendedPrograms(data)
+    const slug = data.program_slug ?? programs[0]?.slug
+    if (!slug) return
+
     setLoading(true)
 
     const { data: { user } } = await supabase.auth.getUser()
@@ -90,7 +94,7 @@ export default function OnboardingPage() {
     const { data: program } = await supabase
       .from('programs')
       .select('id')
-      .eq('slug', data.program_slug)
+      .eq('slug', slug)
       .single()
 
     const { error } = await supabase
@@ -109,6 +113,8 @@ export default function OnboardingPage() {
     setLoading(false)
     if (!error) {
       router.push('/dashboard')
+    } else {
+      console.error('Onboarding error:', error)
     }
   }
 
