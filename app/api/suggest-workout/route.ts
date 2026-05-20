@@ -44,8 +44,10 @@ export async function GET() {
 
       if (program) {
         programName = program.name
-        const days: string[] = program.structure?.days ?? []
-        totalSessions = days.length
+        // Support both old format (string[]) and new format ({name, exercises}[])
+        const rawDays: (string | { name: string; exercises?: unknown[] })[] = program.structure?.days ?? []
+        totalSessions = rawDays.length
+        const dayNames: string[] = rawDays.map((d) => (typeof d === 'string' ? d : d.name))
 
         const { data: lastWorkout } = await supabase
           .from('workouts').select('session_name')
@@ -54,10 +56,10 @@ export async function GET() {
           .order('session_date', { ascending: false }).limit(1).single()
 
         if (lastWorkout) {
-          const lastIdx = days.indexOf(lastWorkout.session_name)
-          nextIndex = lastIdx >= 0 ? (lastIdx + 1) % days.length : 0
+          const lastIdx = dayNames.indexOf(lastWorkout.session_name)
+          nextIndex = lastIdx >= 0 ? (lastIdx + 1) % dayNames.length : 0
         }
-        sessionName = days[nextIndex] ?? 'Séance libre'
+        sessionName = dayNames[nextIndex] ?? 'Séance libre'
       }
     }
 
