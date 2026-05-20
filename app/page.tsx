@@ -21,20 +21,27 @@ const FEATURES = [
   },
 ]
 
-const PROGRAMS_PREVIEW = [
-  { name: 'Full Body 3×', level: 'beginner', sessions: 3 },
-  { name: 'Upper/Lower 4×', level: 'intermediate', sessions: 4 },
-  { name: 'PPL 6×', level: 'advanced', sessions: 6 },
-  { name: 'Starting Strength', level: 'beginner', sessions: 3 },
-  { name: 'Galbe & Fessiers ♀', level: 'beginner', sessions: 3 },
-  { name: 'Strong Woman ♀', level: 'intermediate', sessions: 4 },
-  { name: 'Bodyweight Débutant', level: 'beginner', sessions: 3 },
-  { name: 'Powerlifting', level: 'advanced', sessions: 4 },
-  { name: 'Mobilité & Bien-être ♀', level: 'beginner', sessions: 3 },
-  { name: 'Arnold Split', level: 'advanced', sessions: 6 },
-  { name: 'PHUL', level: 'intermediate', sessions: 4 },
-  { name: 'Sèche Cardio+Muscu', level: 'intermediate', sessions: 5 },
-]
+// Organisés par colonne : gauche = débutant, milieu = intermédiaire, droite = avancé
+const PROGRAMS_BY_LEVEL = {
+  beginner: [
+    { name: 'Full Body 3×', sessions: 3 },
+    { name: 'Starting Strength', sessions: 3 },
+    { name: 'Bodyweight Débutant', sessions: 3 },
+    { name: 'Galbe & Fessiers ♀', sessions: 3 },
+    { name: 'Mobilité & Bien-être ♀', sessions: 3 },
+  ],
+  intermediate: [
+    { name: 'Upper/Lower 4×', sessions: 4 },
+    { name: 'PHUL', sessions: 4 },
+    { name: 'Sèche Cardio+Muscu', sessions: 5 },
+    { name: 'Strong Woman ♀', sessions: 4 },
+  ],
+  advanced: [
+    { name: 'PPL 6×', sessions: 6 },
+    { name: 'Arnold Split', sessions: 6 },
+    { name: 'Powerlifting', sessions: 4 },
+  ],
+}
 
 const TESTIMONIALS = [
   {
@@ -286,31 +293,47 @@ export default function LandingPage() {
           Homme, femme, débutant, avancé. Ou crée le tien en 2 minutes.
         </p>
 
-        <div className="grid grid-cols-3 gap-2">
-          {PROGRAMS_PREVIEW.map((p, i) => {
-            const isFemale = p.name.includes('♀')
-            return (
-              <div key={i} className="rounded-xl px-2 py-3 text-center relative"
+        <div className="grid grid-cols-3 gap-2 items-start">
+          {(
+            [
+              { key: 'beginner', label: 'Débutant' },
+              { key: 'intermediate', label: 'Intermédiaire' },
+              { key: 'advanced', label: 'Avancé' },
+            ] as const
+          ).map(({ key, label }) => (
+            <div key={key} className="space-y-2">
+              {/* En-tête colonne */}
+              <p className="text-center text-[9px] font-black uppercase tracking-wider py-1 rounded-lg"
                 style={{
-                  background: 'var(--fiq-card)',
-                  border: `1px solid ${isFemale ? '#FF6B9D44' : 'var(--fiq-border)'}`,
+                  background: LEVEL_COLOR[key].bg,
+                  color: LEVEL_COLOR[key].text,
                 }}>
-                {isFemale && (
-                  <span className="absolute top-1.5 right-1.5 text-[8px] font-black" style={{ color: '#FF6B9D' }}>♀</span>
-                )}
-                <p className="text-[11px] font-bold leading-tight mb-2 px-1"
-                  style={{ color: 'var(--fiq-text)' }}>
-                  {p.name.replace(' ♀', '')}
-                </p>
-                <span
-                  className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
-                  style={{ background: LEVEL_COLOR[p.level].bg, color: LEVEL_COLOR[p.level].text }}>
-                  {LEVEL_LABEL[p.level]}
-                </span>
-                <p className="text-[9px] mt-1.5" style={{ color: 'var(--fiq-muted)' }}>{p.sessions}×/sem</p>
-              </div>
-            )
-          })}
+                {label}
+              </p>
+              {/* Cards */}
+              {PROGRAMS_BY_LEVEL[key].map((p, i) => {
+                const isFemale = p.name.includes('♀')
+                return (
+                  <div key={i} className="rounded-xl px-2 py-3 text-center relative"
+                    style={{
+                      background: 'var(--fiq-card)',
+                      border: `1px solid ${isFemale ? '#FF6B9D44' : LEVEL_COLOR[key].text + '33'}`,
+                    }}>
+                    {isFemale && (
+                      <span className="absolute top-1 right-1.5 text-[8px]" style={{ color: '#FF6B9D' }}>♀</span>
+                    )}
+                    <p className="text-[10px] font-bold leading-tight mb-1.5 px-0.5"
+                      style={{ color: 'var(--fiq-text)' }}>
+                      {p.name.replace(' ♀', '')}
+                    </p>
+                    <p className="text-[9px]" style={{ color: 'var(--fiq-muted)' }}>
+                      {p.sessions}×/sem
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
         </div>
         <div className="mt-4 text-center">
           <Link href="/register" className="text-sm font-semibold" style={{ color: 'var(--fiq-accent)' }}>
