@@ -347,7 +347,7 @@ export default async function DashboardPage() {
           <Dumbbell className="w-5 h-5" style={{ color: 'var(--fiq-orange)' }} />
           <div>
             <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>Exercices</p>
-            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>+250 exercices</p>
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>230+ exercices</p>
           </div>
         </Link>
         <Link href="/programs" className="fiq-card flex items-center gap-3">

@@ -62,7 +62,7 @@ export default async function ProfilePage() {
           <span className="text-2xl">🏋️</span>
           <div>
             <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Exercices</p>
-            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>+250 exercices</p>
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>230+ exercices</p>
           </div>
         </Link>
         <Link

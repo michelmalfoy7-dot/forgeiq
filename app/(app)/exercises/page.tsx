@@ -4,7 +4,7 @@ import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'Exercices — ForgeIQ',
-  description: 'Bibliothèque de +250 exercices avec instructions et conseils de coaching.',
+  description: 'Bibliothèque de 230+ exercices avec instructions et conseils de coaching.',
 }
 
 export default async function ExercisesPage() {

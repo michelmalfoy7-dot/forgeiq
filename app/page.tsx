@@ -26,10 +26,13 @@ const PROGRAMS_PREVIEW = [
   { name: 'Upper/Lower 4×', level: 'intermediate', sessions: 4 },
   { name: 'PPL 6×', level: 'advanced', sessions: 6 },
   { name: 'Starting Strength', level: 'beginner', sessions: 3 },
+  { name: 'Galbe & Fessiers ♀', level: 'beginner', sessions: 3 },
+  { name: 'Strong Woman ♀', level: 'intermediate', sessions: 4 },
+  { name: 'Bodyweight Débutant', level: 'beginner', sessions: 3 },
+  { name: 'Powerlifting', level: 'advanced', sessions: 4 },
+  { name: 'Mobilité & Bien-être ♀', level: 'beginner', sessions: 3 },
   { name: 'Arnold Split', level: 'advanced', sessions: 6 },
   { name: 'PHUL', level: 'intermediate', sessions: 4 },
-  { name: 'Bodyweight', level: 'beginner', sessions: 3 },
-  { name: 'Powerlifting', level: 'advanced', sessions: 4 },
   { name: 'Sèche Cardio+Muscu', level: 'intermediate', sessions: 5 },
 ]
 
@@ -65,7 +68,7 @@ const FAQS = [
   },
   {
     q: "Puis-je créer mon propre programme ?",
-    a: "Oui, avec le constructeur de programme custom. Tu nommes tes séances, tu y ajoutes les exercices parmi les 89 disponibles, et c'est adopté instantanément.",
+    a: "Oui, avec le constructeur de programme custom. Tu nommes tes séances, tu y ajoutes les exercices parmi les 230+ disponibles, et c'est adopté instantanément.",
   },
   {
     q: "Comment annuler ?",
@@ -277,29 +280,41 @@ export default function LandingPage() {
       <section className="py-16 px-4 max-w-lg mx-auto" style={{ borderTop: '1px solid var(--fiq-border)' }}>
         <SectionLabel>Programmes</SectionLabel>
         <h2 className="text-3xl fiq-display text-center mb-3" style={{ color: 'var(--fiq-text)' }}>
-          12 programmes,<br />tous les niveaux.
+          19 programmes,<br />tous les niveaux.
         </h2>
         <p className="text-sm text-center mb-8" style={{ color: 'var(--fiq-muted)' }}>
-          De débutant à avancé. Ou crée le tien en 2 minutes.
+          Homme, femme, débutant, avancé. Ou crée le tien en 2 minutes.
         </p>
 
         <div className="grid grid-cols-3 gap-2">
-          {PROGRAMS_PREVIEW.map((p, i) => (
-            <div key={i} className="rounded-xl px-3 py-3 text-center"
-              style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}>
-              <p className="text-xs font-bold leading-tight mb-2" style={{ color: 'var(--fiq-text)' }}>{p.name}</p>
-              <span
-                className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
-                style={{ background: LEVEL_COLOR[p.level].bg, color: LEVEL_COLOR[p.level].text }}>
-                {LEVEL_LABEL[p.level]}
-              </span>
-              <p className="text-[9px] mt-1.5" style={{ color: 'var(--fiq-muted)' }}>{p.sessions}×/sem</p>
-            </div>
-          ))}
+          {PROGRAMS_PREVIEW.map((p, i) => {
+            const isFemale = p.name.includes('♀')
+            return (
+              <div key={i} className="rounded-xl px-2 py-3 text-center relative"
+                style={{
+                  background: 'var(--fiq-card)',
+                  border: `1px solid ${isFemale ? '#FF6B9D44' : 'var(--fiq-border)'}`,
+                }}>
+                {isFemale && (
+                  <span className="absolute top-1.5 right-1.5 text-[8px] font-black" style={{ color: '#FF6B9D' }}>♀</span>
+                )}
+                <p className="text-[11px] font-bold leading-tight mb-2 px-1"
+                  style={{ color: 'var(--fiq-text)' }}>
+                  {p.name.replace(' ♀', '')}
+                </p>
+                <span
+                  className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+                  style={{ background: LEVEL_COLOR[p.level].bg, color: LEVEL_COLOR[p.level].text }}>
+                  {LEVEL_LABEL[p.level]}
+                </span>
+                <p className="text-[9px] mt-1.5" style={{ color: 'var(--fiq-muted)' }}>{p.sessions}×/sem</p>
+              </div>
+            )
+          })}
         </div>
         <div className="mt-4 text-center">
           <Link href="/register" className="text-sm font-semibold" style={{ color: 'var(--fiq-accent)' }}>
-            + 3 autres programmes →
+            + 7 autres programmes dans l&apos;app →
           </Link>
         </div>
       </section>
@@ -370,7 +385,7 @@ export default function LandingPage() {
             <ul className="space-y-2">
               {[
                 'Logger tes séances',
-                '12 programmes inclus',
+                '19 programmes inclus',
                 'Bilan quotidien',
                 'Suivi du poids EWMA',
                 'Records personnels',

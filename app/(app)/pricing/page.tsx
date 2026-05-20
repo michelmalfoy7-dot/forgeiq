@@ -8,7 +8,7 @@ const FEATURES_FREE = [
   'Logger des séances illimité',
   'Bilan quotidien (check-in)',
   'Dashboard & graphiques',
-  '89 exercices + 12 programmes',
+  '230+ exercices · 19 programmes',
 ]
 
 const FEATURES_PRO = [
