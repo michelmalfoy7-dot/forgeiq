@@ -2,8 +2,22 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Dumbbell, Calendar, Clock, CheckCircle, X, ChevronRight, Filter } from 'lucide-react'
+import { Plus, Dumbbell, Calendar, Clock, CheckCircle, X, ChevronRight, Filter, Eye } from 'lucide-react'
 import Link from 'next/link'
+
+type ProgramExercise = {
+  slug: string
+  name_fr: string
+  sets: number
+  reps: string
+  rest_sec?: number
+  note?: string
+}
+
+type ProgramDay = {
+  name: string
+  exercises?: ProgramExercise[]
+}
 
 type Program = {
   id: string
@@ -15,8 +29,13 @@ type Program = {
   equipment: string[]
   sessions_per_week: number
   duration_weeks: number
-  structure: { days: string[] }
+  structure: { days: (string | ProgramDay)[] }
   is_custom: boolean
+}
+
+// Normalise le format ancien (string) et nouveau ({name, exercises})
+function getDayName(day: string | ProgramDay): string {
+  return typeof day === 'string' ? day : day.name
 }
 
 type Props = {
@@ -38,6 +57,11 @@ const EQUIP_LABELS: Record<string, string> = {
   full_gym: 'Salle complète', home_basic: 'Maison basique',
   home_advanced: 'Maison avancé', bodyweight: 'Poids du corps',
 }
+
+const FEMALE_SLUGS = new Set([
+  'galbe-fessiers', 'full-body-femme-debutante', 'tonification-seche-femme',
+  'strong-woman', 'mobilite-bien-etre',
+])
 
 function Badge({ label, color = 'accent' }: { label: string; color?: 'accent' | 'blue' | 'orange' | 'muted' }) {
   const styles = {
@@ -82,15 +106,22 @@ function AdoptModal({ program, onClose, onConfirm, loading }: {
         <div className="rounded-xl p-3 space-y-1"
           style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
           <p className="fiq-label mb-2">Structure des séances</p>
-          {program.structure.days.map((day, i) => (
-            <div key={i} className="flex items-center gap-2 text-sm" style={{ color: 'var(--fiq-text)' }}>
-              <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0"
-                style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
-                {i + 1}
-              </span>
-              {day}
-            </div>
-          ))}
+          {program.structure.days.map((day, i) => {
+            const name = getDayName(day)
+            const exCount = typeof day === 'string' ? null : (day.exercises?.length ?? null)
+            return (
+              <div key={i} className="flex items-center gap-2 text-sm" style={{ color: 'var(--fiq-text)' }}>
+                <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0"
+                  style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
+                  {i + 1}
+                </span>
+                <span className="flex-1">{name}</span>
+                {exCount !== null && (
+                  <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>{exCount} ex.</span>
+                )}
+              </div>
+            )
+          })}
         </div>
 
         <div className="text-xs px-3 py-2 rounded-lg"
@@ -259,6 +290,12 @@ export function ProgramsClient({ programs, currentProgramId, userGoal, userLevel
                         EN COURS
                       </span>
                     )}
+                    {FEMALE_SLUGS.has(p.slug) && (
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                        style={{ background: '#FF6B9D22', color: '#FF6B9D', border: '1px solid #FF6B9D44' }}>
+                        ♀ FEMME
+                      </span>
+                    )}
                     {p.is_custom && (
                       <Badge label="CUSTOM" color="blue" />
                     )}
@@ -290,27 +327,37 @@ export function ProgramsClient({ programs, currentProgramId, userGoal, userLevel
                   <span key={i}
                     className="text-[10px] px-2 py-1 rounded-lg font-semibold"
                     style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)', border: '1px solid var(--fiq-border)' }}>
-                    J{i + 1} · {day}
+                    J{i + 1} · {getDayName(day)}
                   </span>
                 ))}
               </div>
 
-              {/* Bouton */}
-              {isCurrent ? (
-                <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--fiq-accent)' }}>
-                  <CheckCircle className="w-4 h-4" />
-                  Programme actif
-                </div>
-              ) : (
-                <button
-                  onClick={() => setAdoptTarget(p)}
-                  className="w-full py-2.5 rounded-xl font-black text-sm flex items-center justify-center gap-2"
-                  style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}>
-                  <Dumbbell className="w-4 h-4" />
-                  Adopter ce programme
-                  <ChevronRight className="w-4 h-4 ml-auto" style={{ color: 'var(--fiq-muted)' }} />
-                </button>
-              )}
+              {/* Boutons */}
+              <div className="flex gap-2">
+                <Link
+                  href={`/programs/${p.slug}`}
+                  className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-semibold text-sm"
+                  style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}>
+                  <Eye className="w-4 h-4" />
+                  Détail
+                </Link>
+                {isCurrent ? (
+                  <div className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold rounded-xl py-2.5"
+                    style={{ background: '#B4FF4A15', border: '1px solid #B4FF4A44', color: 'var(--fiq-accent)' }}>
+                    <CheckCircle className="w-4 h-4" />
+                    Programme actif
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setAdoptTarget(p)}
+                    className="flex-1 py-2.5 rounded-xl font-black text-sm flex items-center justify-center gap-2"
+                    style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}>
+                    <Dumbbell className="w-4 h-4" />
+                    Adopter
+                    <ChevronRight className="w-4 h-4 ml-auto" style={{ color: 'var(--fiq-muted)' }} />
+                  </button>
+                )}
+              </div>
             </div>
           )
         })}
