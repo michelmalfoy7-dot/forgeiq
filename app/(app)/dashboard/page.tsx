@@ -9,9 +9,28 @@ import { Dumbbell, TrendingUp, ClipboardList, MessageCircle } from 'lucide-react
 
 export const dynamic = 'force-dynamic'
 
-const PROTEIN_TARGET = 160
 const STEPS_TARGET = 8000
 const SESSIONS_TARGET = 4
+
+// Fourchette protéines selon objectif (g/kg de poids de corps)
+// Sources : ISSN, ACSM, méta-analyses 2023
+const PROTEIN_RATIO: Record<string, { min: number; max: number }> = {
+  muscle_gain: { min: 1.8, max: 2.2 },
+  strength:    { min: 1.8, max: 2.2 },
+  weight_loss: { min: 1.8, max: 2.0 }, // élevé pour préserver le muscle en déficit
+  endurance:   { min: 1.2, max: 1.6 },
+  general:     { min: 1.4, max: 1.8 },
+}
+
+function calcProteinTarget(goal: string | null, weightKg: number | null): { min: number; max: number; mid: number } {
+  const ratio = PROTEIN_RATIO[goal ?? 'general'] ?? PROTEIN_RATIO['general']
+  const w = weightKg && weightKg > 30 && weightKg < 250 ? weightKg : 75 // fallback 75kg
+  return {
+    min: Math.round(w * ratio.min),
+    max: Math.round(w * ratio.max),
+    mid: Math.round(w * (ratio.min + ratio.max) / 2),
+  }
+}
 
 async function generateAIAlerts(
   logs: { log_date: string; sleep_deep_min: number | null; protein_g: number | null; fatigue_score: number | null; steps: number | null }[],
@@ -72,7 +91,7 @@ export default async function DashboardPage() {
     { data: weekLogs },
   ] = await Promise.all([
     supabase.from('profiles')
-      .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week')
+      .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg')
       .eq('id', user.id).single(),
 
     supabase.from('daily_logs').select('*')
@@ -151,6 +170,9 @@ export default async function DashboardPage() {
     }
   }
 
+  // Cible protéines dynamique basée sur poids + objectif
+  const proteinTarget = calcProteinTarget(profile?.goal ?? null, profile?.weight_kg ?? null)
+
   // Alertes statiques immédiates
   const staticAlerts: { type: 'red' | 'yellow' | 'green' | 'blue'; message: string; sub: string }[] = []
 
@@ -162,8 +184,8 @@ export default async function DashboardPage() {
     if (deepSleep !== null && deepSleep < 60)
       staticAlerts.push({ type: 'yellow', message: '😴 Sommeil profond insuffisant', sub: `${deepSleep}min — réduis le volume d'entraînement de 15-20% aujourd'hui.` })
 
-    if (protein !== null && protein < PROTEIN_TARGET - 20)
-      staticAlerts.push({ type: 'yellow', message: '🥩 Protéines en dessous de l\'objectif', sub: `${protein}g / ${PROTEIN_TARGET}g — pense à une source de protéines supplémentaire.` })
+    if (protein !== null && protein < proteinTarget.min)
+      staticAlerts.push({ type: 'yellow', message: '🥩 Protéines en dessous de l\'objectif', sub: `${protein}g — objectif ${proteinTarget.min}-${proteinTarget.max}g · pense à une source supplémentaire.` })
 
     if (sysBP !== null && sysBP > 135)
       staticAlerts.push({ type: 'red', message: '🫀 Tension systolique élevée', sub: `${sysBP} mmHg — consulte un médecin si ça persiste.` })
@@ -229,8 +251,8 @@ export default async function DashboardPage() {
           label="Protéines"
           value={todayLog?.protein_g !== null && todayLog?.protein_g !== undefined ? `${todayLog.protein_g}` : '—'}
           unit={todayLog?.protein_g !== null && todayLog?.protein_g !== undefined ? 'g' : ''}
-          sub={`Objectif : ${PROTEIN_TARGET}g`}
-          alert={!!todayLog?.protein_g && todayLog.protein_g < PROTEIN_TARGET - 20}
+          sub={`Objectif : ${proteinTarget.min}-${proteinTarget.max}g`}
+          alert={!!todayLog?.protein_g && todayLog.protein_g < proteinTarget.min}
         />
         <StatCard
           label="Pas"
@@ -315,9 +337,9 @@ export default async function DashboardPage() {
         />
         <ProgressBar
           value={todayLog?.protein_g ?? 0}
-          max={PROTEIN_TARGET}
+          max={proteinTarget.max}
           color="var(--fiq-accent)"
-          label={`Protéines : ${todayLog?.protein_g ?? 0}g/${PROTEIN_TARGET}g`}
+          label={`Protéines : ${todayLog?.protein_g ?? 0}g / ${proteinTarget.min}-${proteinTarget.max}g`}
         />
         <ProgressBar
           value={todayLog?.steps ?? 0}

@@ -148,9 +148,16 @@ export default function WorkoutPage() {
           {/* Historique récent */}
           {recentWorkouts.length > 0 && (
             <div className="fiq-card space-y-3">
-              <div className="flex items-center gap-2">
-                <History className="w-4 h-4" style={{ color: 'var(--fiq-muted)' }} />
-                <p className="font-semibold text-sm" style={{ color: 'var(--fiq-text)' }}>Séances récentes</p>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <History className="w-4 h-4" style={{ color: 'var(--fiq-muted)' }} />
+                  <p className="font-semibold text-sm" style={{ color: 'var(--fiq-text)' }}>Séances récentes</p>
+                </div>
+                <Link href="/workout/history"
+                  className="text-xs font-semibold"
+                  style={{ color: 'var(--fiq-accent)' }}>
+                  Tout voir →
+                </Link>
               </div>
               {recentWorkouts.map((w) => (
                 <div key={w.id} className="flex items-center justify-between py-2" style={{ borderTop: '1px solid var(--fiq-border)' }}>
