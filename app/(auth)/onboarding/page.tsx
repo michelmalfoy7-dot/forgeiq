@@ -64,6 +64,7 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(1)
   const [data, setData] = useState<Partial<OnboardingData>>({})
   const [loading, setLoading] = useState(false)
+  const [finishError, setFinishError] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
@@ -80,42 +81,55 @@ export default function OnboardingPage() {
   }
 
   async function finish() {
+    setFinishError(null)
+
     // Utilise la sélection explicite OU le premier programme recommandé par défaut
     const programs = getRecommendedPrograms(data)
     const slug = data.program_slug ?? programs[0]?.slug
-    if (!slug) return
 
     setLoading(true)
 
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/login'); return }
+    if (!user) {
+      setLoading(false)
+      router.push('/login')
+      return
+    }
 
-    // Récupérer l'ID du programme choisi
-    const { data: program } = await supabase
-      .from('programs')
-      .select('id')
-      .eq('slug', slug)
-      .single()
+    // Récupérer l'ID du programme choisi (null si 'custom' ou pas trouvé)
+    let programId: string | null = null
+    if (slug && slug !== 'custom') {
+      const { data: program } = await supabase
+        .from('programs')
+        .select('id')
+        .eq('slug', slug)
+        .single()
+      programId = program?.id ?? null
+    }
 
+    // Upsert : crée le profil s'il n'existe pas, le met à jour sinon
     const { error } = await supabase
       .from('profiles')
-      .update({
-        goal: data.goal,
-        level: data.level,
-        equipment: data.equipment,
-        sessions_per_week: data.sessions_per_week,
-        current_program_id: program?.id ?? null,
+      .upsert({
+        id: user.id,
+        goal: data.goal ?? 'general',
+        level: data.level ?? 'beginner',
+        equipment: data.equipment ?? 'full_gym',
+        sessions_per_week: data.sessions_per_week ?? 3,
+        current_program_id: programId,
         onboarding_done: true,
         updated_at: new Date().toISOString(),
-      })
-      .eq('id', user.id)
+      }, { onConflict: 'id' })
 
     setLoading(false)
-    if (!error) {
-      router.push('/dashboard')
-    } else {
-      console.error('Onboarding error:', error)
+
+    if (error) {
+      console.error('Onboarding upsert error:', error)
+      setFinishError(`Erreur : ${error.message}. Réessaie.`)
+      return
     }
+
+    router.push('/dashboard')
   }
 
   const progressPercent = (step / TOTAL_STEPS) * 100
@@ -155,6 +169,7 @@ export default function OnboardingPage() {
             onSelect={(v) => update('program_slug', v)}
             onFinish={finish}
             loading={loading}
+            error={finishError}
           />
         )}
       </div>
@@ -379,12 +394,14 @@ function StepProgram({
   onSelect,
   onFinish,
   loading,
+  error,
 }: {
   data: Partial<OnboardingData>
   value?: string
   onSelect: (v: string) => void
   onFinish: () => void
   loading: boolean
+  error?: string | null
 }) {
   const programs = getRecommendedPrograms(data)
   const selected = value ?? programs[0]?.slug
@@ -435,6 +452,12 @@ function StepProgram({
           </button>
         ))}
       </div>
+
+      {error && (
+        <div className="rounded-lg px-3 py-2 text-sm" style={{ background: '#EF444418', color: 'var(--fiq-red)', border: '1px solid #EF444444' }}>
+          {error}
+        </div>
+      )}
 
       <Button
         className="w-full font-black text-base py-6"
