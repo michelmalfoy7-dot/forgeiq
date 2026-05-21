@@ -25,6 +25,7 @@ type SuggestedSession = {
   total_sessions: number
   volume_adjustment: 'reduce' | 'normal' | 'increase'
   adjustment_reason: string
+  exercises: { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[]
 }
 
 export default function WorkoutPage() {
@@ -60,7 +61,7 @@ export default function WorkoutPage() {
     load()
   }, [])
 
-  async function startWorkout(sessionName: string) {
+  async function startWorkout(sessionName: string, exercises?: { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[]) {
     setStarting(true)
     try {
       const res = await fetch('/api/workout/start', {
@@ -69,7 +70,13 @@ export default function WorkoutPage() {
         body: JSON.stringify({ session_name: sessionName }),
       })
       const { data } = await res.json()
-      if (data?.id) router.push(`/workout/${data.id}`)
+      if (data?.id) {
+        // Stocker les exercices suggérés pour les pré-charger dans le logger
+        if (exercises && exercises.length > 0) {
+          sessionStorage.setItem(`workout-exercises-${data.id}`, JSON.stringify(exercises))
+        }
+        router.push(`/workout/${data.id}`)
+      }
     } finally {
       setStarting(false)
     }
@@ -122,7 +129,7 @@ export default function WorkoutPage() {
 
               <Button
                 className="w-full py-5 font-black text-base"
-                onClick={() => startWorkout(suggestion.session_name)}
+                onClick={() => startWorkout(suggestion.session_name, suggestion.exercises as { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[])}
                 disabled={starting}
                 style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
               >

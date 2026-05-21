@@ -69,16 +69,100 @@ export default function WorkoutSessionPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [])
 
-  // Charger les exercices disponibles + infos séance
+  // Charger les exercices disponibles + infos séance + pré-charger depuis suggestion IA
   useEffect(() => {
     async function load() {
       const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+
       const [{ data: exos }, { data: workout }] = await Promise.all([
         supabase.from('exercises_library').select('id,name,name_fr,muscle_primary,equipment').order('name'),
         supabase.from('workouts').select('session_name').eq('id', workoutId).single(),
       ])
-      setExercises(exos ?? [])
+
+      const library = exos ?? []
+      setExercises(library)
       if (workout?.session_name) setSessionName(workout.session_name)
+
+      // Pré-charger les exercices suggérés par l'IA (stockés dans sessionStorage au démarrage)
+      const stored = sessionStorage.getItem(`workout-exercises-${workoutId}`)
+      if (stored && user) {
+        sessionStorage.removeItem(`workout-exercises-${workoutId}`)
+        try {
+          const suggested: { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[] = JSON.parse(stored)
+
+          const preloaded: ExerciseGroup[] = []
+
+          for (const s of suggested) {
+            // Trouver l'exercice dans la bibliothèque (par nom FR ou EN)
+            const match = library.find((e) =>
+              (e.name_fr ?? '').toLowerCase() === s.name.toLowerCase() ||
+              e.name.toLowerCase() === s.name.toLowerCase()
+            )
+            if (!match) continue
+
+            // Récupérer PR + historique pour cet exercice
+            let lastSession: { weight_kg: number; reps: number }[] = []
+            let pr: number | undefined
+
+            const [{ data: lastSets }, { data: prData }] = await Promise.all([
+              supabase
+                .from('workout_sets')
+                .select('weight_kg, reps, workout_id, workouts!inner(user_id)')
+                .eq('exercise_id', match.id)
+                .eq('workouts.user_id', user.id)
+                .not('is_warmup', 'eq', true)
+                .order('created_at', { ascending: false })
+                .limit(4),
+              supabase
+                .from('personal_records')
+                .select('value')
+                .eq('exercise_id', match.id)
+                .eq('user_id', user.id)
+                .eq('record_type', 'top_set')
+                .single(),
+            ])
+
+            lastSession = (lastSets ?? []).map((ls: { weight_kg: number; reps: number }) => ({
+              weight_kg: ls.weight_kg,
+              reps: ls.reps,
+            }))
+            pr = prData?.value
+
+            // Construire les séries initiales selon le plan IA
+            const sets: SetRow[] = []
+            const count = s.sets ?? 3
+            // Poids initial : suggestion IA > dernière séance > vide
+            const initWeight: number | '' = s.weight_kg ?? lastSession[0]?.weight_kg ?? ''
+            const initReps: number | '' = lastSession[0]?.reps ?? ''
+
+            for (let i = 0; i < count; i++) {
+              sets.push({
+                id: uid(),
+                exercise_id: match.id,
+                exercise_name: match.name_fr ?? match.name,
+                set_number: i + 1,
+                weight_kg: initWeight,
+                reps: initReps,
+                rpe: '',
+                is_warmup: false,
+              })
+            }
+
+            preloaded.push({
+              exercise_id: match.id,
+              exercise_name: match.name_fr ?? match.name,
+              sets,
+              lastSession,
+              pr,
+            })
+          }
+
+          if (preloaded.length > 0) setGroups(preloaded)
+        } catch {
+          // Silencieux si parsing échoue
+        }
+      }
     }
     load()
   }, [workoutId])

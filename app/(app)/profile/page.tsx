@@ -19,7 +19,7 @@ export default async function ProfilePage() {
     { data: streakData },
   ] = await Promise.all([
     supabase.from('profiles')
-      .select('display_name, username, goal, level, equipment, sessions_per_week, age, height_cm, gender, created_at')
+      .select('display_name, username, goal, level, equipment, sessions_per_week, age, height_cm, gender, weight_kg, created_at')
       .eq('id', user.id).single(),
 
     supabase.from('workouts')

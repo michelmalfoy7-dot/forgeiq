@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
 
     const body = await req.json()
-    const { display_name, goal, level, equipment, sessions_per_week, age, height_cm } = body
+    const { display_name, goal, level, equipment, sessions_per_week, age, height_cm, gender, weight_kg } = body
 
     const { error } = await supabase.from('profiles').update({
       display_name,
@@ -20,6 +20,8 @@ export async function POST(req: NextRequest) {
       sessions_per_week,
       age,
       height_cm,
+      gender: gender ?? undefined,
+      weight_kg: weight_kg ?? undefined,
       updated_at: new Date().toISOString(),
     }).eq('id', user.id)
 

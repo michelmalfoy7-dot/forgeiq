@@ -15,6 +15,7 @@ type Profile = {
   age: number | null
   height_cm: number | null
   gender: string | null
+  weight_kg: number | null
   created_at: string
 } | null
 
@@ -31,6 +32,11 @@ const GOAL_OPTIONS = [
   { value: 'strength', label: 'Force' },
   { value: 'endurance', label: 'Endurance' },
   { value: 'general', label: 'Général' },
+]
+const GENDER_OPTIONS = [
+  { value: 'male', label: '♂ Homme' },
+  { value: 'female', label: '♀ Femme' },
+  { value: 'other', label: '⚡ Non précisé' },
 ]
 const LEVEL_OPTIONS = [
   { value: 'beginner', label: 'Débutant' },
@@ -102,6 +108,8 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
   const [sessionsPerWeek, setSessionsPerWeek] = useState(String(profile?.sessions_per_week ?? 3))
   const [age, setAge] = useState(String(profile?.age ?? ''))
   const [heightCm, setHeightCm] = useState(String(profile?.height_cm ?? ''))
+  const [gender, setGender] = useState(profile?.gender ?? '')
+  const [weightKg, setWeightKg] = useState(String(profile?.weight_kg ?? ''))
   const [displayName, setDisplayName] = useState(profile?.display_name ?? '')
 
   const [saving, setSaving] = useState(false)
@@ -123,6 +131,8 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
           sessions_per_week: Number(sessionsPerWeek) || 3,
           age: age ? Number(age) : null,
           height_cm: heightCm ? Number(heightCm) : null,
+          gender: gender || null,
+          weight_kg: weightKg ? Number(weightKg) : null,
         }),
       })
       if (res.ok) {
@@ -219,6 +229,7 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
           />
         </div>
 
+        <SelectField label="Genre" value={gender} onChange={setGender} options={GENDER_OPTIONS} />
         <SelectField label="Objectif" value={goal} onChange={setGoal} options={GOAL_OPTIONS} />
         <SelectField label="Niveau" value={level} onChange={setLevel} options={LEVEL_OPTIONS} />
         <SelectField label="Équipement" value={equipment} onChange={setEquipment} options={EQUIP_OPTIONS} />
@@ -241,7 +252,8 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
+          <NumberField label="Poids" value={weightKg} onChange={setWeightKg} min={30} max={250} unit="kg" />
           <NumberField label="Âge" value={age} onChange={setAge} min={10} max={100} unit="ans" />
           <NumberField label="Taille" value={heightCm} onChange={setHeightCm} min={100} max={250} unit="cm" />
         </div>
