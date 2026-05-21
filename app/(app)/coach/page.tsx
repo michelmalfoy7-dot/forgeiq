@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, Send, Bot, User, Sparkles } from 'lucide-react'
+import { Loader2, Send, Bot, User, Sparkles, Trash2 } from 'lucide-react'
 
 type Message = { role: 'user' | 'assistant'; content: string; streaming?: boolean }
 
@@ -38,6 +38,82 @@ function getQuickSuggestions(ctx: DailyCtx | null, proteinTarget: number): strin
   if (s.length < 4) s.push('Besoin d\'un refeed ?')
   return s.slice(0, 4)
 }
+
+// --- Markdown renderer léger (sans dépendance externe) ---
+
+function renderInline(text: string): React.ReactNode {
+  // Gère **bold** et *italic*
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g)
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className="font-bold">{part.slice(2, -2)}</strong>
+    }
+    if (part.startsWith('*') && part.endsWith('*')) {
+      return <em key={i}>{part.slice(1, -1)}</em>
+    }
+    return part
+  })
+}
+
+function renderMarkdown(text: string): React.ReactNode {
+  const lines = text.split('\n')
+  const nodes: React.ReactNode[] = []
+  let listItems: string[] = []
+  let listType: 'ul' | 'ol' | null = null
+  let keyIdx = 0
+
+  const flushList = () => {
+    if (!listItems.length) return
+    if (listType === 'ol') {
+      nodes.push(
+        <ol key={keyIdx++} className="my-1.5 pl-5 list-decimal space-y-0.5">
+          {listItems.map((item, i) => <li key={i} className="leading-relaxed">{renderInline(item)}</li>)}
+        </ol>
+      )
+    } else {
+      nodes.push(
+        <ul key={keyIdx++} className="my-1.5 pl-5 list-disc space-y-0.5">
+          {listItems.map((item, i) => <li key={i} className="leading-relaxed">{renderInline(item)}</li>)}
+        </ul>
+      )
+    }
+    listItems = []
+    listType = null
+  }
+
+  for (const line of lines) {
+    const ulMatch = line.match(/^[-•*]\s+(.+)/)
+    const olMatch = line.match(/^\d+\.\s+(.+)/)
+    const hMatch = line.match(/^#{1,3}\s+(.+)/)
+
+    if (ulMatch) {
+      if (listType === 'ol') flushList()
+      listType = 'ul'
+      listItems.push(ulMatch[1])
+    } else if (olMatch) {
+      if (listType === 'ul') flushList()
+      listType = 'ol'
+      listItems.push(olMatch[1])
+    } else if (hMatch) {
+      flushList()
+      nodes.push(
+        <p key={keyIdx++} className="font-bold mt-2 mb-0.5">{renderInline(hMatch[1])}</p>
+      )
+    } else if (line.trim() === '') {
+      flushList()
+      // Ligne vide = séparateur de paragraphe (géré par margin)
+    } else {
+      flushList()
+      nodes.push(
+        <p key={keyIdx++} className="mb-1.5 leading-relaxed">{renderInline(line)}</p>
+      )
+    }
+  }
+  flushList()
+  return <>{nodes}</>
+}
+
+// ---------------------------------------------------------
 
 function TypingDots() {
   return (
@@ -75,9 +151,9 @@ function MessageBubble({ msg }: { msg: Message }) {
         }
       </div>
 
-      {/* Bubble */}
+      {/* Bulle */}
       <div
-        className="max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed"
+        className="max-w-[80%] rounded-2xl px-4 py-3 text-sm"
         style={{
           background: isUser ? 'var(--fiq-accent)' : 'var(--fiq-card)',
           color: isUser ? 'var(--bg)' : 'var(--fiq-text)',
@@ -88,15 +164,36 @@ function MessageBubble({ msg }: { msg: Message }) {
       >
         {msg.streaming && !msg.content ? (
           <TypingDots />
-        ) : (
-          <p className="whitespace-pre-wrap">
+        ) : isUser ? (
+          <p className="whitespace-pre-wrap leading-relaxed">
             {msg.content}
             {msg.streaming && <span className="animate-pulse">▋</span>}
           </p>
+        ) : (
+          <div>
+            {renderMarkdown(msg.content)}
+            {msg.streaming && <span className="animate-pulse">▋</span>}
+          </div>
         )}
       </div>
     </div>
   )
+}
+
+// Suggestions de suivi après chaque réponse du coach
+const FOLLOW_UP_POOL = [
+  'Donne-moi plus de détails',
+  'Comment progresser plus vite ?',
+  'Quelle séance demain ?',
+  'Conseil nutrition du jour',
+  'Comment améliorer ma récupération ?',
+  'Analyse mes PRs récents',
+  'Que manger ce soir ?',
+  'Comment gérer la fatigue ?',
+]
+
+function getFollowUps(): string[] {
+  return [...FOLLOW_UP_POOL].sort(() => Math.random() - 0.5).slice(0, 3)
 }
 
 export default function CoachPage() {
@@ -106,10 +203,14 @@ export default function CoachPage() {
   const [historyLoading, setHistoryLoading] = useState(true)
   const [dailyCtx, setDailyCtx] = useState<DailyCtx | null>(null)
   const [proteinTarget, setProteinTarget] = useState(160)
+  const [coachCount, setCoachCount] = useState(0)
+  const coachLimit = 30
+  const [followUps] = useState<string[]>(getFollowUps())
+  const [clearing, setClearing] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // Charger l'historique + contexte + profil au montage
+  // Charger l'historique + contexte + compteur mensuel au montage
   useEffect(() => {
     async function load() {
       const supabase = createClient()
@@ -117,8 +218,11 @@ export default function CoachPage() {
       if (!user) return
 
       const today = new Date().toISOString().split('T')[0]
+      const startOfMonth = new Date()
+      startOfMonth.setDate(1)
+      startOfMonth.setHours(0, 0, 0, 0)
 
-      const [{ data: history }, { data: log }, { data: profile }] = await Promise.all([
+      const [{ data: history }, { data: log }, { data: profile }, { count: msgCount }] = await Promise.all([
         supabase.from('coach_messages')
           .select('role, content, created_at')
           .eq('user_id', user.id)
@@ -133,6 +237,11 @@ export default function CoachPage() {
           .select('goal, weight_kg')
           .eq('id', user.id)
           .single(),
+        supabase.from('coach_messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('role', 'user')
+          .gte('created_at', startOfMonth.toISOString()),
       ])
 
       if (history?.length) {
@@ -140,17 +249,18 @@ export default function CoachPage() {
       }
       if (log) setDailyCtx(log)
       if (profile) setProteinTarget(calcProteinTarget(profile.goal, profile.weight_kg))
+      setCoachCount(msgCount ?? 0)
       setHistoryLoading(false)
     }
     load()
   }, [])
 
-  // Auto-scroll
+  // Auto-scroll vers le bas à chaque nouveau message
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Auto-fill from URL param (dashboard "Demander au coach" button)
+  // Pré-remplir depuis l'URL param ?q= (boutons "Demander au coach" dashboard)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const prefill = params.get('q')
@@ -159,6 +269,21 @@ export default function CoachPage() {
       inputRef.current?.focus()
     }
   }, [])
+
+  async function clearHistory() {
+    if (clearing) return
+    setClearing(true)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        await supabase.from('coach_messages').delete().eq('user_id', user.id)
+        setMessages([])
+      }
+    } finally {
+      setClearing(false)
+    }
+  }
 
   async function sendMessage(text: string) {
     if (!text.trim() || loading) return
@@ -181,13 +306,21 @@ export default function CoachPage() {
         const { error: limitErr } = await res.json()
         setMessages(prev => {
           const updated = [...prev]
-          updated[updated.length - 1] = { role: 'assistant', content: limitErr ?? 'Limite mensuelle atteinte. Passez en Pro pour un accès illimité.', streaming: false }
+          updated[updated.length - 1] = {
+            role: 'assistant',
+            content: limitErr ?? 'Limite mensuelle atteinte. Passez en Pro pour un accès illimité.',
+            streaming: false,
+          }
           return updated
         })
         setLoading(false)
         return
       }
       if (!res.ok || !res.body) throw new Error('Erreur réseau')
+
+      // Lire le compteur depuis les headers de réponse
+      const headerCount = res.headers.get('X-Coach-Count')
+      if (headerCount) setCoachCount(parseInt(headerCount))
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -227,40 +360,61 @@ export default function CoachPage() {
 
   const suggestions = getQuickSuggestions(dailyCtx, proteinTarget)
   const isEmpty = !historyLoading && messages.length === 0
+  const lastIsAssistant =
+    messages.length > 0 &&
+    messages[messages.length - 1].role === 'assistant' &&
+    !messages[messages.length - 1].streaming
+  const remaining = coachLimit - coachCount
 
   return (
     <div className="flex flex-col h-[calc(100dvh-64px)] max-w-lg mx-auto">
       {/* Header */}
-      <div className="px-4 pt-4 pb-3 flex-shrink-0">
-        <p className="fiq-label">Intelligence artificielle</p>
-        <h1 className="text-2xl fiq-display mt-1" style={{ color: 'var(--fiq-text)' }}>Coach IA</h1>
+      <div className="px-4 pt-4 pb-3 flex-shrink-0 flex items-start justify-between">
+        <div>
+          <p className="fiq-label">Intelligence artificielle</p>
+          <h1 className="text-2xl fiq-display mt-1" style={{ color: 'var(--fiq-text)' }}>Coach IA</h1>
+        </div>
+        {messages.length > 0 && (
+          <button
+            onClick={clearHistory}
+            disabled={clearing}
+            className="mt-2 p-2 rounded-xl transition-all"
+            title="Effacer la conversation"
+            style={{ color: 'var(--fiq-muted)', border: '1px solid var(--fiq-border)', background: 'var(--fiq-card)' }}
+          >
+            {clearing
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <Trash2 className="w-4 h-4" />
+            }
+          </button>
+        )}
       </div>
 
-      {/* Context bar */}
+      {/* Context bar — données biométriques du jour */}
       {dailyCtx && (
         <div
-          className="mx-4 mb-3 flex items-center gap-3 px-3 py-2 rounded-xl text-xs flex-shrink-0"
+          className="mx-4 mb-3 flex items-center gap-3 px-3 py-2 rounded-xl text-xs flex-shrink-0 overflow-x-auto"
           style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
         >
           {dailyCtx.weight_trend && (
-            <span style={{ color: 'var(--fiq-muted)' }}>
+            <span className="whitespace-nowrap" style={{ color: 'var(--fiq-muted)' }}>
               <span style={{ color: 'var(--fiq-accent)', fontWeight: 800 }}>{dailyCtx.weight_trend}kg</span> lissé
             </span>
           )}
           {dailyCtx.sleep_deep_min !== null && (
-            <span style={{ color: dailyCtx.sleep_deep_min < 60 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+            <span className="whitespace-nowrap" style={{ color: dailyCtx.sleep_deep_min < 60 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
               {dailyCtx.sleep_deep_min}min sommeil profond
             </span>
           )}
           {dailyCtx.protein_g !== null && (
-            <span style={{ color: dailyCtx.protein_g < proteinTarget - 20 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+            <span className="whitespace-nowrap" style={{ color: dailyCtx.protein_g < proteinTarget - 20 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
               {dailyCtx.protein_g}g / {proteinTarget}g prot.
             </span>
           )}
         </div>
       )}
 
-      {/* Messages */}
+      {/* Zone messages */}
       <div className="flex-1 overflow-y-auto px-4 space-y-4 pb-4">
         {historyLoading && (
           <div className="flex justify-center pt-8">
@@ -287,10 +441,30 @@ export default function CoachPage() {
           <MessageBubble key={i} msg={msg} />
         ))}
 
+        {/* Follow-up chips après la dernière réponse du coach */}
+        {lastIsAssistant && !loading && (
+          <div className="flex flex-wrap gap-2 pl-10">
+            {followUps.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => sendMessage(s)}
+                className="text-xs px-3 py-1.5 rounded-full font-medium transition-all"
+                style={{
+                  background: 'var(--fiq-faint)',
+                  border: '1px solid var(--fiq-border)',
+                  color: 'var(--fiq-muted)',
+                }}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div ref={bottomRef} />
       </div>
 
-      {/* Quick suggestions */}
+      {/* Suggestions rapides (état vide uniquement) */}
       {isEmpty && !historyLoading && (
         <div className="px-4 mb-3 flex-shrink-0">
           <div className="flex items-center gap-1.5 mb-2">
@@ -316,7 +490,7 @@ export default function CoachPage() {
         </div>
       )}
 
-      {/* Input */}
+      {/* Zone de saisie */}
       <div
         className="px-4 pb-4 pt-3 flex-shrink-0"
         style={{ borderTop: '1px solid var(--fiq-border)' }}
@@ -363,6 +537,19 @@ export default function CoachPage() {
             }
           </button>
         </div>
+
+        {/* Compteur de messages mensuel */}
+        {coachCount > 0 && (
+          <p
+            className="text-xs mt-2 text-right"
+            style={{ color: remaining <= 5 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}
+          >
+            {remaining > 0
+              ? `${remaining} message${remaining > 1 ? 's' : ''} restant${remaining > 1 ? 's' : ''} ce mois`
+              : '🔒 Limite mensuelle atteinte — passe en Pro'
+            }
+          </p>
+        )}
       </div>
     </div>
   )
