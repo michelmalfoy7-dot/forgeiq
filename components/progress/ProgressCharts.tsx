@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer,
@@ -74,7 +74,7 @@ export function ProgressCharts({
 }) {
   const [tab, setTab] = useState<Tab>('weight')
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  const tabs: { key: Tab; label: string; icon: ReactNode }[] = [
     { key: 'weight',  label: 'Poids',   icon: <TrendingUp className="w-4 h-4" /> },
     { key: 'tonnage', label: 'Tonnage', icon: <Dumbbell className="w-4 h-4" /> },
     { key: 'prs',     label: 'Records', icon: <Trophy className="w-4 h-4" /> },
@@ -130,7 +130,7 @@ export function ProgressCharts({
                 />
                 <Tooltip
                   {...tooltipStyle}
-                  formatter={(v) => [`${v} kg`]}
+                  formatter={(v) => [`${String(v)} kg`]}
                 />
                 <Line
                   type="monotone"
@@ -187,7 +187,7 @@ export function ProgressCharts({
                 />
                 <Tooltip
                   {...tooltipStyle}
-                  formatter={(v) => [`${Number(v).toLocaleString('fr-FR')} kg`, 'Tonnage']}
+                  formatter={(v) => [`${Number(String(v)).toLocaleString('fr-FR')} kg`, 'Tonnage']}
                 />
                 <Bar
                   dataKey="tonnage"

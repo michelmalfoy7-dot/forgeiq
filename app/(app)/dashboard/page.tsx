@@ -175,11 +175,6 @@ export default async function DashboardPage() {
     ? { min: profile.custom_protein_g, max: profile.custom_protein_g, mid: profile.custom_protein_g }
     : calcProteinTarget(profile?.goal ?? null, profile?.weight_kg ?? null)
 
-  // Cible calories pour la progress bar (custom ou estimation)
-  const caloriesTarget = profile?.macro_mode === 'custom' && profile?.custom_calories
-    ? profile.custom_calories
-    : null // non affiché sur dashboard si auto
-
   // Alertes statiques immédiates
   const staticAlerts: { type: 'red' | 'yellow' | 'green' | 'blue'; message: string; sub: string }[] = []
 
