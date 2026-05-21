@@ -1,16 +1,15 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { Loader2, ArrowRight, Check } from 'lucide-react'
 
 export function WaitlistForm() {
   const [email, setEmail] = useState('')
-  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!email.trim()) return
-
     setStatus('loading')
     try {
       const res = await fetch('/api/waitlist', {
@@ -18,28 +17,24 @@ export function WaitlistForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       })
-      const data = await res.json()
-      if (data.error) throw new Error(data.error)
-      setStatus('success')
-      setEmail('')
+      setStatus(res.ok ? 'done' : 'error')
     } catch {
       setStatus('error')
     }
   }
 
-  if (status === 'success') {
+  if (status === 'done') {
     return (
-      <div
-        className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold"
-        style={{ background: '#B4FF4A15', border: '1px solid #B4FF4A44', color: '#B4FF4A' }}
-      >
-        ✓ Tu es sur la liste — on te prévient en premier !
+      <div className="flex items-center justify-center gap-2 py-3 px-5 rounded-xl font-semibold text-sm"
+        style={{ background: '#B4FF4A22', border: '1px solid #B4FF4A44', color: 'var(--fiq-accent)' }}>
+        <Check className="w-4 h-4" />
+        Inscrit ! On te contacte bientôt.
       </div>
     )
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2 w-full max-w-sm mx-auto">
+    <form onSubmit={handleSubmit} className="flex gap-2 max-w-sm mx-auto">
       <input
         type="email"
         value={email}
@@ -47,19 +42,18 @@ export function WaitlistForm() {
         placeholder="ton@email.com"
         required
         className="flex-1 px-4 py-3 rounded-xl text-sm outline-none"
-        style={{
-          background: 'var(--fiq-surface)',
-          border: '1px solid var(--fiq-border)',
-          color: 'var(--fiq-text)',
-        }}
+        style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
       />
       <button
         type="submit"
         disabled={status === 'loading'}
-        className="px-4 py-3 rounded-xl font-black text-sm flex items-center gap-1 flex-shrink-0 disabled:opacity-60"
+        className="px-4 py-3 rounded-xl font-black text-sm flex items-center gap-1.5 flex-shrink-0"
         style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
       >
-        {status === 'loading' ? '...' : <>Rejoindre <ChevronRight className="w-4 h-4" /></>}
+        {status === 'loading'
+          ? <Loader2 className="w-4 h-4 animate-spin" />
+          : <><ArrowRight className="w-4 h-4" />S&apos;inscrire</>
+        }
       </button>
     </form>
   )
