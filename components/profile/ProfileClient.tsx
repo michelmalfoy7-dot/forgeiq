@@ -2,8 +2,28 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, LogOut, Trash2, Dumbbell, Trophy, Flame, BarChart2, ChevronRight } from 'lucide-react'
+import { Loader2, LogOut, Trash2, Dumbbell, Trophy, Flame, BarChart2, ChevronRight, MessageCircle } from 'lucide-react'
+
+// Ratios protéines selon objectif (g/kg de poids de corps)
+const PROTEIN_RATIO: Record<string, { min: number; max: number }> = {
+  muscle_gain: { min: 1.8, max: 2.2 },
+  strength:    { min: 1.8, max: 2.2 },
+  weight_loss: { min: 1.8, max: 2.0 },
+  endurance:   { min: 1.2, max: 1.6 },
+  general:     { min: 1.4, max: 1.8 },
+}
+
+function calcMacroTargets(goal?: string | null, weightKg?: number | null) {
+  const ratio = PROTEIN_RATIO[goal ?? 'general'] ?? PROTEIN_RATIO['general']
+  const w = (weightKg && weightKg > 30 && weightKg < 250) ? weightKg : 75
+  const protein_g = Math.round(w * (ratio.min + ratio.max) / 2)
+  const calories = Math.round(w * 30 + 300)
+  const carbs_g = Math.round((calories * 0.40) / 4)
+  const fat_g = Math.round((calories * 0.28) / 9)
+  return { protein_g, carbs_g, fat_g, calories }
+}
 
 type Profile = {
   display_name: string | null
@@ -16,6 +36,11 @@ type Profile = {
   height_cm: number | null
   gender: string | null
   weight_kg: number | null
+  macro_mode: string | null
+  custom_calories: number | null
+  custom_protein_g: number | null
+  custom_carbs_g: number | null
+  custom_fat_g: number | null
   created_at: string
 } | null
 
@@ -112,6 +137,12 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
   const [weightKg, setWeightKg] = useState(String(profile?.weight_kg ?? ''))
   const [displayName, setDisplayName] = useState(profile?.display_name ?? '')
 
+  const [macroMode, setMacroMode] = useState<'auto' | 'custom'>(profile?.macro_mode === 'custom' ? 'custom' : 'auto')
+  const [customCalories, setCustomCalories] = useState(String(profile?.custom_calories ?? ''))
+  const [customProtein, setCustomProtein] = useState(String(profile?.custom_protein_g ?? ''))
+  const [customCarbs, setCustomCarbs] = useState(String(profile?.custom_carbs_g ?? ''))
+  const [customFat, setCustomFat] = useState(String(profile?.custom_fat_g ?? ''))
+
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
@@ -133,6 +164,11 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
           height_cm: heightCm ? Number(heightCm) : null,
           gender: gender || null,
           weight_kg: weightKg ? Number(weightKg) : null,
+          macro_mode: macroMode,
+          custom_calories: macroMode === 'custom' && customCalories ? Number(customCalories) : null,
+          custom_protein_g: macroMode === 'custom' && customProtein ? Number(customProtein) : null,
+          custom_carbs_g: macroMode === 'custom' && customCarbs ? Number(customCarbs) : null,
+          custom_fat_g: macroMode === 'custom' && customFat ? Number(customFat) : null,
         }),
       })
       if (res.ok) {
@@ -266,6 +302,80 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? '✓ Sauvegardé !' : 'Sauvegarder'}
         </button>
       </div>
+
+      {/* Objectifs nutritionnels */}
+      {(() => {
+        const autoTargets = calcMacroTargets(goal, weightKg ? Number(weightKg) : null)
+        const GOAL_LABEL = GOAL_OPTIONS.find(o => o.value === goal)?.label ?? goal
+        const coachQ = macroMode === 'custom' && (customProtein || customCalories)
+          ? `J'ai défini mes macros en mode personnalisé : ${customCalories || '?'}kcal, ${customProtein || '?'}g protéines, ${customCarbs || '?'}g glucides, ${customFat || '?'}g lipides. Est-ce cohérent avec mon objectif "${GOAL_LABEL}" ?`
+          : `Mon objectif est "${GOAL_LABEL}". Les macros auto calculées sont ${autoTargets.calories}kcal, ${autoTargets.protein_g}g protéines, ${autoTargets.carbs_g}g glucides, ${autoTargets.fat_g}g lipides. Est-ce adapté à mon profil ?`
+
+        return (
+          <div className="fiq-card space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>Objectifs nutritionnels</p>
+              {/* Toggle Auto / Manuel */}
+              <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid var(--fiq-border)' }}>
+                {(['auto', 'custom'] as const).map(mode => (
+                  <button key={mode} onClick={() => setMacroMode(mode)}
+                    className="px-3 py-1.5 text-xs font-black transition-all"
+                    style={{
+                      background: macroMode === mode ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
+                      color: macroMode === mode ? 'var(--bg)' : 'var(--fiq-muted)',
+                    }}>
+                    {mode === 'auto' ? 'Auto' : 'Manuel'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {macroMode === 'auto' ? (
+              <div className="space-y-3">
+                <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+                  Calculé selon ton poids ({weightKg || '?'}kg) et ton objectif ({GOAL_LABEL}).
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Calories', value: autoTargets.calories, unit: 'kcal', color: 'var(--fiq-blue)' },
+                    { label: 'Protéines', value: autoTargets.protein_g, unit: 'g', color: 'var(--fiq-accent)' },
+                    { label: 'Glucides', value: autoTargets.carbs_g, unit: 'g', color: '#A855F7' },
+                    { label: 'Lipides', value: autoTargets.fat_g, unit: 'g', color: 'var(--fiq-orange)' },
+                  ].map(({ label, value, unit, color }) => (
+                    <div key={label} className="rounded-xl p-3" style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+                      <p className="fiq-label mb-1">{label}</p>
+                      <p className="text-lg font-black fiq-data" style={{ color }}>
+                        {value}<span className="text-xs font-normal ml-1" style={{ color: 'var(--fiq-muted)' }}>{unit}</span>
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+                  Définis tes propres objectifs nutritionnels quotidiens (phase sèche, bulk, etc.).
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <NumberField label="Calories" value={customCalories} onChange={setCustomCalories} min={800} max={6000} unit="kcal" />
+                  <NumberField label="Protéines" value={customProtein} onChange={setCustomProtein} min={30} max={400} unit="g" />
+                  <NumberField label="Glucides" value={customCarbs} onChange={setCustomCarbs} min={0} max={800} unit="g" />
+                  <NumberField label="Lipides" value={customFat} onChange={setCustomFat} min={10} max={300} unit="g" />
+                </div>
+              </div>
+            )}
+
+            <Link
+              href={`/coach?q=${encodeURIComponent(coachQ)}`}
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl font-semibold text-xs transition-all"
+              style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              Demander au coach IA
+            </Link>
+          </div>
+        )
+      })()}
 
       {/* Actions compte */}
       <div className="fiq-card space-y-3">

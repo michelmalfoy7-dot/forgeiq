@@ -62,7 +62,15 @@ export default function CheckinPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [profile, setProfile] = useState<{ goal?: string; weight_kg?: number | null } | null>(null)
+  const [profile, setProfile] = useState<{
+    goal?: string
+    weight_kg?: number | null
+    macro_mode?: string | null
+    custom_calories?: number | null
+    custom_protein_g?: number | null
+    custom_carbs_g?: number | null
+    custom_fat_g?: number | null
+  } | null>(null)
   const router = useRouter()
 
   // Charger le log existant du jour
@@ -75,7 +83,7 @@ export default function CheckinPage() {
       const [{ data: log }, { data: prof }] = await Promise.all([
         supabase.from('daily_logs').select('*').eq('user_id', user.id)
           .eq('log_date', new Date().toISOString().split('T')[0]).single(),
-        supabase.from('profiles').select('goal, weight_kg').eq('id', user.id).single(),
+        supabase.from('profiles').select('goal, weight_kg, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g').eq('id', user.id).single(),
       ])
 
       if (prof) setProfile(prof)
@@ -164,8 +172,16 @@ export default function CheckinPage() {
     }
   }
 
-  // Cibles macros dynamiques basées sur le profil chargé
-  const macroTarget = calcMacroTargets(profile?.goal, profile?.weight_kg)
+  // Cibles macros : custom si définies, sinon auto selon poids + objectif
+  const autoTarget = calcMacroTargets(profile?.goal, profile?.weight_kg)
+  const macroTarget = profile?.macro_mode === 'custom' && (profile.custom_protein_g || profile.custom_calories)
+    ? {
+        protein_g: profile.custom_protein_g ?? autoTarget.protein_g,
+        carbs_g: profile.custom_carbs_g ?? autoTarget.carbs_g,
+        fat_g: profile.custom_fat_g ?? autoTarget.fat_g,
+        calories: profile.custom_calories ?? autoTarget.calories,
+      }
+    : autoTarget
 
   // ── Alertes inline ───────────────────────────────────────────
   const alerts: { type: 'red' | 'yellow' | 'green' | 'blue'; msg: string; sub: string }[] = []

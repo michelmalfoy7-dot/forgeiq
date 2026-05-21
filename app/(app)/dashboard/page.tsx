@@ -91,7 +91,7 @@ export default async function DashboardPage() {
     { data: weekLogs },
   ] = await Promise.all([
     supabase.from('profiles')
-      .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg')
+      .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, macro_mode, custom_protein_g, custom_calories')
       .eq('id', user.id).single(),
 
     supabase.from('daily_logs').select('*')
@@ -170,8 +170,15 @@ export default async function DashboardPage() {
     }
   }
 
-  // Cible protéines dynamique basée sur poids + objectif
-  const proteinTarget = calcProteinTarget(profile?.goal ?? null, profile?.weight_kg ?? null)
+  // Cible protéines : custom si définie, sinon auto selon poids + objectif
+  const proteinTarget = profile?.macro_mode === 'custom' && profile?.custom_protein_g
+    ? { min: profile.custom_protein_g, max: profile.custom_protein_g, mid: profile.custom_protein_g }
+    : calcProteinTarget(profile?.goal ?? null, profile?.weight_kg ?? null)
+
+  // Cible calories pour la progress bar (custom ou estimation)
+  const caloriesTarget = profile?.macro_mode === 'custom' && profile?.custom_calories
+    ? profile.custom_calories
+    : null // non affiché sur dashboard si auto
 
   // Alertes statiques immédiates
   const staticAlerts: { type: 'red' | 'yellow' | 'green' | 'blue'; message: string; sub: string }[] = []

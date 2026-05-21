@@ -40,8 +40,16 @@ function buildSystemPrompt(ctx: {
   sysBp: number | null
   recentWorkouts: { session_name: string; session_date: string; total_tonnage_kg: number | null; total_sets: number | null }[]
   topPRs: { exercise_name: string; value: number; unit: string }[]
+  macroMode: string | null
+  customCalories: number | null
+  customProtein: number | null
+  customCarbs: number | null
+  customFat: number | null
 }) {
-  const PROTEIN_TARGET = calcProteinTarget(ctx.goal, ctx.weightKg)
+  const isCustomMacros = ctx.macroMode === 'custom' && (ctx.customProtein || ctx.customCalories)
+  const PROTEIN_TARGET = isCustomMacros && ctx.customProtein
+    ? ctx.customProtein
+    : calcProteinTarget(ctx.goal, ctx.weightKg)
   const today = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())
 
   const workoutSummary = ctx.recentWorkouts.length
@@ -69,6 +77,13 @@ function buildSystemPrompt(ctx: {
 - Objectif : ${ctx.goal}
 - Niveau : ${ctx.level}
 - Date : ${today}
+
+## Objectifs nutritionnels (${isCustomMacros ? 'personnalisés par l\'utilisateur' : 'calculés automatiquement'})
+- Mode : ${isCustomMacros ? 'Manuel (défini par l\'athlète)' : 'Auto (calculé selon poids + objectif)'}
+- Calories cible : ${isCustomMacros && ctx.customCalories ? ctx.customCalories + 'kcal' : 'auto'}
+- Protéines cible : ${PROTEIN_TARGET}g
+- Glucides cible : ${isCustomMacros && ctx.customCarbs ? ctx.customCarbs + 'g' : 'auto'}
+- Lipides cible : ${isCustomMacros && ctx.customFat ? ctx.customFat + 'g' : 'auto'}
 
 ## Données biométriques du jour
 - Poids brut : ${ctx.weightKg ?? 'non renseigné'}kg
@@ -151,7 +166,7 @@ export async function POST(req: NextRequest) {
       { data: topPRs },
     ] = await Promise.all([
       supabase.from('profiles')
-        .select('display_name, goal, level, weight_kg')
+        .select('display_name, goal, level, weight_kg, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g')
         .eq('id', user.id).single(),
       supabase.from('daily_logs')
         .select('weight_kg, weight_trend, sleep_deep_min, sleep_total_min, fatigue_score, protein_g, steps, sys_bp')
@@ -190,6 +205,11 @@ export async function POST(req: NextRequest) {
       sysBp: todayLog?.sys_bp ?? null,
       recentWorkouts: recentWorkouts ?? [],
       topPRs: topPRs ?? [],
+      macroMode: profile?.macro_mode ?? null,
+      customCalories: profile?.custom_calories ?? null,
+      customProtein: profile?.custom_protein_g ?? null,
+      customCarbs: profile?.custom_carbs_g ?? null,
+      customFat: profile?.custom_fat_g ?? null,
     })
 
     // Construire l'historique pour Claude (ordre chronologique, fenêtre glissante)
