@@ -6,11 +6,25 @@ export const dynamic = 'force-dynamic'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-const PROTEIN_TARGET = 160
 // Limite mensuelle de messages coach (utilisateurs non-Pro)
 const FREE_MONTHLY_LIMIT = 30
 // Nombre de messages d'historique injectés dans le contexte
 const HISTORY_LIMIT = 8
+
+// Ratios protéines selon objectif (g/kg de poids de corps) — sources ISSN/ACSM
+const PROTEIN_RATIO: Record<string, { min: number; max: number }> = {
+  muscle_gain: { min: 1.8, max: 2.2 },
+  strength:    { min: 1.8, max: 2.2 },
+  weight_loss: { min: 1.8, max: 2.0 },
+  endurance:   { min: 1.2, max: 1.6 },
+  general:     { min: 1.4, max: 1.8 },
+}
+
+function calcProteinTarget(goal: string, weightKg: number | null): number {
+  const ratio = PROTEIN_RATIO[goal] ?? PROTEIN_RATIO['general']
+  const w = (weightKg && weightKg > 30 && weightKg < 250) ? weightKg : 75
+  return Math.round(w * (ratio.min + ratio.max) / 2)
+}
 
 function buildSystemPrompt(ctx: {
   displayName: string
@@ -27,6 +41,7 @@ function buildSystemPrompt(ctx: {
   recentWorkouts: { session_name: string; session_date: string; total_tonnage_kg: number | null; total_sets: number | null }[]
   topPRs: { exercise_name: string; value: number; unit: string }[]
 }) {
+  const PROTEIN_TARGET = calcProteinTarget(ctx.goal, ctx.weightKg)
   const today = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())
 
   const workoutSummary = ctx.recentWorkouts.length
@@ -136,7 +151,7 @@ export async function POST(req: NextRequest) {
       { data: topPRs },
     ] = await Promise.all([
       supabase.from('profiles')
-        .select('display_name, goal, level')
+        .select('display_name, goal, level, weight_kg')
         .eq('id', user.id).single(),
       supabase.from('daily_logs')
         .select('weight_kg, weight_trend, sleep_deep_min, sleep_total_min, fatigue_score, protein_g, steps, sys_bp')
@@ -162,9 +177,10 @@ export async function POST(req: NextRequest) {
 
     const systemPrompt = buildSystemPrompt({
       displayName: profile?.display_name ?? 'Athlète',
-      goal: profile?.goal ?? 'non renseigné',
+      goal: profile?.goal ?? 'general',
       level: profile?.level ?? 'non renseigné',
-      weightKg: todayLog?.weight_kg ?? null,
+      // Poids du jour si disponible, sinon poids de référence du profil
+      weightKg: todayLog?.weight_kg ?? profile?.weight_kg ?? null,
       weightTrend: todayLog?.weight_trend ?? null,
       sleepDeepMin: todayLog?.sleep_deep_min ?? null,
       sleepTotalMin: todayLog?.sleep_total_min ?? null,
