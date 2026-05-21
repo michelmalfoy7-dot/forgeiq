@@ -1,8 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!-- Background -->
   <rect width="192" height="192" rx="40" fill="#0A0C0F"/>
-  <rect width="192" height="192" rx="40" fill="#161A21"/>
-  <!-- F letter stylized -->
-  <text x="96" y="140" font-family="Arial Black, sans-serif" font-size="120" font-weight="900" fill="#B4FF4A" text-anchor="middle" letter-spacing="-4">F</text>
-  <!-- Accent bar bottom right -->
-  <rect x="108" y="120" width="40" height="8" rx="4" fill="#B4FF4A"/>
+  <!-- Dumbbell shape in accent green -->
+  <!-- Left weight plate -->
+  <rect x="18" y="72" width="22" height="48" rx="6" fill="#B4FF4A"/>
+  <!-- Left collar -->
+  <rect x="40" y="82" width="10" height="28" rx="3" fill="#B4FF4A"/>
+  <!-- Bar -->
+  <rect x="50" y="90" width="92" height="12" rx="6" fill="#B4FF4A"/>
+  <!-- Right collar -->
+  <rect x="142" y="82" width="10" height="28" rx="3" fill="#B4FF4A"/>
+  <!-- Right weight plate -->
+  <rect x="152" y="72" width="22" height="48" rx="6" fill="#B4FF4A"/>
 </svg>

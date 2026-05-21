@@ -1,190 +1,215 @@
 'use client'
 
+import { useState } from 'react'
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, ReferenceLine,
+  LineChart, Line, BarChart, Bar, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
-import { Trophy } from 'lucide-react'
+import { TrendingUp, Dumbbell, Trophy, Calendar } from 'lucide-react'
 
 type WeightPoint = { date: string; weight: number | null; trend: number | null }
 type TonnagePoint = { week: string; tonnage: number }
-type PR = { exercise_name: string; record_type: string; value: number; unit: string; achieved_date: string }
+type PR = { exercise_name: string; record_type: string; value: number; unit: string; achieved_date: string | null }
+type Tab = 'weight' | 'tonnage' | 'prs'
 
-type Props = {
+export function ProgressCharts({
+  weightData,
+  weeklyTonnage,
+  personalRecords,
+}: {
   weightData: WeightPoint[]
   weeklyTonnage: TonnagePoint[]
   personalRecords: PR[]
-}
+}) {
+  const [tab, setTab] = useState<Tab>('weight')
 
-// Tooltip custom dark
-function DarkTooltip({ active, payload, label }: {active?: boolean; payload?: {value: number; name: string; color: string}[]; label?: string}) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="rounded-xl px-3 py-2 text-xs shadow-xl"
-      style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}>
-      <p style={{ color: 'var(--fiq-muted)' }}>{label}</p>
-      {payload.map((p, i) => (
-        <p key={i} className="font-bold mt-0.5" style={{ color: p.color }}>
-          {p.name} : {typeof p.value === 'number' ? p.value.toLocaleString('fr-FR') : p.value}
-        </p>
-      ))}
-    </div>
-  )
-}
-
-export function ProgressCharts({ weightData, weeklyTonnage, personalRecords }: Props) {
-  const hasWeight = weightData.length > 0
-  const hasTonnage = weeklyTonnage.length > 0
-  const hasPRs = personalRecords.length > 0
+  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+    { key: 'weight',  label: 'Poids',   icon: <TrendingUp className="w-4 h-4" /> },
+    { key: 'tonnage', label: 'Tonnage', icon: <Dumbbell className="w-4 h-4" /> },
+    { key: 'prs',     label: 'Records', icon: <Trophy className="w-4 h-4" /> },
+  ]
 
   return (
-    <div className="space-y-5">
-      {/* ── Graphique poids EWMA ───────────────────────────── */}
-      <div className="fiq-card space-y-4">
-        <div>
-          <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>Évolution du poids</p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
-            Poids brut + tendance lissée EWMA
-          </p>
-        </div>
-
-        {!hasWeight ? (
-          <EmptyState label="Remplis ton poids dans le check-in quotidien" />
-        ) : (
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={weightData} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--fiq-border)" />
-              <XAxis
-                dataKey="date"
-                tick={{ fill: 'var(--fiq-muted)', fontSize: 10 }}
-                tickLine={false}
-                axisLine={false}
-                interval="preserveStartEnd"
-              />
-              <YAxis
-                tick={{ fill: 'var(--fiq-muted)', fontSize: 10 }}
-                tickLine={false}
-                axisLine={false}
-                domain={['auto', 'auto']}
-              />
-              <Tooltip content={<DarkTooltip />} />
-              {/* Poids brut (pointillé) */}
-              <Line
-                type="monotone"
-                dataKey="weight"
-                name="Poids brut"
-                stroke="var(--fiq-muted)"
-                strokeWidth={1}
-                strokeDasharray="4 4"
-                dot={false}
-                connectNulls
-              />
-              {/* Tendance EWMA (plein) */}
-              <Line
-                type="monotone"
-                dataKey="trend"
-                name="Tendance"
-                stroke="var(--fiq-accent)"
-                strokeWidth={2.5}
-                dot={false}
-                connectNulls
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
+    <div className="space-y-4">
+      {/* Sélecteur onglets */}
+      <div className="grid grid-cols-3 gap-2">
+        {tabs.map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-black transition-all"
+            style={{
+              background: tab === t.key ? 'var(--fiq-accent)' : 'var(--fiq-card)',
+              color: tab === t.key ? 'var(--bg)' : 'var(--fiq-muted)',
+              border: `1px solid ${tab === t.key ? 'var(--fiq-accent)' : 'var(--fiq-border)'}`,
+            }}
+          >
+            {t.icon}
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {/* ── Graphique tonnage hebdomadaire ────────────────── */}
-      <div className="fiq-card space-y-4">
-        <div>
-          <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>Tonnage hebdomadaire</p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
-            Total poids × reps par semaine
-          </p>
+      {/* ── Poids ──────────────────────────────────────────── */}
+      {tab === 'weight' && (
+        <div className="fiq-card space-y-4">
+          <div>
+            <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>Évolution du poids</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+              Brut <span style={{ color: 'var(--fiq-blue)' }}>- -</span> · Tendance EWMA{' '}
+              <span style={{ color: 'var(--fiq-accent)' }}>——</span>
+            </p>
+          </div>
+
+          {weightData.length < 2 ? (
+            <EmptyState label="Complète quelques check-ins pour voir ta courbe de poids." />
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={weightData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1F242E" />
+                <XAxis dataKey="date" tick={{ fill: '#6B7280', fontSize: 10 }} tickLine={false} interval="preserveStartEnd" />
+                <YAxis tick={{ fill: '#6B7280', fontSize: 10 }} tickLine={false} domain={['auto', 'auto']} />
+                <Tooltip
+                  contentStyle={{ background: '#161A21', border: '1px solid #1F242E', borderRadius: 12, fontSize: 12 }}
+                  labelStyle={{ color: '#6B7280', fontSize: 11, marginBottom: 4 }}
+                  formatter={(v: number) => [`${v} kg`]}
+                />
+                <Line type="monotone" dataKey="weight" stroke="#3D8BFF" strokeWidth={1.5}
+                  strokeDasharray="5 3" dot={false} name="Brut" connectNulls />
+                <Line type="monotone" dataKey="trend" stroke="#B4FF4A" strokeWidth={2.5}
+                  dot={false} name="Tendance" connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+
+          {weightData.length >= 2 && (() => {
+            const first = weightData.find(d => d.trend)?.trend
+            const last = [...weightData].reverse().find(d => d.trend)?.trend
+            if (!first || !last) return null
+            const diff = Math.round((last - first) * 10) / 10
+            return (
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl" style={{ background: 'var(--fiq-faint)' }}>
+                <span className="text-xl">{diff < 0 ? '📉' : '📈'}</span>
+                <div>
+                  <p className="text-sm font-black" style={{ color: diff < 0 ? 'var(--fiq-accent)' : 'var(--fiq-orange)' }}>
+                    {diff > 0 ? '+' : ''}{diff} kg sur la période
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Tendance lissée · 12 semaines</p>
+                </div>
+              </div>
+            )
+          })()}
         </div>
+      )}
 
-        {!hasTonnage ? (
-          <EmptyState label="Complète ta première séance pour voir le tonnage" />
-        ) : (
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={weeklyTonnage} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--fiq-border)" vertical={false} />
-              <XAxis
-                dataKey="week"
-                tick={{ fill: 'var(--fiq-muted)', fontSize: 10 }}
-                tickLine={false}
-                axisLine={false}
-              />
-              <YAxis
-                tick={{ fill: 'var(--fiq-muted)', fontSize: 10 }}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(v) => `${(v / 1000).toFixed(0)}t`}
-              />
-              <Tooltip content={<DarkTooltip />} />
-              <Bar dataKey="tonnage" name="Tonnage (kg)" fill="var(--fiq-accent)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </div>
+      {/* ── Tonnage ────────────────────────────────────────── */}
+      {tab === 'tonnage' && (
+        <div className="fiq-card space-y-4">
+          <div>
+            <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>Tonnage hebdomadaire</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+              Charge totale soulevée · 12 dernières semaines
+            </p>
+          </div>
 
-      {/* ── Table des PRs ─────────────────────────────────── */}
-      <div className="fiq-card space-y-3">
-        <div className="flex items-center gap-2">
-          <Trophy className="w-4 h-4" style={{ color: 'var(--fiq-accent)' }} />
-          <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>Records personnels</p>
+          {weeklyTonnage.length < 2 ? (
+            <EmptyState label="Complète quelques séances pour voir ton évolution de charge." />
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={weeklyTonnage} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1F242E" vertical={false} />
+                <XAxis dataKey="week" tick={{ fill: '#6B7280', fontSize: 10 }} tickLine={false} />
+                <YAxis
+                  tick={{ fill: '#6B7280', fontSize: 10 }} tickLine={false}
+                  tickFormatter={(v: number) => v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)}
+                />
+                <Tooltip
+                  contentStyle={{ background: '#161A21', border: '1px solid #1F242E', borderRadius: 12, fontSize: 12 }}
+                  labelStyle={{ color: '#6B7280', fontSize: 11, marginBottom: 4 }}
+                  formatter={(v: number) => [`${v.toLocaleString('fr-FR')} kg`, 'Tonnage']}
+                />
+                <Bar dataKey="tonnage" fill="#B4FF4A" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+
+          {weeklyTonnage.length >= 2 && (() => {
+            const last = weeklyTonnage[weeklyTonnage.length - 1]?.tonnage ?? 0
+            const prev = weeklyTonnage[weeklyTonnage.length - 2]?.tonnage ?? 0
+            if (!prev) return null
+            const pct = Math.round(((last - prev) / prev) * 100)
+            return (
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl" style={{ background: 'var(--fiq-faint)' }}>
+                <span className="text-xl">{pct >= 0 ? '⬆️' : '⬇️'}</span>
+                <div>
+                  <p className="text-sm font-black" style={{ color: pct >= 0 ? 'var(--fiq-accent)' : 'var(--fiq-orange)' }}>
+                    {pct > 0 ? '+' : ''}{pct}% vs semaine dernière
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+                    {last.toLocaleString('fr-FR')} kg cette semaine
+                  </p>
+                </div>
+              </div>
+            )
+          })()}
         </div>
+      )}
 
-        {!hasPRs ? (
-          <EmptyState label="Tes PRs s'afficheront après ta première séance" />
-        ) : (
-          <div className="space-y-1">
-            {/* Header */}
-            <div className="grid grid-cols-[1fr_auto_auto] gap-3 pb-2" style={{ borderBottom: '1px solid var(--fiq-border)' }}>
-              <span className="fiq-label">Exercice</span>
-              <span className="fiq-label text-right">PR (kg)</span>
-              <span className="fiq-label text-right">Date</span>
-            </div>
+      {/* ── Records personnels ─────────────────────────────── */}
+      {tab === 'prs' && (
+        <div className="fiq-card">
+          <div className="mb-4">
+            <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>Records personnels</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+              Meilleur top set enregistré par exercice
+            </p>
+          </div>
 
-            {personalRecords.map((pr, i) => {
-              const isNew = Date.now() - new Date(pr.achieved_date).getTime() < 7 * 86400000
-              return (
+          {personalRecords.length === 0 ? (
+            <EmptyState label="Tes PRs apparaîtront automatiquement après chaque séance loggée." />
+          ) : (
+            <div>
+              {personalRecords.slice(0, 25).map((pr, i) => (
                 <div
                   key={i}
-                  className="grid grid-cols-[1fr_auto_auto] gap-3 py-2.5"
-                  style={{ borderBottom: i < personalRecords.length - 1 ? '1px solid var(--fiq-border)' : undefined }}
+                  className="flex items-center justify-between py-3"
+                  style={{ borderTop: i > 0 ? '1px solid var(--fiq-border)' : undefined }}
                 >
-                  <span className="text-sm font-medium truncate flex items-center gap-1.5" style={{ color: 'var(--fiq-text)' }}>
-                    {pr.exercise_name}
-                    {isNew && (
-                      <span
-                        className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0"
-                        style={{ background: '#B4FF4A22', color: 'var(--fiq-accent)', border: '1px solid #B4FF4A44' }}
-                      >
-                        NOUVEAU
-                      </span>
-                    )}
-                  </span>
-                  <span className="text-sm font-black fiq-data text-right" style={{ color: 'var(--fiq-accent)' }}>
-                    {pr.value} {pr.unit}
-                  </span>
-                  <span className="text-xs text-right" style={{ color: 'var(--fiq-muted)' }}>
-                    {new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(pr.achieved_date))}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg w-7 text-center flex-shrink-0">
+                      {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '🏅'}
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>
+                        {pr.exercise_name}
+                      </p>
+                      {pr.achieved_date && (
+                        <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                          <Calendar className="w-3 h-3" />
+                          {new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(pr.achieved_date))}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-base font-black fiq-data flex-shrink-0" style={{ color: 'var(--fiq-accent)' }}>
+                    {pr.value}
+                    <span className="text-xs font-normal ml-1" style={{ color: 'var(--fiq-muted)' }}>{pr.unit}</span>
+                  </p>
                 </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
 function EmptyState({ label }: { label: string }) {
   return (
-    <div className="py-8 text-center">
-      <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>{label}</p>
+    <div className="flex flex-col items-center justify-center py-12 text-center gap-3">
+      <span className="text-4xl">📊</span>
+      <p className="text-sm max-w-[240px]" style={{ color: 'var(--fiq-muted)' }}>{label}</p>
     </div>
   )
 }

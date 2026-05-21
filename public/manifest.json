@@ -1,39 +1,20 @@
-{
-  "name": "ForgeIQ — Coach Fitness IA",
+﻿{
+  "name": "ForgeIQ",
   "short_name": "ForgeIQ",
-  "description": "Ton coach fitness personnel alimenté par l'IA. Entraînement, nutrition et récupération.",
+  "description": "Ton coach IA fitness — Entraînement, nutrition, progression.",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#0A0C0F",
   "theme_color": "#0A0C0F",
   "orientation": "portrait",
-  "categories": ["fitness", "health", "sports"],
-  "lang": "fr",
   "icons": [
     {
-      "src": "/icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "src": "/icons/icon-192.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ],
-  "screenshots": [],
-  "shortcuts": [
-    {
-      "name": "Démarrer une séance",
-      "url": "/workout",
-      "description": "Lancer une séance d'entraînement"
-    },
-    {
-      "name": "Bilan du jour",
-      "url": "/checkin",
-      "description": "Compléter son check-in quotidien"
-    }
-  ]
+  "categories": ["health", "fitness", "sports"],
+  "lang": "fr"
 }
