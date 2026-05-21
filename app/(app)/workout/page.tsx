@@ -19,6 +19,7 @@ type Exercise = {
 }
 
 type SuggestedSession = {
+  program_id: string | null
   program_name: string
   session_name: string
   session_index: number
@@ -61,13 +62,13 @@ export default function WorkoutPage() {
     load()
   }, [])
 
-  async function startWorkout(sessionName: string, exercises?: { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[]) {
+  async function startWorkout(sessionName: string, exercises?: { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[], programId?: string | null) {
     setStarting(true)
     try {
       const res = await fetch('/api/workout/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_name: sessionName }),
+        body: JSON.stringify({ session_name: sessionName, program_id: programId ?? null }),
       })
       const { data } = await res.json()
       if (data?.id) {
@@ -129,7 +130,7 @@ export default function WorkoutPage() {
 
               <Button
                 className="w-full py-5 font-black text-base"
-                onClick={() => startWorkout(suggestion.session_name, suggestion.exercises as { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[])}
+                onClick={() => startWorkout(suggestion.session_name, suggestion.exercises as { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[], suggestion.program_id)}
                 disabled={starting}
                 style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
               >
