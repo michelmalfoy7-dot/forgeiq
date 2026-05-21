@@ -160,14 +160,19 @@ export default function LoginPage() {
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Se connecter'}
               </Button>
 
-              <button
-                type="button"
-                onClick={() => { setShowMagicLink(true); setError(null) }}
-                className="w-full text-xs text-center py-1"
-                style={{ color: 'var(--fiq-muted)' }}
-              >
-                Connexion par lien magique (sans mot de passe)
-              </button>
+              <div className="flex items-center justify-between">
+                <Link href="/forgot-password" className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+                  Mot de passe oublié ?
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => { setShowMagicLink(true); setError(null) }}
+                  className="text-xs"
+                  style={{ color: 'var(--fiq-muted)' }}
+                >
+                  Connexion sans mot de passe
+                </button>
+              </div>
             </form>
           ) : (
             // Formulaire lien magique (alternatif)
