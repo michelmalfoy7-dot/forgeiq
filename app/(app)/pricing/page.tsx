@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Check, Zap, Crown, Infinity } from 'lucide-react'
 
 const FEATURES_FREE = [
-  '5 messages coach IA / mois',
+  '30 messages coach IA / mois',
   'Logger des séances illimité',
   'Bilan quotidien (check-in)',
   'Dashboard & graphiques',
