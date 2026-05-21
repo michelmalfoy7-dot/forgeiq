@@ -12,13 +12,26 @@ type DailyCtx = {
   protein_g: number | null
 }
 
-const PROTEIN_TARGET = 160
+// Ratios protéines selon objectif (g/kg poids de corps)
+const PROTEIN_RATIO: Record<string, { min: number; max: number }> = {
+  muscle_gain: { min: 1.8, max: 2.2 },
+  strength:    { min: 1.8, max: 2.2 },
+  weight_loss: { min: 1.8, max: 2.0 },
+  endurance:   { min: 1.2, max: 1.6 },
+  general:     { min: 1.4, max: 1.8 },
+}
 
-function getQuickSuggestions(ctx: DailyCtx | null): string[] {
+function calcProteinTarget(goal?: string, weightKg?: number | null): number {
+  const ratio = PROTEIN_RATIO[goal ?? 'general'] ?? PROTEIN_RATIO['general']
+  const w = (weightKg && weightKg > 30 && weightKg < 250) ? weightKg : 75
+  return Math.round(w * (ratio.min + ratio.max) / 2)
+}
+
+function getQuickSuggestions(ctx: DailyCtx | null, proteinTarget: number): string[] {
   if (!ctx) return ['Quelle séance demain ?', 'Analyse ma semaine', 'Mon prochain PR', 'Besoin d\'un refeed ?']
   const s: string[] = []
   if (ctx.sleep_deep_min !== null && ctx.sleep_deep_min < 60) s.push('Séance adaptée aujourd\'hui ?')
-  if (ctx.protein_g !== null && ctx.protein_g < PROTEIN_TARGET - 20) s.push('Comment atteindre mes protéines ?')
+  if (ctx.protein_g !== null && ctx.protein_g < proteinTarget - 20) s.push('Comment atteindre mes protéines ?')
   if (s.length < 4) s.push('Quelle séance demain ?')
   if (s.length < 4) s.push('Analyse ma semaine')
   if (s.length < 4) s.push('Mon prochain PR')
@@ -92,10 +105,11 @@ export default function CoachPage() {
   const [loading, setLoading] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(true)
   const [dailyCtx, setDailyCtx] = useState<DailyCtx | null>(null)
+  const [proteinTarget, setProteinTarget] = useState(160)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // Charger l'historique + contexte au montage
+  // Charger l'historique + contexte + profil au montage
   useEffect(() => {
     async function load() {
       const supabase = createClient()
@@ -104,7 +118,7 @@ export default function CoachPage() {
 
       const today = new Date().toISOString().split('T')[0]
 
-      const [{ data: history }, { data: log }] = await Promise.all([
+      const [{ data: history }, { data: log }, { data: profile }] = await Promise.all([
         supabase.from('coach_messages')
           .select('role, content, created_at')
           .eq('user_id', user.id)
@@ -115,12 +129,17 @@ export default function CoachPage() {
           .eq('user_id', user.id)
           .eq('log_date', today)
           .single(),
+        supabase.from('profiles')
+          .select('goal, weight_kg')
+          .eq('id', user.id)
+          .single(),
       ])
 
       if (history?.length) {
         setMessages(history.map(h => ({ role: h.role as 'user' | 'assistant', content: h.content })))
       }
       if (log) setDailyCtx(log)
+      if (profile) setProteinTarget(calcProteinTarget(profile.goal, profile.weight_kg))
       setHistoryLoading(false)
     }
     load()
@@ -158,6 +177,16 @@ export default function CoachPage() {
         body: JSON.stringify({ message: text }),
       })
 
+      if (res.status === 429) {
+        const { error: limitErr } = await res.json()
+        setMessages(prev => {
+          const updated = [...prev]
+          updated[updated.length - 1] = { role: 'assistant', content: limitErr ?? 'Limite mensuelle atteinte. Passez en Pro pour un accès illimité.', streaming: false }
+          return updated
+        })
+        setLoading(false)
+        return
+      }
       if (!res.ok || !res.body) throw new Error('Erreur réseau')
 
       const reader = res.body.getReader()
@@ -196,7 +225,7 @@ export default function CoachPage() {
     }
   }
 
-  const suggestions = getQuickSuggestions(dailyCtx)
+  const suggestions = getQuickSuggestions(dailyCtx, proteinTarget)
   const isEmpty = !historyLoading && messages.length === 0
 
   return (
@@ -224,8 +253,8 @@ export default function CoachPage() {
             </span>
           )}
           {dailyCtx.protein_g !== null && (
-            <span style={{ color: dailyCtx.protein_g < PROTEIN_TARGET - 20 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
-              {dailyCtx.protein_g}g prot.
+            <span style={{ color: dailyCtx.protein_g < proteinTarget - 20 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+              {dailyCtx.protein_g}g / {proteinTarget}g prot.
             </span>
           )}
         </div>

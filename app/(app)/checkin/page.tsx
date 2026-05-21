@@ -35,8 +35,25 @@ const EMPTY: LogData = {
   fatigue_score: 5, motivation_score: 5, notes: '',
 }
 
-// ── Macros cibles approximatifs (à personnaliser Sprint 3 via profil) ──
-const MACRO_TARGETS = { protein_g: 160, carbs_g: 250, fat_g: 70, calories: 2300 }
+// Ratios protéines selon objectif (g/kg poids de corps) — sources ISSN/ACSM
+const PROTEIN_RATIO: Record<string, { min: number; max: number }> = {
+  muscle_gain: { min: 1.8, max: 2.2 },
+  strength:    { min: 1.8, max: 2.2 },
+  weight_loss: { min: 1.8, max: 2.0 },
+  endurance:   { min: 1.2, max: 1.6 },
+  general:     { min: 1.4, max: 1.8 },
+}
+
+function calcMacroTargets(goal?: string, weightKg?: number | null) {
+  const ratio = PROTEIN_RATIO[goal ?? 'general'] ?? PROTEIN_RATIO['general']
+  const w = (weightKg && weightKg > 30 && weightKg < 250) ? weightKg : 75
+  const protein_g = Math.round(w * (ratio.min + ratio.max) / 2)
+  // Glucides et lipides : ratios standards (40% / 30% des kcal restantes)
+  const calories = Math.round(w * 30 + 300) // estimation maintenance
+  const carbs_g = Math.round((calories * 0.40) / 4)
+  const fat_g = Math.round((calories * 0.28) / 9)
+  return { protein_g, carbs_g, fat_g, calories }
+}
 
 export default function CheckinPage() {
   const [form, setForm] = useState<LogData>(EMPTY)
@@ -45,7 +62,7 @@ export default function CheckinPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [profile, setProfile] = useState<{ goal?: string } | null>(null)
+  const [profile, setProfile] = useState<{ goal?: string; weight_kg?: number | null } | null>(null)
   const router = useRouter()
 
   // Charger le log existant du jour
@@ -58,7 +75,7 @@ export default function CheckinPage() {
       const [{ data: log }, { data: prof }] = await Promise.all([
         supabase.from('daily_logs').select('*').eq('user_id', user.id)
           .eq('log_date', new Date().toISOString().split('T')[0]).single(),
-        supabase.from('profiles').select('goal').eq('id', user.id).single(),
+        supabase.from('profiles').select('goal, weight_kg').eq('id', user.id).single(),
       ])
 
       if (prof) setProfile(prof)
@@ -147,12 +164,15 @@ export default function CheckinPage() {
     }
   }
 
+  // Cibles macros dynamiques basées sur le profil chargé
+  const macroTarget = calcMacroTargets(profile?.goal, profile?.weight_kg)
+
   // ── Alertes inline ───────────────────────────────────────────
   const alerts: { type: 'red' | 'yellow' | 'green' | 'blue'; msg: string; sub: string }[] = []
   const deepSleep = parseInt(form.sleep_deep_min)
   const protein = parseFloat(form.protein_g)
   const sysBP = parseInt(form.sys_bp)
-  const proteinTarget = MACRO_TARGETS.protein_g
+  const proteinTarget = macroTarget.protein_g
 
   if (!isNaN(deepSleep) && deepSleep < 60)
     alerts.push({ type: 'yellow', msg: '⚠️ Sommeil profond insuffisant', sub: `${deepSleep}min détectés — réduis le volume d'entraînement de 15-20% aujourd'hui.` })
@@ -160,8 +180,6 @@ export default function CheckinPage() {
     alerts.push({ type: 'yellow', msg: '🥩 Protéines en dessous de l\'objectif', sub: `${protein}g / ${proteinTarget}g — pense à ajouter une source de protéines.` })
   if (!isNaN(sysBP) && sysBP > 135)
     alerts.push({ type: 'red', msg: '🫀 Tension systolique élevée', sub: `${sysBP} mmHg — consulte un médecin si ça persiste plusieurs jours.` })
-
-  const macroTarget = MACRO_TARGETS
   const cal = parseInt(form.calories) || 0
   const prot = parseFloat(form.protein_g) || 0
   const carb = parseFloat(form.carbs_g) || 0
