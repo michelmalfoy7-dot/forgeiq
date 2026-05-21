@@ -29,8 +29,8 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
-  // Routes totalement publiques (landing + auth)
-  const publicRoutes = ['/', '/login', '/register', '/auth/callback', '/onboarding']
+  // Routes totalement publiques (landing + auth + reset mdp)
+  const publicRoutes = ['/', '/login', '/register', '/auth/callback', '/auth/confirm', '/auth/reset', '/onboarding', '/forgot-password']
   const isPublicRoute = publicRoutes.some((route) =>
     pathname === route || pathname.startsWith(route + '/')
   )
@@ -51,7 +51,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/exercises') ||
     pathname.startsWith('/coach') ||
     pathname.startsWith('/profile') ||
-    pathname.startsWith('/pricing')
+    pathname.startsWith('/pricing') ||
+    pathname.startsWith('/nutrition')
 
   if (!user && isAppRoute) {
     const url = request.nextUrl.clone()
