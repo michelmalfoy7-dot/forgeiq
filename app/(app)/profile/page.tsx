@@ -95,8 +95,17 @@ export default async function ProfilePage() {
 function calcStreak(dates: string[], today: string): number {
   if (!dates.length) return 0
   const sorted = [...new Set(dates)].sort((a, b) => b.localeCompare(a))
+
+  // Le streak peut commencer aujourd'hui OU hier (on ne pénalise pas si pas encore fait le check-in aujourd'hui)
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayStr = yesterday.toISOString().split('T')[0]
+
+  const mostRecent = sorted[0]
+  if (mostRecent !== today && mostRecent !== yesterdayStr) return 0
+
   let streak = 0
-  let current = today
+  let current = mostRecent
 
   for (const date of sorted) {
     if (date === current) {
@@ -104,7 +113,7 @@ function calcStreak(dates: string[], today: string): number {
       const d = new Date(current)
       d.setDate(d.getDate() - 1)
       current = d.toISOString().split('T')[0]
-    } else if (date < current) {
+    } else {
       break
     }
   }

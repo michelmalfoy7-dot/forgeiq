@@ -155,7 +155,7 @@ export default function CheckinPage() {
   const proteinTarget = MACRO_TARGETS.protein_g
 
   if (!isNaN(deepSleep) && deepSleep < 60)
-    alerts.push({ type: 'orange' as never, msg: '⚠️ Sommeil profond insuffisant', sub: `${deepSleep}min détectés — réduis le volume d'entraînement de 15-20% aujourd'hui.` })
+    alerts.push({ type: 'yellow', msg: '⚠️ Sommeil profond insuffisant', sub: `${deepSleep}min détectés — réduis le volume d'entraînement de 15-20% aujourd'hui.` })
   if (!isNaN(protein) && protein < proteinTarget - 20)
     alerts.push({ type: 'yellow', msg: '🥩 Protéines en dessous de l\'objectif', sub: `${protein}g / ${proteinTarget}g — pense à ajouter une source de protéines.` })
   if (!isNaN(sysBP) && sysBP > 135)

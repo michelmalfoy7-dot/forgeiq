@@ -158,6 +158,26 @@ export default function WorkoutSessionPage() {
     setSearchQuery('')
   }
 
+  // Ajouter une série d'échauffement (warmup) à un groupe
+  function addWarmupSet(groupIdx: number) {
+    setGroups((prev) => {
+      const g = prev[groupIdx]
+      const warmup: SetRow = {
+        id: uid(),
+        exercise_id: g.exercise_id,
+        exercise_name: g.exercise_name,
+        set_number: 0,
+        weight_kg: '',
+        reps: '',
+        rpe: '',
+        is_warmup: true,
+      }
+      const updated = [...prev]
+      updated[groupIdx] = { ...g, sets: [warmup, ...g.sets] }
+      return updated
+    })
+  }
+
   function addSet(groupIdx: number) {
     setGroups((prev) => {
       const g = prev[groupIdx]
@@ -377,6 +397,7 @@ export default function WorkoutSessionPage() {
             key={group.exercise_id + gIdx}
             group={group}
             onAddSet={() => addSet(gIdx)}
+            onAddWarmup={() => addWarmupSet(gIdx)}
             onUpdateSet={(setId, key, value) => updateSet(gIdx, setId, key, value)}
             onRemoveSet={(setId) => removeSet(gIdx, setId)}
           />
@@ -440,10 +461,11 @@ export default function WorkoutSessionPage() {
 
 // ── Composant exercice avec sets ──────────────────────────────
 function ExerciseCard({
-  group, onAddSet, onUpdateSet, onRemoveSet,
+  group, onAddSet, onAddWarmup, onUpdateSet, onRemoveSet,
 }: {
   group: ExerciseGroup
   onAddSet: () => void
+  onAddWarmup: () => void
   onUpdateSet: (setId: string, key: keyof SetRow, value: string | boolean | number) => void
   onRemoveSet: (setId: string) => void
 }) {
@@ -557,19 +579,7 @@ function ExerciseCard({
         </Button>
         <Button
           size="sm" variant="ghost"
-          onClick={() => {
-            const warmup: SetRow = {
-              id: Math.random().toString(36).slice(2),
-              exercise_id: group.exercise_id,
-              exercise_name: group.exercise_name,
-              set_number: 0,
-              weight_kg: '',
-              reps: '',
-              rpe: '',
-              is_warmup: true,
-            }
-            onUpdateSet(warmup.id, 'is_warmup', true)
-          }}
+          onClick={onAddWarmup}
           className="text-xs"
           style={{ color: 'var(--fiq-muted)' }}
         >

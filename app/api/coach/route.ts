@@ -178,7 +178,7 @@ export async function POST(req: NextRequest) {
 
     // Construire l'historique pour Claude (ordre chronologique, fenêtre glissante)
     const messages: Anthropic.MessageParam[] = [
-      ...((history ?? []).reverse().map(m => ({
+      ...([...(history ?? [])].reverse().map(m => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
       }))),
