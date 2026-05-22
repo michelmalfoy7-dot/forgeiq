@@ -419,20 +419,21 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function MacroBar({ value, target, color, label }: { value: number; target: number; color: string; label: string }) {
-  const pct = Math.min(100, Math.round((value / target) * 100))
+  const rawPct = Math.round((value / target) * 100)
+  const barPct = Math.min(100, rawPct) // la barre se remplit max à 100%
   const over = value > target
   return (
     <div className="mt-1.5">
       <div className="flex justify-between mb-0.5">
         <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>{label}</span>
-        <span className="text-[10px]" style={{ color: over ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
-          {pct}%
+        <span className="text-[10px] font-semibold" style={{ color: over ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+          {rawPct}%{over && ' ⚠'}
         </span>
       </div>
       <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--fiq-border)' }}>
         <div
           className="h-full rounded-full transition-all duration-300"
-          style={{ width: `${pct}%`, background: over ? 'var(--fiq-orange)' : color }}
+          style={{ width: `${barPct}%`, background: over ? 'var(--fiq-orange)' : color }}
         />
       </div>
     </div>

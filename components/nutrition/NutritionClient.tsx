@@ -85,10 +85,13 @@ const MEAL_ORDER = ['breakfast', 'lunch', 'dinner', 'snack']
 // ── Sous-composants ───────────────────────────────────────────
 
 function MacroRing({ value, target, color, label }: { value: number; target: number; color: string; label: string }) {
-  const pct = Math.min((value / target) * 100, 100)
+  const rawPct = (value / target) * 100
+  const barPct = Math.min(rawPct, 100) // anneau se remplit max à 100%
+  const over = value > target
+  const displayColor = over ? 'var(--fiq-orange)' : color
   const r = 28
   const circ = 2 * Math.PI * r
-  const dash = (pct / 100) * circ
+  const dash = (barPct / 100) * circ
 
   return (
     <div className="flex flex-col items-center gap-1">
@@ -97,16 +100,17 @@ function MacroRing({ value, target, color, label }: { value: number; target: num
           <circle cx="32" cy="32" r={r} fill="none" stroke="var(--fiq-border)" strokeWidth="5" />
           <circle
             cx="32" cy="32" r={r} fill="none"
-            stroke={color} strokeWidth="5"
+            stroke={displayColor} strokeWidth="5"
             strokeLinecap="round"
             strokeDasharray={`${dash} ${circ}`}
             style={{ transition: 'stroke-dasharray 0.4s ease' }}
           />
         </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-[11px] font-black" style={{ color }}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-[11px] font-black leading-none" style={{ color: displayColor }}>
             {Math.round(value)}
           </span>
+          {over && <span className="text-[8px] font-black" style={{ color: 'var(--fiq-orange)' }}>+{Math.round(rawPct - 100)}%</span>}
         </div>
       </div>
       <span className="text-[10px] font-semibold" style={{ color: 'var(--fiq-muted)' }}>{label}</span>
@@ -1023,24 +1027,34 @@ export function NutritionClient({ initialLogs, targets, today }: Props) {
             </p>
           </div>
           <div className="text-right">
-            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Restant</p>
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>{caloriesLeft < 0 ? 'Excès' : 'Restant'}</p>
             <p className="text-xl font-black"
               style={{ color: caloriesLeft < 0 ? 'var(--fiq-orange)' : 'var(--fiq-accent)' }}>
-              {caloriesLeft > 0 ? caloriesLeft : 0} kcal
+              {caloriesLeft < 0 ? `+${Math.abs(caloriesLeft)}` : caloriesLeft} kcal
             </p>
           </div>
         </div>
 
-        {/* Barre calories */}
-        <div className="h-2.5 rounded-full overflow-hidden" style={{ background: 'var(--fiq-border)' }}>
-          <div
-            className="h-full rounded-full transition-all"
-            style={{
-              width: `${Math.min((totals.calories / targets.calories) * 100, 100)}%`,
-              background: totals.calories > targets.calories ? 'var(--fiq-orange)' : 'var(--fiq-accent)',
-            }}
-          />
-        </div>
+        {/* Barre calories — peut dépasser 100% visuellement via pct affiché */}
+        {(() => {
+          const calPct = (totals.calories / targets.calories) * 100
+          const over = totals.calories > targets.calories
+          return (
+            <>
+              <div className="h-2.5 rounded-full overflow-hidden" style={{ background: 'var(--fiq-border)' }}>
+                <div className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(calPct, 100)}%`,
+                    background: over ? 'var(--fiq-orange)' : 'var(--fiq-accent)',
+                  }}
+                />
+              </div>
+              <p className="text-[10px] text-right -mt-1" style={{ color: over ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+                {Math.round(calPct)}%{over ? ' ⚠ Objectif dépassé' : ''}
+              </p>
+            </>
+          )
+        })()}
 
         {/* Macros rings */}
         <div className="flex justify-around pt-1">

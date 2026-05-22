@@ -7,6 +7,10 @@ export const dynamic = 'force-dynamic'
 // factor=0.1 → mémoire d'environ 10 jours
 function calculateEWMA(previousTrend: number | null, currentWeight: number, factor = 0.1): number {
   if (!previousTrend) return currentWeight
+  // Sanity check : si la tendance précédente est aberrante (>25% d'écart avec le poids actuel),
+  // on repart du poids actuel pour éviter une convergence lente sur donnée corrompue
+  const deviation = Math.abs(previousTrend - currentWeight) / currentWeight
+  if (deviation > 0.25) return currentWeight
   return previousTrend + factor * (currentWeight - previousTrend)
 }
 
