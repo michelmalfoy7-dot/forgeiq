@@ -453,42 +453,80 @@ function AddFoodModal({ onClose, onAdded, today }: {
     }
   }
 
+  // Compression via Canvas — réduit les photos iPhone (3-5 MB → ~300 KB)
+  // Évite le dépassement de la limite 4 MB de Next.js et convertit HEIC → JPEG
+  function compressImage(file: File, maxPx = 1024, quality = 0.75): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      const objectUrl = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl)
+        let { width, height } = img
+        if (width > height) {
+          if (width > maxPx) { height = Math.round((height * maxPx) / width); width = maxPx }
+        } else {
+          if (height > maxPx) { width = Math.round((width * maxPx) / height); height = maxPx }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { reject(new Error('Canvas non disponible')); return }
+        ctx.drawImage(img, 0, 0, width, height)
+        // Toujours encoder en JPEG pour compatibilité Anthropic (évite HEIC/HEIF)
+        const dataUrl = canvas.toDataURL('image/jpeg', quality)
+        resolve(dataUrl.split(',')[1])
+      }
+      img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Lecture image échouée')) }
+      img.src = objectUrl
+    })
+  }
+
   // Analyse photo IA — retourne une liste d'aliments (multi-aliments)
   async function handlePhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     setPhotoError('')
+    setScanLoading(true)  // ← immédiatement, avant la compression
 
-    const fileReader = new FileReader()
-    fileReader.onload = async (ev) => {
-      const base64 = (ev.target?.result as string).split(',')[1]
-      const mediaType = file.type || 'image/jpeg'
+    try {
+      const base64 = await compressImage(file)
 
-      setScanLoading(true)
+      const res = await fetch('/api/nutrition/photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_base64: base64, media_type: 'image/jpeg' }),
+      })
+
+      let data: PhotoAnalysis | null = null
+      let apiError: string | null = null
       try {
-        const res = await fetch('/api/nutrition/photo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image_base64: base64, media_type: mediaType }),
-        })
-        const { data, error } = await res.json()
-        if (error || !data) {
-          setPhotoError(error ?? 'Analyse impossible. Essaie avec une meilleure photo.')
-          return
-        }
-        // Initialiser les quantités éditables avec les estimations IA
-        const quantities: Record<number, string> = {}
-        ;(data.aliments as PhotoAliment[]).forEach((a, i) => {
-          quantities[i] = String(a.quantite_estimee_g)
-        })
-        setPhotoAnalysis(data as PhotoAnalysis)
-        setPhotoQuantities(quantities)
-        setMode('photo-confirm')
-      } finally {
-        setScanLoading(false)
+        const json = await res.json()
+        data = json.data
+        apiError = json.error
+      } catch {
+        apiError = 'Réponse serveur invalide. Réessaie.'
       }
+
+      if (apiError || !data) {
+        setPhotoError(apiError ?? 'Analyse impossible. Essaie avec une meilleure photo.')
+        return
+      }
+
+      // Initialiser les quantités éditables avec les estimations IA
+      const quantities: Record<number, string> = {}
+      ;(data.aliments as PhotoAliment[]).forEach((a, i) => {
+        quantities[i] = String(a.quantite_estimee_g)
+      })
+      setPhotoAnalysis(data)
+      setPhotoQuantities(quantities)
+      setMode('photo-confirm')
+    } catch (err) {
+      console.error('Photo analysis error:', err)
+      setPhotoError('Erreur lors de l\'analyse. Vérifie ta connexion et réessaie.')
+    } finally {
+      setScanLoading(false)
     }
-    fileReader.readAsDataURL(file)
   }
 
   // Ajouter un aliment depuis la recherche ou le scan code-barres
@@ -712,10 +750,15 @@ function AddFoodModal({ onClose, onAdded, today }: {
               </p>
             )}
 
-            <div
-              className="flex flex-col items-center gap-4 py-10 rounded-2xl border-2 border-dashed cursor-pointer"
-              style={{ borderColor: 'var(--fiq-border)' }}
-              onClick={() => document.getElementById('photo-input')?.click()}
+            {/* label[htmlFor] = déclencheur natif, iOS Safari garanti */}
+            <label
+              htmlFor="photo-input"
+              className="flex flex-col items-center gap-4 py-10 rounded-2xl border-2 border-dashed"
+              style={{
+                borderColor: 'var(--fiq-border)',
+                cursor: scanLoading ? 'not-allowed' : 'pointer',
+                pointerEvents: scanLoading ? 'none' : 'auto',
+              }}
             >
               {scanLoading ? (
                 <>
@@ -735,14 +778,16 @@ function AddFoodModal({ onClose, onAdded, today }: {
                   </div>
                 </>
               )}
-            </div>
+            </label>
+            {/* Pas de capture="environment" — iOS livrerait potentiellement du HEIC
+                accept="image/*" → sélecteur natif iOS → convertit automatiquement en JPEG */}
             <input
               id="photo-input"
               type="file"
               accept="image/*"
-              capture="environment"
               className="hidden"
               onChange={handlePhotoFile}
+              disabled={scanLoading}
             />
           </div>
         )}
