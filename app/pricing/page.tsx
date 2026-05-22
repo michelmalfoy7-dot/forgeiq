@@ -5,47 +5,58 @@ import { useRouter } from 'next/navigation'
 import { Check, Zap, Crown, Infinity, ArrowLeft, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
+// Prix réguliers : 9,99€/mois · 69,99€/an · 149€ à vie
+// Prix lancement (promo fondateur) : 4,99€/mois · 39,99€/an · 99€ à vie
+const IS_LAUNCH_PROMO = true // ← passer à false pour revenir aux prix normaux
+
 const PLANS = [
   {
     id: 'monthly',
     name: 'Mensuel',
-    price: '4,99',
+    price: IS_LAUNCH_PROMO ? '4,99' : '9,99',
+    originalPrice: IS_LAUNCH_PROMO ? '9,99' : null,
     period: '/ mois',
-    priceNote: 'Annulable à tout moment',
+    priceNote: IS_LAUNCH_PROMO ? '🎁 Prix Fondateur · Offre limitée' : 'Annulable à tout moment',
     icon: Zap,
     color: 'var(--fiq-blue)',
     colorAlpha: '#3D8BFF',
     popular: false,
     features: [
-      'Coach IA illimité',
-      'Analyse photo nutrition',
-      'Scan code-barres',
+      'Logger tes séances complètes',
+      'Suivi nutrition + scan code-barres',
+      'Coach IA — 30 messages/mois',
       'Suivi EWMA du poids',
       'Historique complet',
-      'Tous les programmes',
+      'Tous les programmes inclus',
     ],
   },
   {
     id: 'annual',
     name: 'Annuel',
-    price: '39,99',
+    price: IS_LAUNCH_PROMO ? '39,99' : '69,99',
+    originalPrice: IS_LAUNCH_PROMO ? '69,99' : null,
     period: '/ an',
-    priceNote: '→ 3,33€/mois · Économise 33%',
+    priceNote: IS_LAUNCH_PROMO
+      ? `🎁 ${IS_LAUNCH_PROMO ? '3,33' : '5,83'}€/mois · Prix Fondateur`
+      : '5,83€/mois · Économise 42%',
     icon: Crown,
     color: 'var(--fiq-accent)',
     colorAlpha: '#B4FF4A',
     popular: true,
     features: [
       'Tout le plan Mensuel',
-      '2 mois offerts vs mensuel',
-      'Accès prioritaire aux nouveautés',
-      'Support prioritaire',
+      'Coach IA — messages illimités',
+      'Analyse photo nutrition IA',
+      IS_LAUNCH_PROMO ? 'Économise 53% vs mensuel' : 'Économise 42% vs mensuel',
+      'Accès prioritaire aux nouvelles fonctionnalités',
+      'Badge Fondateur exclusif',
     ],
   },
   {
     id: 'lifetime',
     name: 'À vie',
-    price: '99,99',
+    price: IS_LAUNCH_PROMO ? '99' : '149',
+    originalPrice: IS_LAUNCH_PROMO ? '149' : null,
     period: 'une fois',
     priceNote: 'Accès permanent · Jamais de frais',
     icon: Infinity,
@@ -56,9 +67,21 @@ const PLANS = [
       'Tout le plan Annuel',
       'Accès à vie garanti',
       'Toutes les futures fonctionnalités',
-      'Badge Fondateur exclusif',
+      'Badge Fondateur permanent',
+      IS_LAUNCH_PROMO ? 'Rentabilisé en 20 mois vs mensuel' : 'Rentabilisé en 15 mois',
     ],
   },
+]
+
+const FREE_FEATURES = [
+  { label: 'Logger tes séances', included: true },
+  { label: 'Nutrition basique (log manuel)', included: true },
+  { label: 'Suivi du poids', included: true },
+  { label: 'Coach IA', included: false, note: '5 messages/mois' },
+  { label: 'Analyse photo IA', included: false },
+  { label: 'Scan code-barres', included: false },
+  { label: 'EWMA & tendances', included: false },
+  { label: 'Tous les programmes', included: false },
 ]
 
 export default function PricingPage() {
@@ -85,7 +108,6 @@ export default function PricingPage() {
         setError(err ?? 'Erreur lors de la création du paiement. Réessaie.')
         return
       }
-      // Rediriger vers Stripe Checkout
       window.location.href = data.url
     } catch {
       setError('Erreur réseau. Vérifie ta connexion et réessaie.')
@@ -95,7 +117,7 @@ export default function PricingPage() {
   }
 
   return (
-    <div className="min-h-screen p-4 pb-12" style={{ background: 'var(--bg)' }}>
+    <div className="min-h-screen p-4 pb-16" style={{ background: 'var(--bg)' }}>
       <div className="max-w-lg mx-auto">
 
         {/* Header */}
@@ -113,12 +135,19 @@ export default function PricingPage() {
             Passe à Pro
           </h1>
           <p className="text-sm mt-2" style={{ color: 'var(--fiq-muted)' }}>
-            Moins cher qu&apos;une seule séance avec un coach humain. Pour toujours.
+            Workout · Nutrition · Coach IA — tout en une seule app.
           </p>
+
+          {IS_LAUNCH_PROMO && (
+            <div className="mt-4 px-4 py-3 rounded-xl text-sm font-semibold"
+              style={{ background: '#B4FF4A15', border: '1px solid #B4FF4A40', color: 'var(--fiq-accent)' }}>
+              🎁 Offre Fondateur — Prix réduits pour les premiers utilisateurs. Limité dans le temps.
+            </div>
+          )}
         </div>
 
-        {/* Plans */}
-        <div className="space-y-4">
+        {/* Plans Pro */}
+        <div className="space-y-4 mb-8">
           {PLANS.map((plan) => {
             const Icon = plan.icon
             const isLoading = loading === plan.id
@@ -155,6 +184,11 @@ export default function PricingPage() {
                     </div>
                   </div>
                   <div className="text-right">
+                    {plan.originalPrice && (
+                      <p className="text-xs line-through" style={{ color: 'var(--fiq-muted)' }}>
+                        {plan.originalPrice}€
+                      </p>
+                    )}
                     <span className="text-2xl font-black fiq-data" style={{ color: plan.color }}>
                       {plan.price}€
                     </span>
@@ -162,7 +196,6 @@ export default function PricingPage() {
                   </div>
                 </div>
 
-                {/* Features */}
                 <ul className="space-y-2 mb-5">
                   {plan.features.map((f) => (
                     <li key={f} className="flex items-center gap-2 text-sm" style={{ color: 'var(--fiq-text)' }}>
@@ -172,7 +205,6 @@ export default function PricingPage() {
                   ))}
                 </ul>
 
-                {/* CTA */}
                 <button
                   onClick={() => handleSubscribe(plan.id)}
                   disabled={!!loading}
@@ -187,7 +219,7 @@ export default function PricingPage() {
                   {isLoading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
-                    <>Choisir {plan.name}</>
+                    <>Choisir {plan.name}{IS_LAUNCH_PROMO ? ' — Offre Fondateur' : ''}</>
                   )}
                 </button>
               </div>
@@ -195,10 +227,29 @@ export default function PricingPage() {
           })}
         </div>
 
+        {/* Comparatif Free vs Pro */}
+        <div className="fiq-card mb-6">
+          <p className="font-bold mb-4" style={{ color: 'var(--fiq-text)' }}>Gratuit vs Pro</p>
+          <div className="space-y-2">
+            {FREE_FEATURES.map((f) => (
+              <div key={f.label} className="flex items-center justify-between text-sm">
+                <span style={{ color: f.included ? 'var(--fiq-text)' : 'var(--fiq-muted)' }}>{f.label}</span>
+                {f.included ? (
+                  <span className="text-xs font-semibold" style={{ color: 'var(--fiq-accent)' }}>✓ Gratuit</span>
+                ) : f.note ? (
+                  <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>{f.note}</span>
+                ) : (
+                  <span className="text-xs font-semibold" style={{ color: '#A855F7' }}>Pro</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Error */}
         {error && (
           <div
-            className="mt-4 rounded-xl px-4 py-3 text-sm"
+            className="mb-4 rounded-xl px-4 py-3 text-sm"
             style={{ background: '#EF444418', color: 'var(--fiq-red)', border: '1px solid #EF444444' }}
           >
             {error}
@@ -206,11 +257,11 @@ export default function PricingPage() {
         )}
 
         {/* Reassurance */}
-        <div className="mt-8 space-y-3">
+        <div className="space-y-3">
           {[
             { emoji: '🔒', text: 'Paiement sécurisé par Stripe — tes données bancaires ne nous sont jamais transmises.' },
-            { emoji: '↩️', text: 'Résilie à tout moment depuis ton profil, sans frais ni engagement.' },
-            { emoji: '🆓', text: 'Toutes les fonctionnalités de base restent gratuites pour toujours.' },
+            { emoji: '↩️', text: 'Résilie à tout moment depuis ton profil, sans frais ni engagement (mensuel/annuel).' },
+            { emoji: '🆓', text: 'Les fonctionnalités de base restent gratuites pour toujours.' },
           ].map((item) => (
             <p key={item.emoji} className="flex items-start gap-2 text-xs" style={{ color: 'var(--fiq-muted)' }}>
               <span>{item.emoji}</span>
