@@ -67,7 +67,7 @@ const TESTIMONIALS = [
 const FAQS = [
   {
     q: "C'est quoi le coach IA ?",
-    a: "Le coach est alimenté par Claude (Anthropic). Il connaît ton poids EWMA, ton sommeil, tes séances des 7 derniers jours et tes records. Il adapte ses conseils à ta récupération réelle — pas des conseils génériques.",
+    a: "Le coach IA ForgeIQ connaît ton poids EWMA, ton sommeil, tes séances des 7 derniers jours et tes records. Il adapte ses conseils à ta récupération réelle — pas des conseils génériques.",
   },
   {
     q: "Ça marche sans montre connectée ?",
@@ -447,7 +447,7 @@ export default function LandingPage() {
             <ul className="space-y-2">
               {[
                 'Tout du plan gratuit',
-                'Coach IA illimité (Claude)',
+                'Coach IA illimité',
                 'Suggestions séances adaptatives',
                 'Alertes IA contextuelles',
                 'Programme custom',

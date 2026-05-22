@@ -46,6 +46,31 @@ type Props = {
   today: string
 }
 
+// ── Types analyse photo ────────────────────────────────────────
+
+type PhotoAliment = {
+  nom: string
+  quantite_estimee_g: number
+  calories: number | null
+  proteines_g: number | null
+  glucides_g: number | null
+  lipides_g: number | null
+  fibres_g: number | null
+  confiance: 'haute' | 'moyenne' | 'faible'
+}
+
+type PhotoAnalysis = {
+  aliments: PhotoAliment[]
+  total: { calories: number; proteines_g: number; glucides_g: number; lipides_g: number }
+  note: string
+}
+
+const PHOTO_LOADING_MSGS = [
+  'ForgeIQ analyse ta photo...',
+  'Identification des aliments...',
+  'Calcul des valeurs nutritionnelles...',
+]
+
 // ── Constantes ────────────────────────────────────────────────
 
 const MEAL_LABELS: Record<string, string> = {
@@ -354,7 +379,7 @@ function AddFoodModal({ onClose, onAdded, today }: {
   onAdded: (log: FoodLog) => void
   today: string
 }) {
-  const [mode, setMode] = useState<'choose' | 'search' | 'scan' | 'photo' | 'confirm'>('choose')
+  const [mode, setMode] = useState<'choose' | 'search' | 'scan' | 'photo' | 'confirm' | 'photo-confirm'>('choose')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<FoodResult[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
@@ -362,15 +387,19 @@ function AddFoodModal({ onClose, onAdded, today }: {
   const [quantity, setQuantity] = useState('100')
   const [mealType, setMealType] = useState('lunch')
   const [adding, setAdding] = useState(false)
-  const [scanLoading, setScanLoading] = useState(false) // uniquement pour la photo IA
-  const [photoAnalysis, setPhotoAnalysis] = useState<{
-    food_name: string; quantity_g: number
-    calories: number | null; protein_g: number | null
-    carbs_g: number | null; fat_g: number | null
-    fiber_g: number | null; confidence: string; note: string
-  } | null>(null)
+  const [scanLoading, setScanLoading] = useState(false)
+  const [photoAnalysis, setPhotoAnalysis] = useState<PhotoAnalysis | null>(null)
+  const [photoQuantities, setPhotoQuantities] = useState<Record<number, string>>({})
+  const [loadingMsgIdx, setLoadingMsgIdx] = useState(0)
   const [photoError, setPhotoError] = useState('')
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Cycling des messages de chargement analyse photo
+  useEffect(() => {
+    if (!scanLoading) { setLoadingMsgIdx(0); return }
+    const iv = setInterval(() => setLoadingMsgIdx(i => (i + 1) % PHOTO_LOADING_MSGS.length), 1800)
+    return () => clearInterval(iv)
+  }, [scanLoading])
 
   // Recherche texte avec debounce
   const handleSearch = useCallback(async (q: string) => {
@@ -420,15 +449,14 @@ function AddFoodModal({ onClose, onAdded, today }: {
     }
   }
 
-  // Analyse photo IA
+  // Analyse photo IA — retourne une liste d'aliments (multi-aliments)
   async function handlePhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     setPhotoError('')
 
-    // Convertir en base64
-    const reader = new FileReader()
-    reader.onload = async (ev) => {
+    const fileReader = new FileReader()
+    fileReader.onload = async (ev) => {
       const base64 = (ev.target?.result as string).split(',')[1]
       const mediaType = file.type || 'image/jpeg'
 
@@ -444,63 +472,87 @@ function AddFoodModal({ onClose, onAdded, today }: {
           setPhotoError(error ?? 'Analyse impossible. Essaie avec une meilleure photo.')
           return
         }
-        setPhotoAnalysis(data)
-        setQuantity(String(data.quantity_g))
-        setMode('confirm')
+        // Initialiser les quantités éditables avec les estimations IA
+        const quantities: Record<number, string> = {}
+        ;(data.aliments as PhotoAliment[]).forEach((a, i) => {
+          quantities[i] = String(a.quantite_estimee_g)
+        })
+        setPhotoAnalysis(data as PhotoAnalysis)
+        setPhotoQuantities(quantities)
+        setMode('photo-confirm')
       } finally {
         setScanLoading(false)
       }
     }
-    reader.readAsDataURL(file)
+    fileReader.readAsDataURL(file)
   }
 
-  // Valider et ajouter au journal
+  // Ajouter un aliment depuis la recherche ou le scan code-barres
   async function confirmAdd() {
+    if (!selectedFood) return
     setAdding(true)
     try {
-      const food = selectedFood
-      const photo = photoAnalysis
       const qty = parseFloat(quantity) || 100
-
-      const payload = food ? {
+      const payload = {
         log_date: today,
         meal_type: mealType,
-        food_id: food.id,
-        food_name: food.name_fr ?? food.name,
+        food_id: selectedFood.id,
+        food_name: selectedFood.name_fr ?? selectedFood.name,
         quantity_g: qty,
-        calories_per_100g: food.calories,
-        protein_per_100g: food.protein_g,
-        carbs_per_100g: food.carbs_g,
-        fat_per_100g: food.fat_g,
-        fiber_per_100g: food.fiber_g,
-        source: food.barcode ? 'barcode' : 'search',
-      } : photo ? {
-        log_date: today,
-        meal_type: mealType,
-        food_id: null,
-        food_name: photo.food_name,
-        quantity_g: qty,
-        calories_per_100g: photo.calories ? photo.calories / (photo.quantity_g / 100) : null,
-        protein_per_100g: photo.protein_g ? photo.protein_g / (photo.quantity_g / 100) : null,
-        carbs_per_100g: photo.carbs_g ? photo.carbs_g / (photo.quantity_g / 100) : null,
-        fat_per_100g: photo.fat_g ? photo.fat_g / (photo.quantity_g / 100) : null,
-        fiber_per_100g: photo.fiber_g ? photo.fiber_g / (photo.quantity_g / 100) : null,
-        source: 'photo',
-        ai_note: photo.note,
-      } : null
-
-      if (!payload) return
-
+        calories_per_100g: selectedFood.calories,
+        protein_per_100g: selectedFood.protein_g,
+        carbs_per_100g: selectedFood.carbs_g,
+        fat_per_100g: selectedFood.fat_g,
+        fiber_per_100g: selectedFood.fiber_g,
+        source: selectedFood.barcode ? 'barcode' : 'search',
+      }
       const res = await fetch('/api/nutrition/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
       const { data } = await res.json()
-      if (data) {
-        onAdded(data)
-        onClose()
+      if (data) { onAdded(data); onClose() }
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  // Ajouter tous les aliments détectés sur la photo
+  async function confirmAddAll() {
+    if (!photoAnalysis) return
+    setAdding(true)
+    try {
+      for (const [idx, aliment] of photoAnalysis.aliments.entries()) {
+        const qty = parseFloat(photoQuantities[idx] ?? String(aliment.quantite_estimee_g)) || aliment.quantite_estimee_g
+        // Convertir les valeurs totales en valeurs pour 100g
+        const per100 = (val: number | null) =>
+          val != null && aliment.quantite_estimee_g > 0
+            ? Math.round((val / aliment.quantite_estimee_g) * 100 * 10) / 10
+            : null
+        const payload = {
+          log_date: today,
+          meal_type: mealType,
+          food_id: null,
+          food_name: aliment.nom,
+          quantity_g: qty,
+          calories_per_100g: per100(aliment.calories),
+          protein_per_100g: per100(aliment.proteines_g),
+          carbs_per_100g: per100(aliment.glucides_g),
+          fat_per_100g: per100(aliment.lipides_g),
+          fiber_per_100g: per100(aliment.fibres_g),
+          source: 'photo',
+          ai_note: idx === 0 ? (photoAnalysis.note || null) : null,
+        }
+        const res = await fetch('/api/nutrition/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        const { data } = await res.json()
+        if (data) onAdded(data)
       }
+      onClose()
     } finally {
       setAdding(false)
     }
@@ -519,8 +571,9 @@ function AddFoodModal({ onClose, onAdded, today }: {
             {mode === 'choose' && 'Ajouter un aliment'}
             {mode === 'search' && '🔍 Rechercher'}
             {mode === 'scan' && '📷 Scanner'}
-            {mode === 'photo' && '📸 Photo IA'}
+            {mode === 'photo' && '📸 Photo IA ForgeIQ'}
             {mode === 'confirm' && '✅ Confirmer'}
+            {mode === 'photo-confirm' && '📸 Aliments détectés'}
           </h2>
           <button onClick={onClose}>
             <X className="w-5 h-5" style={{ color: 'var(--fiq-muted)' }} />
@@ -571,7 +624,7 @@ function AddFoodModal({ onClose, onAdded, today }: {
               </div>
               <div>
                 <p className="font-black" style={{ color: 'var(--fiq-text)' }}>Photo du repas</p>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Claude IA analyse la photo et estime les macros</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>IA ForgeIQ identifie les aliments et estime les macros</p>
               </div>
             </button>
           </div>
@@ -663,7 +716,9 @@ function AddFoodModal({ onClose, onAdded, today }: {
               {scanLoading ? (
                 <>
                   <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--fiq-orange)' }} />
-                  <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>Claude analyse ta photo...</p>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--fiq-orange)' }}>
+                    {PHOTO_LOADING_MSGS[loadingMsgIdx]}
+                  </p>
                 </>
               ) : (
                 <>
@@ -671,7 +726,7 @@ function AddFoodModal({ onClose, onAdded, today }: {
                   <div className="text-center">
                     <p className="font-bold text-sm" style={{ color: 'var(--fiq-text)' }}>Prends une photo de ton repas</p>
                     <p className="text-xs mt-1" style={{ color: 'var(--fiq-muted)' }}>
-                      Claude IA identifie les aliments et estime les macros
+                      IA ForgeIQ identifie les aliments et estime les macros
                     </p>
                   </div>
                 </>
@@ -688,35 +743,25 @@ function AddFoodModal({ onClose, onAdded, today }: {
           </div>
         )}
 
-        {/* ── Confirmation ── */}
-        {mode === 'confirm' && (selectedFood || photoAnalysis) && (
+        {/* ── Confirmation aliment unique (recherche / scan code-barres) ── */}
+        {mode === 'confirm' && selectedFood && (
           <div className="space-y-4">
             {/* Infos aliment */}
             <div className="rounded-2xl p-4 space-y-2"
               style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
               <p className="font-black" style={{ color: 'var(--fiq-text)' }}>
-                {selectedFood?.name_fr ?? selectedFood?.name ?? photoAnalysis?.food_name}
+                {selectedFood.name_fr ?? selectedFood.name}
               </p>
-              {selectedFood?.brand && (
+              {selectedFood.brand && (
                 <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>{selectedFood.brand}</p>
               )}
-              {photoAnalysis?.note && (
-                <p className="text-xs italic" style={{ color: 'var(--fiq-muted)' }}>💡 {photoAnalysis.note}</p>
-              )}
-              {photoAnalysis?.confidence === 'low' && (
-                <p className="text-xs px-2 py-1 rounded-lg"
-                  style={{ background: '#F59E0B18', color: '#F59E0B', border: '1px solid #F59E0B33' }}>
-                  ⚠️ Estimation approximative — vérifie les valeurs
-                </p>
-              )}
-
               {/* Macros pour 100g */}
               <div className="grid grid-cols-4 gap-2 pt-2">
                 {[
-                  { label: 'Kcal', value: selectedFood?.calories ?? (photoAnalysis?.calories ? (photoAnalysis.calories / (photoAnalysis.quantity_g / 100)) : null) },
-                  { label: 'Prot.', value: selectedFood?.protein_g ?? (photoAnalysis?.protein_g ? (photoAnalysis.protein_g / (photoAnalysis.quantity_g / 100)) : null) },
-                  { label: 'Gluc.', value: selectedFood?.carbs_g ?? (photoAnalysis?.carbs_g ? (photoAnalysis.carbs_g / (photoAnalysis.quantity_g / 100)) : null) },
-                  { label: 'Lip.', value: selectedFood?.fat_g ?? (photoAnalysis?.fat_g ? (photoAnalysis.fat_g / (photoAnalysis.quantity_g / 100)) : null) },
+                  { label: 'Kcal', value: selectedFood.calories },
+                  { label: 'Prot.', value: selectedFood.protein_g },
+                  { label: 'Gluc.', value: selectedFood.carbs_g },
+                  { label: 'Lip.', value: selectedFood.fat_g },
                 ].map(m => (
                   <div key={m.label} className="text-center">
                     <p className="text-xs font-bold fiq-data" style={{ color: 'var(--fiq-accent)' }}>
@@ -767,6 +812,134 @@ function AddFoodModal({ onClose, onAdded, today }: {
               style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
             >
               {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Check className="w-4 h-4" />Ajouter au journal</>}
+            </button>
+          </div>
+        )}
+
+        {/* ── Résultats analyse photo — liste d'aliments éditables ── */}
+        {mode === 'photo-confirm' && photoAnalysis && (
+          <div className="space-y-3">
+            {photoAnalysis.note && (
+              <p className="text-xs italic px-1" style={{ color: 'var(--fiq-muted)' }}>
+                💡 {photoAnalysis.note}
+              </p>
+            )}
+
+            {/* Liste des aliments */}
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {photoAnalysis.aliments.map((aliment, idx) => {
+                const qtyRaw = photoQuantities[idx] ?? String(aliment.quantite_estimee_g)
+                const qty = parseFloat(qtyRaw) || aliment.quantite_estimee_g
+                const ratio = aliment.quantite_estimee_g > 0 ? qty / aliment.quantite_estimee_g : 1
+                return (
+                  <div key={idx} className="rounded-xl p-3 space-y-2"
+                    style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+                    {/* Nom + quantité éditable */}
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-sm flex-1 min-w-0 truncate" style={{ color: 'var(--fiq-text)' }}>
+                        {aliment.nom}
+                      </p>
+                      {aliment.confiance === 'faible' && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0"
+                          style={{ background: '#F59E0B18', color: '#F59E0B', border: '1px solid #F59E0B33' }}>
+                          ⚠️ approx.
+                        </span>
+                      )}
+                      <input
+                        type="number"
+                        value={qtyRaw}
+                        onChange={e => setPhotoQuantities(prev => ({ ...prev, [idx]: e.target.value }))}
+                        className="w-16 px-2 py-1 rounded-lg text-xs text-center outline-none shrink-0"
+                        style={{ background: 'var(--fiq-surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+                        min="1" max="2000"
+                      />
+                      <span className="text-xs shrink-0" style={{ color: 'var(--fiq-muted)' }}>g</span>
+                    </div>
+                    {/* Macros ajustées à la quantité */}
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]" style={{ color: 'var(--fiq-muted)' }}>
+                      {aliment.calories != null && (
+                        <span>
+                          <span className="font-bold fiq-data" style={{ color: 'var(--fiq-accent)' }}>
+                            {Math.round(aliment.calories * ratio)}
+                          </span> kcal
+                        </span>
+                      )}
+                      {aliment.proteines_g != null && (
+                        <span>
+                          <span className="font-bold fiq-data" style={{ color: 'var(--fiq-blue)' }}>
+                            {(aliment.proteines_g * ratio).toFixed(1)}
+                          </span>g prot.
+                        </span>
+                      )}
+                      {aliment.glucides_g != null && (
+                        <span>
+                          <span className="font-bold fiq-data">
+                            {(aliment.glucides_g * ratio).toFixed(1)}
+                          </span>g gluc.
+                        </span>
+                      )}
+                      {aliment.lipides_g != null && (
+                        <span>
+                          <span className="font-bold fiq-data" style={{ color: 'var(--fiq-orange)' }}>
+                            {(aliment.lipides_g * ratio).toFixed(1)}
+                          </span>g lip.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Total si plusieurs aliments */}
+            {photoAnalysis.aliments.length > 1 && (
+              <div className="rounded-xl px-3 py-2 flex items-center justify-between"
+                style={{ background: '#B4FF4A12', border: '1px solid #B4FF4A33' }}>
+                <span className="text-xs font-semibold" style={{ color: 'var(--fiq-accent)' }}>
+                  Total · {photoAnalysis.aliments.length} aliments
+                </span>
+                <span className="text-sm font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
+                  {Math.round(photoAnalysis.aliments.reduce((acc, a, i) => {
+                    const q = parseFloat(photoQuantities[i] ?? String(a.quantite_estimee_g)) || a.quantite_estimee_g
+                    return acc + (a.calories ?? 0) * (a.quantite_estimee_g > 0 ? q / a.quantite_estimee_g : 1)
+                  }, 0))} kcal
+                </span>
+              </div>
+            )}
+
+            {/* Repas */}
+            <div>
+              <label className="fiq-label block mb-1.5">Repas</label>
+              <div className="grid grid-cols-2 gap-2">
+                {MEAL_ORDER.map(m => (
+                  <button key={m}
+                    onClick={() => setMealType(m)}
+                    className="py-2 rounded-xl text-xs font-semibold transition-all"
+                    style={{
+                      background: mealType === m ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
+                      color: mealType === m ? 'var(--bg)' : 'var(--fiq-muted)',
+                      border: `1px solid ${mealType === m ? 'var(--fiq-accent)' : 'var(--fiq-border)'}`,
+                    }}>
+                    {MEAL_LABELS[m]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={confirmAddAll}
+              disabled={adding}
+              className="w-full py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2"
+              style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+            >
+              {adding
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <><Check className="w-4 h-4" />
+                    Ajouter {photoAnalysis.aliments.length > 1
+                      ? `les ${photoAnalysis.aliments.length} aliments`
+                      : 'au journal'}
+                  </>
+              }
             </button>
           </div>
         )}

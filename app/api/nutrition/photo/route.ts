@@ -6,8 +6,8 @@ export const dynamic = 'force-dynamic'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-// Analyse une photo d'aliment avec Claude Vision
-// Accepte : base64 image (jpeg/png/webp) ou URL
+// Analyse une photo d'aliments avec l'IA ForgeIQ (vision)
+// Retourne une liste d'aliments avec macros estimées (format multi-aliments)
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
 
     const res = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 500,
+      max_tokens: 800,
       messages: [
         {
           role: 'user',
@@ -41,23 +41,35 @@ export async function POST(req: NextRequest) {
             },
             {
               type: 'text',
-              text: `Analyse cette photo d'aliment et estime les valeurs nutritionnelles pour la portion visible.
+              text: `Tu es un expert en nutrition. Analyse cette photo d'aliments et retourne UNIQUEMENT un objet JSON valide, sans texte avant ni après, sans markdown, sans backticks.
 
-Réponds UNIQUEMENT avec ce JSON (sans markdown) :
+Format attendu :
 {
-  "food_name": "nom de l'aliment en français",
-  "quantity_g": 150,
-  "calories": 250,
-  "protein_g": 15,
-  "carbs_g": 30,
-  "fat_g": 8,
-  "fiber_g": 3,
-  "confidence": "high|medium|low",
-  "note": "explication courte de l'estimation (max 15 mots)"
+  "aliments": [
+    {
+      "nom": "Pomme",
+      "quantite_estimee_g": 182,
+      "calories": 95,
+      "proteines_g": 0.5,
+      "glucides_g": 25,
+      "lipides_g": 0.3,
+      "fibres_g": 4.4,
+      "confiance": "haute"
+    }
+  ],
+  "total": {
+    "calories": 190,
+    "proteines_g": 1,
+    "glucides_g": 50,
+    "lipides_g": 0.6
+  },
+  "note": "2 pommes moyennes estimées à 182g chacune"
 }
 
-Si tu vois plusieurs aliments, estime l'ensemble de la photo comme une seule portion.
-Si l'image n'est pas un aliment, retourne { "error": "Pas d'aliment détecté" }.`,
+Règles :
+- Liste chaque aliment séparément (ex: 2 pommes = 2 entrées, ou 1 entrée avec quantite_estimee_g = 364)
+- "confiance" vaut "haute", "moyenne" ou "faible"
+- Si tu ne peux pas identifier les aliments, retourne : {"erreur": "aliments non identifiés"}`,
             },
           ],
         },
@@ -65,23 +77,59 @@ Si l'image n'est pas un aliment, retourne { "error": "Pas d'aliment détecté" }
     })
 
     const raw = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
-    const parsed = JSON.parse(raw)
 
-    if (parsed.error) {
-      return NextResponse.json({ data: null, error: parsed.error }, { status: 400 })
+    // Parse JSON avec fallback regex si le modèle ajoute du texte ou du markdown
+    let parsed: Record<string, unknown>
+    try {
+      parsed = JSON.parse(raw) as Record<string, unknown>
+    } catch {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) {
+        return NextResponse.json({ data: null, error: 'Réponse IA invalide — réessaie' }, { status: 500 })
+      }
+      try {
+        parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+      } catch {
+        return NextResponse.json({ data: null, error: 'Format invalide — réessaie' }, { status: 500 })
+      }
     }
+
+    // Gestion des erreurs retournées par l'IA
+    if (parsed.erreur || parsed.error) {
+      return NextResponse.json({
+        data: null,
+        error: String(parsed.erreur ?? parsed.error),
+      }, { status: 400 })
+    }
+
+    // Validation et normalisation
+    const alimentsRaw = Array.isArray(parsed.aliments) ? parsed.aliments : []
+    if (alimentsRaw.length === 0) {
+      return NextResponse.json({ data: null, error: 'Aucun aliment identifié sur la photo' }, { status: 400 })
+    }
+
+    type AlimentRaw = Record<string, unknown>
+    const total = (parsed.total as Record<string, number> | undefined) ?? {}
 
     return NextResponse.json({
       data: {
-        food_name: parsed.food_name ?? 'Aliment inconnu',
-        quantity_g: parsed.quantity_g ?? 100,
-        calories: parsed.calories ?? null,
-        protein_g: parsed.protein_g ?? null,
-        carbs_g: parsed.carbs_g ?? null,
-        fat_g: parsed.fat_g ?? null,
-        fiber_g: parsed.fiber_g ?? null,
-        confidence: parsed.confidence ?? 'low',
-        note: parsed.note ?? 'Estimation IA',
+        aliments: alimentsRaw.map((a: AlimentRaw) => ({
+          nom: String(a.nom ?? 'Aliment inconnu'),
+          quantite_estimee_g: Math.max(1, Number(a.quantite_estimee_g ?? 100)),
+          calories: a.calories != null ? Number(a.calories) : null,
+          proteines_g: a.proteines_g != null ? Number(a.proteines_g) : null,
+          glucides_g: a.glucides_g != null ? Number(a.glucides_g) : null,
+          lipides_g: a.lipides_g != null ? Number(a.lipides_g) : null,
+          fibres_g: a.fibres_g != null ? Number(a.fibres_g) : null,
+          confiance: String(a.confiance ?? 'faible') as 'haute' | 'moyenne' | 'faible',
+        })),
+        total: {
+          calories: Number(total.calories ?? 0),
+          proteines_g: Number(total.proteines_g ?? 0),
+          glucides_g: Number(total.glucides_g ?? 0),
+          lipides_g: Number(total.lipides_g ?? 0),
+        },
+        note: String(parsed.note ?? ''),
       },
       error: null,
     })
