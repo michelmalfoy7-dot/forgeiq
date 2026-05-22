@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
-import { Plus, Camera, ScanLine, Search, Trash2, ChevronDown, ChevronUp, Loader2, X, Check } from 'lucide-react'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { Plus, Camera, ScanLine, Search, Trash2, ChevronDown, ChevronUp, Loader2, X, Check, Keyboard } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -142,6 +142,193 @@ function FoodCard({ log, onDelete }: { log: FoodLog; onDelete: (id: string) => v
   )
 }
 
+// ── Barcode Scanner via getUserMedia ──────────────────────────
+
+function BarcodeScannerView({
+  onDetected,
+  onManual,
+  onClose,
+}: {
+  onDetected: (code: string) => void
+  onManual: () => void
+  onClose: () => void
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [camError, setCamError] = useState<string | null>(null)
+  const [detected, setDetected] = useState(false)
+  const [manualCode, setManualCode] = useState('')
+  const [showManual, setShowManual] = useState(false)
+  const stopRef = useRef(false)
+
+  useEffect(() => {
+    stopRef.current = false
+    let controlsStop: (() => void) | null = null
+    let streamToStop: MediaStream | null = null
+
+    async function startCamera() {
+      const video = videoRef.current
+      if (!video) return
+
+      try {
+        // Tenter le scanner natif (BarcodeDetector) en priorité sur Chrome/Android
+        if ('BarcodeDetector' in window) {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+          })
+          streamToStop = stream
+          video.srcObject = stream
+          await video.play()
+
+          const BarcodeDetectorClass = (window as Window & {
+            BarcodeDetector: new (opts: { formats: string[] }) => {
+              detect: (src: HTMLVideoElement) => Promise<{ rawValue: string }[]>
+            }
+          }).BarcodeDetector
+
+          const detector = new BarcodeDetectorClass({
+            formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39'],
+          })
+
+          const scanFrame = async () => {
+            if (stopRef.current) return
+            try {
+              const codes = await detector.detect(video)
+              if (codes.length > 0 && !stopRef.current) {
+                stopRef.current = true
+                setDetected(true)
+                onDetected(codes[0].rawValue)
+                return
+              }
+            } catch { /* image not ready */ }
+            if (!stopRef.current) requestAnimationFrame(scanFrame)
+          }
+          requestAnimationFrame(scanFrame)
+        } else {
+          // Fallback : @zxing/browser (iOS Safari, Firefox, etc.)
+          const { BrowserMultiFormatReader } = await import('@zxing/browser')
+          const reader = new BrowserMultiFormatReader()
+
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment' },
+          })
+          streamToStop = stream
+          video.srcObject = stream
+          await video.play()
+
+          const controls = await reader.decodeFromVideoElement(video, (result, err) => {
+            if (result && !stopRef.current) {
+              stopRef.current = true
+              setDetected(true)
+              controls.stop()
+              onDetected(result.getText())
+            }
+            void err // NotFoundException expected when no barcode in frame
+          })
+          controlsStop = () => controls.stop()
+        }
+      } catch (e) {
+        const msg = (e as Error).message ?? ''
+        if (msg.includes('Permission') || msg.includes('NotAllowed')) {
+          setCamError('Autorise l\'accès à la caméra dans les paramètres de ton navigateur.')
+        } else {
+          setCamError('Caméra indisponible sur cet appareil.')
+        }
+      }
+    }
+
+    startCamera()
+
+    return () => {
+      stopRef.current = true
+      controlsStop?.()
+      if (streamToStop) streamToStop.getTracks().forEach(t => t.stop())
+      if (videoRef.current) videoRef.current.srcObject = null
+    }
+  }, [onDetected])
+
+  if (showManual) {
+    return (
+      <div className="space-y-4 py-4">
+        <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>Saisie manuelle du code-barres</p>
+        <input
+          autoFocus
+          type="text"
+          inputMode="numeric"
+          placeholder="Ex: 3017620422003"
+          value={manualCode}
+          onChange={e => setManualCode(e.target.value)}
+          className="w-full px-4 py-3 rounded-xl text-sm outline-none"
+          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+          onKeyDown={e => { if (e.key === 'Enter' && manualCode.trim()) onDetected(manualCode.trim()) }}
+        />
+        <button
+          onClick={() => { if (manualCode.trim()) onDetected(manualCode.trim()) }}
+          disabled={!manualCode.trim()}
+          className="w-full py-3 rounded-xl font-black text-sm"
+          style={{ background: 'var(--fiq-blue)', color: '#fff', opacity: manualCode.trim() ? 1 : 0.5 }}
+        >
+          Rechercher →
+        </button>
+        <button onClick={() => setShowManual(false)} className="w-full text-xs text-center py-1" style={{ color: 'var(--fiq-muted)' }}>
+          ← Retour caméra
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Viewfinder */}
+      <div className="relative overflow-hidden rounded-2xl bg-black" style={{ aspectRatio: '4/3' }}>
+        <video
+          ref={videoRef}
+          className="w-full h-full object-cover"
+          playsInline
+          muted
+        />
+        {/* Viseur */}
+        {!camError && !detected && (
+          <>
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="border-2 border-white/50 rounded-xl" style={{ width: '70%', height: '35%' }} />
+            </div>
+            <div className="absolute bottom-3 left-0 right-0 flex justify-center">
+              <span className="text-[11px] text-white/70 bg-black/50 rounded-full px-3 py-1">
+                {detected ? '✓ Code détecté !' : 'Pointez le code-barres dans le cadre'}
+              </span>
+            </div>
+          </>
+        )}
+        {detected && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+            <div className="text-center space-y-1">
+              <div className="text-3xl">✓</div>
+              <p className="text-white font-bold text-sm">Code détecté !</p>
+            </div>
+          </div>
+        )}
+        {camError && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-4">
+            <p className="text-white text-sm text-center">{camError}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      {!detected && (
+        <button
+          onClick={() => setShowManual(true)}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm"
+          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
+        >
+          <Keyboard className="w-4 h-4" />
+          Saisir le code manuellement
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ── Modale d'ajout ────────────────────────────────────────────
 
 function AddFoodModal({ onClose, onAdded, today }: {
@@ -157,7 +344,7 @@ function AddFoodModal({ onClose, onAdded, today }: {
   const [quantity, setQuantity] = useState('100')
   const [mealType, setMealType] = useState('lunch')
   const [adding, setAdding] = useState(false)
-  const [scanLoading, setScanLoading] = useState(false)
+  const [scanLoading, setScanLoading] = useState(false) // uniquement pour la photo IA
   const [photoAnalysis, setPhotoAnalysis] = useState<{
     food_name: string; quantity_g: number
     calories: number | null; protein_g: number | null
@@ -165,7 +352,6 @@ function AddFoodModal({ onClose, onAdded, today }: {
     fiber_g: number | null; confidence: string; note: string
   } | null>(null)
   const [photoError, setPhotoError] = useState('')
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Recherche texte avec debounce
@@ -186,40 +372,16 @@ function AddFoodModal({ onClose, onAdded, today }: {
     }, 400)
   }, [])
 
-  // Scan barcode via input file (photo de l'étiquette)
-  async function handleBarcodeFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setScanLoading(true)
-    try {
-      // Utiliser BarcodeDetector si disponible (Chrome Android/Desktop)
-      if ('BarcodeDetector' in window) {
-        const detector = new (window as Window & { BarcodeDetector: new (opts: { formats: string[] }) => { detect: (img: HTMLImageElement) => Promise<{ rawValue: string }[]> } }).BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'] })
-        const img = new Image()
-        img.src = URL.createObjectURL(file)
-        await new Promise(r => { img.onload = r })
-        const codes = await detector.detect(img)
-        if (codes.length > 0) {
-          await lookupBarcode(codes[0].rawValue)
-          return
-        }
-      }
-      // Fallback : demander saisie manuelle
-      const manual = prompt('Code-barres non détecté. Saisis-le manuellement :')
-      if (manual) await lookupBarcode(manual.trim())
-    } finally {
-      setScanLoading(false)
-    }
-  }
+  const [barcodeError, setBarcodeError] = useState<string | null>(null)
 
   async function lookupBarcode(barcode: string) {
     setScanLoading(true)
+    setBarcodeError(null)
     try {
       const res = await fetch(`/api/nutrition/scan?barcode=${barcode}`)
       const { data, error } = await res.json()
       if (error || !data) {
-        alert('Produit non trouvé. Essaie la recherche.')
+        setBarcodeError('Produit non trouvé. Essaie la recherche manuelle.')
         return
       }
       setSelectedFood({
@@ -366,7 +528,7 @@ function AddFoodModal({ onClose, onAdded, today }: {
             </button>
 
             <button
-              onClick={() => { setMode('scan'); fileInputRef.current?.click() }}
+              onClick={() => setMode('scan')}
               className="flex items-center gap-4 p-4 rounded-2xl text-left transition-all"
               style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
             >
@@ -376,16 +538,8 @@ function AddFoodModal({ onClose, onAdded, today }: {
               </div>
               <div>
                 <p className="font-black" style={{ color: 'var(--fiq-text)' }}>Scanner un code-barres</p>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Photo du code-barres → données automatiques</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Caméra en temps réel → détection automatique</p>
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={handleBarcodeFile}
-              />
             </button>
 
             <button
@@ -447,42 +601,28 @@ function AddFoodModal({ onClose, onAdded, today }: {
           </div>
         )}
 
-        {/* ── Scanner (loading) ── */}
+        {/* ── Scanner vidéo temps réel ── */}
         {mode === 'scan' && (
-          <div className="flex flex-col items-center gap-4 py-8">
+          <div className="space-y-3">
+            {barcodeError && (
+              <div className="rounded-xl px-3 py-2 text-sm flex items-center gap-2"
+                style={{ background: '#EF444418', color: '#EF4444', border: '1px solid #EF444433' }}>
+                {barcodeError}
+                <button onClick={() => { setBarcodeError(null); setMode('search') }}
+                  className="ml-auto text-xs underline">Rechercher</button>
+              </div>
+            )}
             {scanLoading ? (
-              <>
-                <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--fiq-blue)' }} />
-                <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>Analyse du code-barres...</p>
-              </>
+              <div className="flex flex-col items-center gap-3 py-10">
+                <Loader2 className="w-7 h-7 animate-spin" style={{ color: 'var(--fiq-blue)' }} />
+                <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>Recherche du produit…</p>
+              </div>
             ) : (
-              <>
-                <ScanLine className="w-10 h-10" style={{ color: 'var(--fiq-blue)' }} />
-                <p className="text-sm text-center" style={{ color: 'var(--fiq-muted)' }}>
-                  Prends une photo du code-barres avec ton appareil photo
-                </p>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-5 py-2.5 rounded-xl font-black text-sm"
-                  style={{ background: 'var(--fiq-blue)', color: '#fff' }}
-                >
-                  Ouvrir la caméra
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={handleBarcodeFile}
-                />
-                <button onClick={() => {
-                  const code = prompt('Saisir le code-barres manuellement :')
-                  if (code) lookupBarcode(code.trim())
-                }} className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
-                  Saisir manuellement
-                </button>
-              </>
+              <BarcodeScannerView
+                onDetected={lookupBarcode}
+                onManual={() => setMode('search')}
+                onClose={onClose}
+              />
             )}
           </div>
         )}

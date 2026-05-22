@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { AlertBar } from '@/components/ui/AlertBar'
-import { Loader2, Save, TrendingDown, TrendingUp, Minus } from 'lucide-react'
+import { Loader2, Save, TrendingDown, TrendingUp, Minus, CheckCircle2 } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────────────
 type LogData = {
@@ -62,6 +62,7 @@ export default function CheckinPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const ewmaDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [profile, setProfile] = useState<{
     goal?: string
     weight_kg?: number | null
@@ -166,7 +167,9 @@ export default function CheckinPage() {
       const { error: err } = await res.json()
       if (err) { setError(err); return }
       setSaved(true)
-      setTimeout(() => router.push('/dashboard'), 1200)
+      // Invalide le cache serveur pour que le dashboard affiche les données fraîches
+      router.refresh()
+      setTimeout(() => router.push('/dashboard'), 1400)
     } finally {
       setSaving(false)
     }
@@ -201,20 +204,28 @@ export default function CheckinPage() {
   const carb = parseFloat(form.carbs_g) || 0
   const fat = parseFloat(form.fat_g) || 0
 
-  if (saved) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
-        <div className="text-center space-y-3">
-          <div className="text-5xl">✅</div>
-          <p className="text-lg font-bold" style={{ color: 'var(--fiq-text)' }}>Bilan sauvegardé !</p>
-          <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>Retour au dashboard…</p>
-        </div>
-      </div>
-    )
-  }
+  // Toast de confirmation flottant (affiché par-dessus le formulaire)
+  const SavedToast = saved ? (
+    <div
+      className="fixed left-1/2 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl shadow-lg"
+      style={{
+        transform: 'translateX(-50%)',
+        bottom: 'calc(4.5rem + env(safe-area-inset-bottom))',
+        background: '#B4FF4A22',
+        border: '1px solid #B4FF4A66',
+        backdropFilter: 'blur(12px)',
+        color: 'var(--fiq-accent)',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <CheckCircle2 className="w-4 h-4 shrink-0" />
+      <span className="text-sm font-bold">Bilan sauvegardé ✓</span>
+    </div>
+  ) : null
 
   return (
     <div className="p-4 max-w-lg mx-auto pb-6">
+      {SavedToast}
       <div className="pt-4 mb-6">
         <p className="fiq-label">Bilan quotidien</p>
         <h1 className="text-2xl fiq-display mt-1" style={{ color: 'var(--fiq-text)' }}>
@@ -240,7 +251,13 @@ export default function CheckinPage() {
           <Input
             type="number" step="0.1" placeholder="74.5"
             value={form.weight_kg}
-            onChange={(e) => { set('weight_kg', e.target.value); fetchEwma(e.target.value) }}
+            onChange={(e) => {
+              const val = e.target.value
+              set('weight_kg', val)
+              // Debounce EWMA 500ms pour éviter les calculs aberrants pendant la saisie
+              if (ewmaDebounceRef.current) clearTimeout(ewmaDebounceRef.current)
+              ewmaDebounceRef.current = setTimeout(() => fetchEwma(val), 500)
+            }}
             style={inputStyle}
           />
           {/* EWMA */}
