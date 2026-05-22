@@ -453,31 +453,60 @@ function AddFoodModal({ onClose, onAdded, today }: {
     }
   }
 
-  // Compression via Canvas — réduit les photos iPhone (3-5 MB → ~300 KB)
-  // Évite le dépassement de la limite 4 MB de Next.js et convertit HEIC → JPEG
-  function compressImage(file: File, maxPx = 1024, quality = 0.75): Promise<string> {
+  // Compression Canvas — réduit les photos iPhone (3-5 MB → ~200-400 KB)
+  // Convertit HEIC/HEIF → JPEG pour compatibilité Anthropic
+  function compressImage(file: File, maxPx = 1024, quality = 0.78): Promise<string> {
     return new Promise((resolve, reject) => {
       const img = new Image()
       const objectUrl = URL.createObjectURL(file)
+
       img.onload = () => {
         URL.revokeObjectURL(objectUrl)
         let { width, height } = img
+
+        // Redimensionner si nécessaire
         if (width > height) {
           if (width > maxPx) { height = Math.round((height * maxPx) / width); width = maxPx }
         } else {
           if (height > maxPx) { width = Math.round((width * maxPx) / height); height = maxPx }
         }
+
         const canvas = document.createElement('canvas')
         canvas.width = width
         canvas.height = height
         const ctx = canvas.getContext('2d')
-        if (!ctx) { reject(new Error('Canvas non disponible')); return }
+        if (!ctx) { reject(new Error('Canvas non disponible sur cet appareil')); return }
+
         ctx.drawImage(img, 0, 0, width, height)
-        // Toujours encoder en JPEG pour compatibilité Anthropic (évite HEIC/HEIF)
         const dataUrl = canvas.toDataURL('image/jpeg', quality)
-        resolve(dataUrl.split(',')[1])
+
+        // Valider que le canvas a produit une image valide
+        const base64 = dataUrl.split(',')[1]
+        if (!base64 || base64.length < 500) {
+          // Canvas vide (bug iOS rare) → fallback FileReader si fichier < 3 MB
+          if (file.size < 3 * 1024 * 1024) {
+            const reader = new FileReader()
+            reader.onload = (ev) => {
+              const raw = (ev.target?.result as string).split(',')[1]
+              if (raw) resolve(raw)
+              else reject(new Error('Lecture image échouée'))
+            }
+            reader.onerror = () => reject(new Error('Lecture image échouée'))
+            reader.readAsDataURL(file)
+          } else {
+            reject(new Error('Image trop grande. Utilise la galerie plutôt que l\'appareil photo.'))
+          }
+          return
+        }
+        resolve(base64)
       }
-      img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Lecture image échouée')) }
+
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl)
+        // Format non décodable par le browser (HEIC très ancien) → message clair
+        reject(new Error('Format non supporté. Utilise la galerie pour sélectionner la photo.'))
+      }
+
       img.src = objectUrl
     })
   }
@@ -486,8 +515,10 @@ function AddFoodModal({ onClose, onAdded, today }: {
   async function handlePhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    // Reset input pour permettre de re-sélectionner le même fichier
+    e.target.value = ''
     setPhotoError('')
-    setScanLoading(true)  // ← immédiatement, avant la compression
+    setScanLoading(true)
 
     try {
       const base64 = await compressImage(file)
@@ -500,20 +531,24 @@ function AddFoodModal({ onClose, onAdded, today }: {
 
       let data: PhotoAnalysis | null = null
       let apiError: string | null = null
-      try {
-        const json = await res.json()
-        data = json.data
-        apiError = json.error
-      } catch {
-        apiError = 'Réponse serveur invalide. Réessaie.'
+
+      if (!res.ok && res.status !== 400) {
+        apiError = `Erreur serveur (${res.status}). Réessaie dans quelques secondes.`
+      } else {
+        try {
+          const json = await res.json()
+          data = json.data
+          apiError = json.error
+        } catch {
+          apiError = 'Réponse serveur invalide. Réessaie.'
+        }
       }
 
       if (apiError || !data) {
-        setPhotoError(apiError ?? 'Analyse impossible. Essaie avec une meilleure photo.')
+        setPhotoError(apiError ?? 'Analyse impossible. Prends une photo plus nette et bien éclairée.')
         return
       }
 
-      // Initialiser les quantités éditables avec les estimations IA
       const quantities: Record<number, string> = {}
       ;(data.aliments as PhotoAliment[]).forEach((a, i) => {
         quantities[i] = String(a.quantite_estimee_g)
@@ -522,8 +557,8 @@ function AddFoodModal({ onClose, onAdded, today }: {
       setPhotoQuantities(quantities)
       setMode('photo-confirm')
     } catch (err) {
-      console.error('Photo analysis error:', err)
-      setPhotoError('Erreur lors de l\'analyse. Vérifie ta connexion et réessaie.')
+      const msg = err instanceof Error ? err.message : 'Erreur inconnue'
+      setPhotoError(msg)
     } finally {
       setScanLoading(false)
     }
@@ -744,51 +779,69 @@ function AddFoodModal({ onClose, onAdded, today }: {
         {mode === 'photo' && (
           <div className="space-y-4">
             {photoError && (
-              <p className="text-sm px-3 py-2 rounded-xl"
+              <div className="rounded-xl px-3 py-2.5 text-sm space-y-1"
                 style={{ background: '#EF444418', color: '#EF4444', border: '1px solid #EF444433' }}>
-                {photoError}
-              </p>
+                <p className="font-semibold">⚠ {photoError}</p>
+                <p className="text-xs opacity-80">Astuce : bonne lumière, repas bien visible, photo de près.</p>
+              </div>
             )}
 
-            {/* label[htmlFor] = déclencheur natif, iOS Safari garanti */}
-            <label
-              htmlFor="photo-input"
-              className="flex flex-col items-center gap-4 py-10 rounded-2xl border-2 border-dashed"
-              style={{
-                borderColor: 'var(--fiq-border)',
-                cursor: scanLoading ? 'not-allowed' : 'pointer',
-                pointerEvents: scanLoading ? 'none' : 'auto',
-              }}
-            >
-              {scanLoading ? (
-                <>
-                  <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--fiq-orange)' }} />
-                  <p className="text-sm font-semibold" style={{ color: 'var(--fiq-orange)' }}>
-                    {PHOTO_LOADING_MSGS[loadingMsgIdx]}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <Camera className="w-10 h-10" style={{ color: 'var(--fiq-orange)' }} />
-                  <div className="text-center">
-                    <p className="font-bold text-sm" style={{ color: 'var(--fiq-text)' }}>Prends une photo de ton repas</p>
-                    <p className="text-xs mt-1" style={{ color: 'var(--fiq-muted)' }}>
-                      IA ForgeIQ identifie les aliments et estime les macros
-                    </p>
+            {scanLoading ? (
+              /* État chargement — analyse en cours */
+              <div className="flex flex-col items-center gap-3 py-12 rounded-2xl"
+                style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+                <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--fiq-orange)' }} />
+                <p className="text-sm font-semibold" style={{ color: 'var(--fiq-orange)' }}>
+                  {PHOTO_LOADING_MSGS[loadingMsgIdx]}
+                </p>
+              </div>
+            ) : (
+              /* Deux options : caméra directe ou galerie */
+              <div className="grid grid-cols-2 gap-3">
+                {/* Bouton Caméra — ouvre l'appareil photo directement */}
+                <label
+                  htmlFor="camera-input"
+                  className="flex flex-col items-center gap-3 py-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all"
+                  style={{ borderColor: 'var(--fiq-orange)', background: '#FF6B3508' }}
+                >
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                    style={{ background: '#FF6B3522' }}>
+                    <Camera className="w-6 h-6" style={{ color: 'var(--fiq-orange)' }} />
                   </div>
-                </>
-              )}
-            </label>
-            {/* Pas de capture="environment" — iOS livrerait potentiellement du HEIC
-                accept="image/*" → sélecteur natif iOS → convertit automatiquement en JPEG */}
-            <input
-              id="photo-input"
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handlePhotoFile}
-              disabled={scanLoading}
-            />
+                  <div className="text-center px-2">
+                    <p className="font-black text-sm" style={{ color: 'var(--fiq-text)' }}>Appareil photo</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Prendre une photo</p>
+                  </div>
+                </label>
+
+                {/* Bouton Galerie — sélecteur de photos natif */}
+                <label
+                  htmlFor="gallery-input"
+                  className="flex flex-col items-center gap-3 py-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all"
+                  style={{ borderColor: 'var(--fiq-border)', background: 'var(--fiq-faint)' }}
+                >
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                    style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+                    <span className="text-2xl">🖼️</span>
+                  </div>
+                  <div className="text-center px-2">
+                    <p className="font-black text-sm" style={{ color: 'var(--fiq-text)' }}>Galerie</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Photo existante</p>
+                  </div>
+                </label>
+              </div>
+            )}
+
+            {/* input caméra (capture="environment") — JPEG natif sur iOS moderne */}
+            <input id="camera-input" type="file" accept="image/*" capture="environment"
+              className="hidden" onChange={handlePhotoFile} disabled={scanLoading} />
+            {/* input galerie — sélecteur natif, iOS convertit automatiquement en JPEG */}
+            <input id="gallery-input" type="file" accept="image/*"
+              className="hidden" onChange={handlePhotoFile} disabled={scanLoading} />
+
+            <p className="text-[10px] text-center" style={{ color: 'var(--fiq-muted)' }}>
+              Compressé automatiquement · Format JPEG · Compatible IA
+            </p>
           </div>
         )}
 
