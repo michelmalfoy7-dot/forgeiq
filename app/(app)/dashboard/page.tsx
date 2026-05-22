@@ -12,22 +12,28 @@ export const dynamic = 'force-dynamic'
 
 const SESSIONS_TARGET = 4
 
+type Alert = { type: 'red' | 'yellow' | 'green' | 'blue'; message: string; sub: string }
+
 async function generateAIAlerts(
   logs: { log_date: string; sleep_deep_min: number | null; protein_g: number | null; fatigue_score: number | null; steps: number | null }[],
   profile: { goal: string; level: string }
-): Promise<{ type: 'red' | 'yellow' | 'green' | 'blue'; message: string; sub: string }[]> {
+): Promise<Alert[]> {
   if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') return []
   if (!logs.length) return []
 
   try {
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    // Timeout 5s max — évite de bloquer le rendu du dashboard si l'API est lente
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      timeout: 5000,
+    })
 
     const logSummary = logs.map(l =>
       `${l.log_date}: sommeil_profond=${l.sleep_deep_min ?? '?'}min fatigue=${l.fatigue_score ?? '?'}/10 proteines=${l.protein_g ?? '?'}g pas=${l.steps ?? '?'}`
     ).join('\n')
 
     const res = await anthropic.messages.create({
-      model: 'claude-haiku-4-5',
+      model: 'claude-3-haiku-20240307',
       max_tokens: 400,
       messages: [{
         role: 'user',
@@ -193,11 +199,14 @@ export default async function DashboardPage() {
     staticAlerts.push({ type: 'blue', message: '📋 Bilan du jour non renseigné', sub: 'Complète ton check-in pour des recommandations personnalisées.' })
   }
 
-  // Alertes IA sur 7 jours (uniquement si données disponibles)
-  const aiAlerts = await generateAIAlerts(weekLogs ?? [], {
-    goal: profile?.goal ?? 'force',
-    level: profile?.level ?? 'intermédiaire',
-  })
+  // Alertes IA sur 7 jours — timeout 4s pour ne jamais bloquer le rendu
+  const aiAlerts = await Promise.race([
+    generateAIAlerts(weekLogs ?? [], {
+      goal: profile?.goal ?? 'force',
+      level: profile?.level ?? 'intermédiaire',
+    }),
+    new Promise<Alert[]>(resolve => setTimeout(() => resolve([]), 4000)),
+  ])
 
   // Fusionner alertes (statiques d'abord, puis IA si pas de doublon)
   const allAlerts = [...staticAlerts, ...aiAlerts].slice(0, 4)
