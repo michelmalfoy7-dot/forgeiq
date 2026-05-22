@@ -99,7 +99,22 @@ export default async function DashboardPage() {
       .order('log_date', { ascending: false }),
   ])
 
-  if (!profile?.onboarding_done) redirect('/onboarding')
+  // Si le profil n'existe pas encore (pas de trigger Supabase, ou upsert raté),
+  // on le crée avec les valeurs minimales pour éviter la boucle /dashboard ↔ /onboarding
+  if (!profile) {
+    await supabase.from('profiles').upsert({
+      id: user.id,
+      onboarding_done: false,
+      goal: 'general',
+      level: 'beginner',
+      equipment: 'full_gym',
+      sessions_per_week: 3,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' })
+    redirect('/onboarding')
+  }
+
+  if (!profile.onboarding_done) redirect('/onboarding')
 
   // Suggestion séance
   let suggestion: {

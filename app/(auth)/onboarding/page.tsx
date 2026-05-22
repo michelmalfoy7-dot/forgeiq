@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -205,6 +205,22 @@ export default function OnboardingPage() {
   const [finishError, setFinishError] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClient()
+
+  // Vérifier au montage si l'onboarding est déjà fait → évite la boucle
+  // /dashboard redirige ici si onboarding_done=false, mais si c'est déjà true on repart direct
+  useEffect(() => {
+    async function checkAlreadyDone() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data: profile } = await supabase
+        .from('profiles').select('onboarding_done').eq('id', user.id).maybeSingle()
+      if (profile?.onboarding_done) {
+        router.replace('/dashboard')
+      }
+    }
+    checkAlreadyDone()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function update(key: keyof OnboardingData, value: string | number) {
     setData((prev) => ({ ...prev, [key]: value }))
