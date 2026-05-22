@@ -9,7 +9,6 @@ import { Dumbbell, TrendingUp, ClipboardList, MessageCircle } from 'lucide-react
 
 export const dynamic = 'force-dynamic'
 
-const STEPS_TARGET = 8000
 const SESSIONS_TARGET = 4
 
 // Fourchette protéines selon objectif (g/kg de poids de corps)
@@ -91,7 +90,7 @@ export default async function DashboardPage() {
     { data: weekLogs },
   ] = await Promise.all([
     supabase.from('profiles')
-      .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, macro_mode, custom_protein_g, custom_calories')
+      .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, macro_mode, custom_protein_g, custom_calories, steps_goal, target_weight_kg')
       .eq('id', user.id).single(),
 
     supabase.from('daily_logs').select('*')
@@ -207,6 +206,9 @@ export default async function DashboardPage() {
   const prenom = profile?.display_name?.split(' ')[0] ?? 'Athlete'
   const sessionsThisWeek = weekWorkouts?.length ?? 0
   const sessionsTarget = profile?.sessions_per_week ?? SESSIONS_TARGET
+  // Objectifs personnalisés depuis le profil (avec fallbacks)
+  const stepsTarget = profile?.steps_goal ?? 8000
+  const targetWeightKg = profile?.target_weight_kg ?? null
 
   return (
     <div className="p-4 space-y-5 max-w-lg mx-auto">
@@ -259,7 +261,8 @@ export default async function DashboardPage() {
         <StatCard
           label="Pas"
           value={todayLog?.steps ? todayLog.steps.toLocaleString('fr-FR') : '—'}
-          sub={`Objectif : ${STEPS_TARGET.toLocaleString('fr-FR')}`}
+          sub={`Objectif : ${stepsTarget.toLocaleString('fr-FR')}`}
+          alert={!!todayLog?.steps && todayLog.steps < stepsTarget * 0.5}
         />
       </div>
 
@@ -345,10 +348,21 @@ export default async function DashboardPage() {
         />
         <ProgressBar
           value={todayLog?.steps ?? 0}
-          max={STEPS_TARGET}
+          max={stepsTarget}
           color="var(--fiq-blue)"
-          label={`Pas : ${(todayLog?.steps ?? 0).toLocaleString('fr-FR')}/${STEPS_TARGET.toLocaleString('fr-FR')}`}
+          label={`Pas : ${(todayLog?.steps ?? 0).toLocaleString('fr-FR')}/${stepsTarget.toLocaleString('fr-FR')}`}
         />
+        {/* Poids cible (affiché seulement si défini et différent du poids actuel) */}
+        {targetWeightKg && todayLog?.weight_trend && (
+          <ProgressBar
+            value={Math.abs(todayLog.weight_trend - targetWeightKg) <= Math.abs((profile?.weight_kg ?? todayLog.weight_trend) - targetWeightKg)
+              ? Math.abs((profile?.weight_kg ?? todayLog.weight_trend) - targetWeightKg) - Math.abs(todayLog.weight_trend - targetWeightKg)
+              : 0}
+            max={Math.abs((profile?.weight_kg ?? todayLog.weight_trend) - targetWeightKg)}
+            color={targetWeightKg < (profile?.weight_kg ?? todayLog.weight_trend) ? 'var(--fiq-orange)' : 'var(--fiq-blue)'}
+            label={`Poids cible : ${todayLog.weight_trend}kg → ${targetWeightKg}kg (${Math.abs(todayLog.weight_trend - targetWeightKg).toFixed(1)}kg restants)`}
+          />
+        )}
       </div>
 
       {/* Raccourcis */}

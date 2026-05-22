@@ -41,6 +41,8 @@ type Profile = {
   custom_protein_g: number | null
   custom_carbs_g: number | null
   custom_fat_g: number | null
+  steps_goal: number | null
+  target_weight_kg: number | null
   created_at: string
 } | null
 
@@ -137,6 +139,9 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
   const [weightKg, setWeightKg] = useState(String(profile?.weight_kg ?? ''))
   const [displayName, setDisplayName] = useState(profile?.display_name ?? '')
 
+  const [stepsGoal, setStepsGoal] = useState(String(profile?.steps_goal ?? 8000))
+  const [targetWeightKg, setTargetWeightKg] = useState(String(profile?.target_weight_kg ?? ''))
+
   const [macroMode, setMacroMode] = useState<'auto' | 'custom'>(profile?.macro_mode === 'custom' ? 'custom' : 'auto')
   const [customCalories, setCustomCalories] = useState(String(profile?.custom_calories ?? ''))
   const [customProtein, setCustomProtein] = useState(String(profile?.custom_protein_g ?? ''))
@@ -169,6 +174,8 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
           custom_protein_g: macroMode === 'custom' && customProtein ? Number(customProtein) : null,
           custom_carbs_g: macroMode === 'custom' && customCarbs ? Number(customCarbs) : null,
           custom_fat_g: macroMode === 'custom' && customFat ? Number(customFat) : null,
+          steps_goal: Number(stepsGoal) || 8000,
+          target_weight_kg: targetWeightKg ? Number(targetWeightKg) : null,
         }),
       })
       if (res.ok) {
@@ -289,9 +296,74 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
         </div>
 
         <div className="grid grid-cols-3 gap-3">
-          <NumberField label="Poids" value={weightKg} onChange={setWeightKg} min={30} max={250} unit="kg" />
+          <NumberField label="Poids actuel" value={weightKg} onChange={setWeightKg} min={30} max={250} unit="kg" />
           <NumberField label="Âge" value={age} onChange={setAge} min={10} max={100} unit="ans" />
           <NumberField label="Taille" value={heightCm} onChange={setHeightCm} min={100} max={250} unit="cm" />
+        </div>
+
+        {/* Objectifs corps */}
+        <div>
+          <p className="fiq-label mb-2">Objectifs physiques</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="fiq-label mb-1.5">Poids cible <span style={{ color: 'var(--fiq-muted)' }}>(kg)</span></p>
+              <input
+                type="number"
+                step="0.5"
+                min={30}
+                max={250}
+                placeholder={weightKg || '70'}
+                value={targetWeightKg}
+                onChange={e => setTargetWeightKg(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl text-sm outline-none"
+                style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+              />
+            </div>
+            <div>
+              <p className="fiq-label mb-1.5">Objectif pas <span style={{ color: 'var(--fiq-muted)' }}>/jour</span></p>
+              <div className="flex gap-1 flex-wrap">
+                {[5000, 7500, 8000, 10000, 12000].map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setStepsGoal(String(n))}
+                    className="px-2 py-1.5 rounded-lg text-xs font-black transition-all"
+                    style={{
+                      background: Number(stepsGoal) === n ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
+                      color: Number(stepsGoal) === n ? 'var(--bg)' : 'var(--fiq-muted)',
+                      border: `1px solid ${Number(stepsGoal) === n ? 'var(--fiq-accent)' : 'var(--fiq-border)'}`,
+                    }}
+                  >
+                    {(n / 1000).toFixed(n % 1000 === 500 ? 1 : 0)}k
+                  </button>
+                ))}
+              </div>
+              <input
+                type="number"
+                step="500"
+                min={1000}
+                max={30000}
+                value={stepsGoal}
+                onChange={e => setStepsGoal(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl text-sm outline-none mt-2"
+                style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+              />
+            </div>
+          </div>
+          {/* Aperçu poids cible */}
+          {targetWeightKg && weightKg && Number(targetWeightKg) !== Number(weightKg) && (
+            <div className="mt-2 px-3 py-2 rounded-xl flex items-center gap-2"
+              style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+              <span className="text-lg">{Number(targetWeightKg) < Number(weightKg) ? '📉' : '📈'}</span>
+              <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+                {Number(targetWeightKg) < Number(weightKg) ? 'Perte' : 'Prise'} de{' '}
+                <strong style={{ color: 'var(--fiq-accent)' }}>
+                  {Math.abs(Number(weightKg) - Number(targetWeightKg)).toFixed(1)} kg
+                </strong>{' '}
+                à atteindre
+              </span>
+            </div>
+          )}
         </div>
 
         <button

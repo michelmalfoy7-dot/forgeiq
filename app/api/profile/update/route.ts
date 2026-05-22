@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
     const {
       display_name, goal, level, equipment, sessions_per_week, age, height_cm, gender, weight_kg,
       macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g,
+      steps_goal, target_weight_kg,
     } = body
 
     const { error } = await supabase.from('profiles').update({
@@ -30,6 +31,8 @@ export async function POST(req: NextRequest) {
       custom_protein_g: custom_protein_g ?? undefined,
       custom_carbs_g: custom_carbs_g ?? undefined,
       custom_fat_g: custom_fat_g ?? undefined,
+      steps_goal: steps_goal != null ? Number(steps_goal) : undefined,
+      target_weight_kg: target_weight_kg != null ? Number(target_weight_kg) : undefined,
       updated_at: new Date().toISOString(),
     }).eq('id', user.id)
 
