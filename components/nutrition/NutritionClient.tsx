@@ -155,29 +155,31 @@ function BarcodeScannerView({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [camError, setCamError] = useState<string | null>(null)
+  const [camReady, setCamReady] = useState(false)
   const [detected, setDetected] = useState(false)
   const [manualCode, setManualCode] = useState('')
   const [showManual, setShowManual] = useState(false)
   const stopRef = useRef(false)
+  const controlsRef = useRef<{ stop: () => void } | null>(null)
 
   useEffect(() => {
     stopRef.current = false
-    let controlsStop: (() => void) | null = null
-    let streamToStop: MediaStream | null = null
 
-    async function startCamera() {
+    async function startScanner() {
       const video = videoRef.current
       if (!video) return
 
       try {
-        // Tenter le scanner natif (BarcodeDetector) en priorité sur Chrome/Android
         if ('BarcodeDetector' in window) {
+          // ── Scanner natif : Chrome Android / Chrome Desktop ──
           const stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
           })
-          streamToStop = stream
           video.srcObject = stream
           await video.play()
+          setCamReady(true)
+
+          controlsRef.current = { stop: () => stream.getTracks().forEach(t => t.stop()) }
 
           const BarcodeDetectorClass = (window as Window & {
             BarcodeDetector: new (opts: { formats: string[] }) => {
@@ -192,57 +194,65 @@ function BarcodeScannerView({
           const scanFrame = async () => {
             if (stopRef.current) return
             try {
-              const codes = await detector.detect(video)
-              if (codes.length > 0 && !stopRef.current) {
-                stopRef.current = true
-                setDetected(true)
-                onDetected(codes[0].rawValue)
-                return
+              // Attendre que la vidéo soit prête (readyState 2 = HAVE_CURRENT_DATA)
+              if (video.readyState >= 2) {
+                const codes = await detector.detect(video)
+                if (codes.length > 0 && !stopRef.current) {
+                  stopRef.current = true
+                  setDetected(true)
+                  controlsRef.current?.stop()
+                  onDetected(codes[0].rawValue)
+                  return
+                }
               }
-            } catch { /* image not ready */ }
+            } catch { /* frame not ready, skip */ }
             if (!stopRef.current) requestAnimationFrame(scanFrame)
           }
           requestAnimationFrame(scanFrame)
+
         } else {
-          // Fallback : @zxing/browser (iOS Safari, Firefox, etc.)
+          // ── Fallback : @zxing/browser — iOS Safari, Firefox ──
+          // decodeFromConstraints gère getUserMedia + lecture vidéo en interne
           const { BrowserMultiFormatReader } = await import('@zxing/browser')
           const reader = new BrowserMultiFormatReader()
 
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'environment' },
-          })
-          streamToStop = stream
-          video.srcObject = stream
-          await video.play()
-
-          const controls = await reader.decodeFromVideoElement(video, (result, err) => {
-            if (result && !stopRef.current) {
-              stopRef.current = true
-              setDetected(true)
-              controls.stop()
-              onDetected(result.getText())
+          const controls = await reader.decodeFromConstraints(
+            { video: { facingMode: 'environment' } },
+            video,
+            (result, _err, ctrl) => {
+              if (result && !stopRef.current) {
+                stopRef.current = true
+                setDetected(true)
+                ctrl.stop()
+                onDetected(result.getText())
+              }
             }
-            void err // NotFoundException expected when no barcode in frame
-          })
-          controlsStop = () => controls.stop()
+          )
+          controlsRef.current = controls
+          setCamReady(true)
         }
       } catch (e) {
         const msg = (e as Error).message ?? ''
-        if (msg.includes('Permission') || msg.includes('NotAllowed')) {
+        if (msg.includes('Permission') || msg.includes('NotAllowed') || msg.includes('denied')) {
           setCamError('Autorise l\'accès à la caméra dans les paramètres de ton navigateur.')
+        } else if (msg.includes('Constraints') || msg.includes('OverConstrained')) {
+          setCamError('Caméra arrière indisponible sur cet appareil.')
         } else {
-          setCamError('Caméra indisponible sur cet appareil.')
+          setCamError('Impossible d\'accéder à la caméra. Saisis le code manuellement.')
         }
       }
     }
 
-    startCamera()
+    startScanner()
 
     return () => {
       stopRef.current = true
-      controlsStop?.()
-      if (streamToStop) streamToStop.getTracks().forEach(t => t.stop())
-      if (videoRef.current) videoRef.current.srcObject = null
+      controlsRef.current?.stop()
+      if (videoRef.current) {
+        const stream = videoRef.current.srcObject as MediaStream | null
+        stream?.getTracks().forEach(t => t.stop())
+        videoRef.current.srcObject = null
+      }
     }
   }, [onDetected])
 
@@ -284,17 +294,25 @@ function BarcodeScannerView({
           ref={videoRef}
           className="w-full h-full object-cover"
           playsInline
+          autoPlay
           muted
         />
-        {/* Viseur */}
-        {!camError && !detected && (
+        {/* Spinner initialisation caméra */}
+        {!camError && !detected && !camReady && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70">
+            <Loader2 className="w-7 h-7 animate-spin text-white" />
+            <span className="text-xs text-white/70">Initialisation caméra…</span>
+          </div>
+        )}
+        {/* Viseur actif */}
+        {!camError && !detected && camReady && (
           <>
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="border-2 border-white/50 rounded-xl" style={{ width: '70%', height: '35%' }} />
             </div>
             <div className="absolute bottom-3 left-0 right-0 flex justify-center">
               <span className="text-[11px] text-white/70 bg-black/50 rounded-full px-3 py-1">
-                {detected ? '✓ Code détecté !' : 'Pointez le code-barres dans le cadre'}
+                Pointez le code-barres dans le cadre
               </span>
             </div>
           </>
