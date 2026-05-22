@@ -1,29 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, LogOut, Trash2, Dumbbell, Trophy, Flame, BarChart2, ChevronRight, MessageCircle } from 'lucide-react'
-
-// Ratios protéines selon objectif (g/kg de poids de corps)
-const PROTEIN_RATIO: Record<string, { min: number; max: number }> = {
-  muscle_gain: { min: 1.8, max: 2.2 },
-  strength:    { min: 1.8, max: 2.2 },
-  weight_loss: { min: 1.8, max: 2.0 },
-  endurance:   { min: 1.2, max: 1.6 },
-  general:     { min: 1.4, max: 1.8 },
-}
-
-function calcMacroTargets(goal?: string | null, weightKg?: number | null) {
-  const ratio = PROTEIN_RATIO[goal ?? 'general'] ?? PROTEIN_RATIO['general']
-  const w = (weightKg && weightKg > 30 && weightKg < 250) ? weightKg : 75
-  const protein_g = Math.round(w * (ratio.min + ratio.max) / 2)
-  const calories = Math.round(w * 30 + 300)
-  const carbs_g = Math.round((calories * 0.40) / 4)
-  const fat_g = Math.round((calories * 0.28) / 9)
-  return { protein_g, carbs_g, fat_g, calories }
-}
+import { Loader2, LogOut, Trash2, Dumbbell, Trophy, Flame, BarChart2, ChevronRight, MessageCircle, Info } from 'lucide-react'
+import type { TDEEBreakdown } from '@/lib/utils/tdee'
 
 type Profile = {
   display_name: string | null
@@ -143,6 +125,17 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
   const [targetWeightKg, setTargetWeightKg] = useState(String(profile?.target_weight_kg ?? ''))
 
   const [macroMode, setMacroMode] = useState<'auto' | 'custom'>(profile?.macro_mode === 'custom' ? 'custom' : 'auto')
+
+  // TDEE réel depuis l'API (données steps + tonnage 30 derniers jours)
+  const [tdee, setTdee] = useState<TDEEBreakdown | null>(null)
+  const [tdeeLoading, setTdeeLoading] = useState(true)
+  useEffect(() => {
+    fetch('/api/profile/tdee')
+      .then(r => r.json())
+      .then(({ data }) => { if (data) setTdee(data) })
+      .catch(() => {/* silencieux — fallback affiché */})
+      .finally(() => setTdeeLoading(false))
+  }, [])
   const [customCalories, setCustomCalories] = useState(String(profile?.custom_calories ?? ''))
   const [customProtein, setCustomProtein] = useState(String(profile?.custom_protein_g ?? ''))
   const [customCarbs, setCustomCarbs] = useState(String(profile?.custom_carbs_g ?? ''))
@@ -377,17 +370,28 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
 
       {/* Objectifs nutritionnels */}
       {(() => {
-        const autoTargets = calcMacroTargets(goal, weightKg ? Number(weightKg) : null)
         const GOAL_LABEL = GOAL_OPTIONS.find(o => o.value === goal)?.label ?? goal
+
+        // Macros actives (TDEE API si auto, sinon custom)
+        const activeMacros = macroMode === 'custom' && (customProtein || customCalories)
+          ? {
+              calories: Number(customCalories) || tdee?.macros.calories || 2000,
+              protein_g: Number(customProtein) || tdee?.macros.protein_g || 150,
+              carbs_g: Number(customCarbs) || tdee?.macros.carbs_g || 200,
+              fat_g: Number(customFat) || tdee?.macros.fat_g || 70,
+            }
+          : tdee?.macros
+
         const coachQ = macroMode === 'custom' && (customProtein || customCalories)
-          ? `J'ai défini mes macros en mode personnalisé : ${customCalories || '?'}kcal, ${customProtein || '?'}g protéines, ${customCarbs || '?'}g glucides, ${customFat || '?'}g lipides. Est-ce cohérent avec mon objectif "${GOAL_LABEL}" ?`
-          : `Mon objectif est "${GOAL_LABEL}". Les macros auto calculées sont ${autoTargets.calories}kcal, ${autoTargets.protein_g}g protéines, ${autoTargets.carbs_g}g glucides, ${autoTargets.fat_g}g lipides. Est-ce adapté à mon profil ?`
+          ? `Mes macros en mode personnalisé : ${customCalories || '?'}kcal, ${customProtein || '?'}g protéines, ${customCarbs || '?'}g glucides, ${customFat || '?'}g lipides. Cohérent avec mon objectif "${GOAL_LABEL}" ?`
+          : tdee
+            ? `Mon TDEE calculé est ${tdee.tdee}kcal (BMR ${tdee.bmr} + steps ${tdee.stepsCalories} + training ${tdee.trainingCalories}). Objectif ${GOAL_LABEL}, cible ${tdee.targetCalories}kcal. Est-ce adapté à mon profil ?`
+            : `Mon objectif est "${GOAL_LABEL}". Est-ce que mes macros auto sont adaptées ?`
 
         return (
           <div className="fiq-card space-y-4">
             <div className="flex items-center justify-between">
               <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>Objectifs nutritionnels</p>
-              {/* Toggle Auto / Manuel */}
               <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid var(--fiq-border)' }}>
                 {(['auto', 'custom'] as const).map(mode => (
                   <button key={mode} onClick={() => setMacroMode(mode)}
@@ -396,32 +400,101 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
                       background: macroMode === mode ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
                       color: macroMode === mode ? 'var(--bg)' : 'var(--fiq-muted)',
                     }}>
-                    {mode === 'auto' ? 'Auto' : 'Manuel'}
+                    {mode === 'auto' ? 'Auto IA' : 'Manuel'}
                   </button>
                 ))}
               </div>
             </div>
 
             {macroMode === 'auto' ? (
-              <div className="space-y-3">
-                <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
-                  Calculé selon ton poids ({weightKg || '?'}kg) et ton objectif ({GOAL_LABEL}).
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { label: 'Calories', value: autoTargets.calories, unit: 'kcal', color: 'var(--fiq-blue)' },
-                    { label: 'Protéines', value: autoTargets.protein_g, unit: 'g', color: 'var(--fiq-accent)' },
-                    { label: 'Glucides', value: autoTargets.carbs_g, unit: 'g', color: '#A855F7' },
-                    { label: 'Lipides', value: autoTargets.fat_g, unit: 'g', color: 'var(--fiq-orange)' },
-                  ].map(({ label, value, unit, color }) => (
-                    <div key={label} className="rounded-xl p-3" style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
-                      <p className="fiq-label mb-1">{label}</p>
-                      <p className="text-lg font-black fiq-data" style={{ color }}>
-                        {value}<span className="text-xs font-normal ml-1" style={{ color: 'var(--fiq-muted)' }}>{unit}</span>
-                      </p>
+              <div className="space-y-4">
+
+                {/* Breakdown TDEE détaillé */}
+                {tdeeLoading ? (
+                  <div className="flex items-center gap-2 py-3">
+                    <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--fiq-muted)' }} />
+                    <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Calcul depuis tes données…</span>
+                  </div>
+                ) : tdee ? (
+                  <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--fiq-border)' }}>
+                    {/* En-tête */}
+                    <div className="px-3 py-2 flex items-center gap-2"
+                      style={{ background: 'var(--fiq-faint)', borderBottom: '1px solid var(--fiq-border)' }}>
+                      <Info className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--fiq-blue)' }} />
+                      <span className="text-xs font-semibold" style={{ color: 'var(--fiq-muted)' }}>
+                        {tdee.hasEnoughData
+                          ? `Calculé depuis tes données réelles (${tdee.logsCount} jours)`
+                          : `Estimé — continue ton bilan pour affiner (${tdee.logsCount}/7 jours)`
+                        }
+                      </span>
                     </div>
-                  ))}
-                </div>
+
+                    {/* Lignes calcul */}
+                    <div className="divide-y" style={{ borderColor: 'var(--fiq-border)' }}>
+                      {[
+                        { label: 'BMR (Mifflin-St Jeor)', value: tdee.bmr, unit: 'kcal', color: 'var(--fiq-text)', sub: `${profile?.gender === 'female' ? 'Femme' : 'Homme'} · ${weightKg || '?'}kg · ${profile?.height_cm || '?'}cm · ${profile?.age || '?'}ans` },
+                        ...(tdee.hasEnoughData ? [{ label: `Steps moyens (${tdee.logsCount}j)`, value: `+${tdee.stepsCalories}`, unit: 'kcal/j', color: 'var(--fiq-blue)', sub: `${tdee.avgStepsPerDay.toLocaleString('fr-FR')} pas × 0.04` }] : []),
+                        { label: 'Entraînement moyen', value: `+${tdee.trainingCalories}`, unit: 'kcal/j', color: 'var(--fiq-blue)', sub: `${profile?.sessions_per_week || 3}j/semaine` },
+                        { label: 'TDEE estimé', value: tdee.tdee, unit: 'kcal/j', color: 'var(--fiq-accent)', sub: 'Total dépenses journalières', bold: true },
+                        {
+                          label: `Ajustement ${GOAL_LABEL}`,
+                          value: tdee.adjustment >= 0 ? `+${tdee.adjustment}` : tdee.adjustment,
+                          unit: 'kcal',
+                          color: tdee.adjustment < 0 ? 'var(--fiq-orange)' : '#A855F7',
+                          sub: tdee.adjustment < 0 ? 'Déficit modéré — préserve la masse musculaire' : tdee.adjustment > 0 ? 'Surplus contrôlé — favorise la prise de masse' : 'Maintien',
+                        },
+                      ].map((row, i) => (
+                        <div key={i} className="flex items-center justify-between px-3 py-2.5">
+                          <div>
+                            <p className="text-xs font-semibold" style={{ color: row.bold ? 'var(--fiq-text)' : 'var(--fiq-muted)' }}>{row.label}</p>
+                            {row.sub && <p className="text-[10px] mt-0.5" style={{ color: 'var(--fiq-muted)' }}>{row.sub}</p>}
+                          </div>
+                          <p className="text-sm font-black fiq-data shrink-0 ml-2" style={{ color: row.color }}>
+                            {row.value}<span className="text-[10px] font-normal ml-0.5" style={{ color: 'var(--fiq-muted)' }}>{row.unit}</span>
+                          </p>
+                        </div>
+                      ))}
+
+                      {/* Total cible */}
+                      <div className="flex items-center justify-between px-3 py-3"
+                        style={{ background: '#B4FF4A10' }}>
+                        <p className="text-sm font-black" style={{ color: 'var(--fiq-accent)' }}>🎯 Cible journalière</p>
+                        <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
+                          {tdee.targetCalories.toLocaleString('fr-FR')}<span className="text-xs font-normal ml-1" style={{ color: 'var(--fiq-muted)' }}>kcal</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs px-1" style={{ color: 'var(--fiq-muted)' }}>
+                    Impossible de calculer le TDEE. Vérifie que ton profil (poids, taille, âge) est renseigné.
+                  </p>
+                )}
+
+                {/* Macros résultantes */}
+                {activeMacros && (
+                  <div>
+                    <p className="fiq-label mb-2">Répartition macros cibles</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { label: 'Calories', value: activeMacros.calories, unit: 'kcal', color: 'var(--fiq-blue)' },
+                        { label: 'Protéines', value: activeMacros.protein_g, unit: 'g', color: 'var(--fiq-accent)' },
+                        { label: 'Glucides', value: activeMacros.carbs_g, unit: 'g', color: '#A855F7' },
+                        { label: 'Lipides', value: activeMacros.fat_g, unit: 'g', color: 'var(--fiq-orange)' },
+                      ].map(({ label, value, unit, color }) => (
+                        <div key={label} className="rounded-xl p-3" style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+                          <p className="fiq-label mb-1">{label}</p>
+                          <p className="text-lg font-black fiq-data" style={{ color }}>
+                            {value.toLocaleString('fr-FR')}<span className="text-xs font-normal ml-1" style={{ color: 'var(--fiq-muted)' }}>{unit}</span>
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] mt-2 px-1" style={{ color: 'var(--fiq-muted)' }}>
+                      Priorité : 2.2g prot./kg · 1g lip./kg minimum · glucides en résidu
+                    </p>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-3">

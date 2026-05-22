@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { AlertBar } from '@/components/ui/AlertBar'
 import { Loader2, Save, TrendingDown, TrendingUp, Minus, CheckCircle2 } from 'lucide-react'
+import { calcTDEESimple } from '@/lib/utils/tdee'
 
 // ── Types ────────────────────────────────────────────────────
 type LogData = {
@@ -35,25 +36,6 @@ const EMPTY: LogData = {
   fatigue_score: 5, motivation_score: 5, notes: '',
 }
 
-// Ratios protéines selon objectif (g/kg poids de corps) — sources ISSN/ACSM
-const PROTEIN_RATIO: Record<string, { min: number; max: number }> = {
-  muscle_gain: { min: 1.8, max: 2.2 },
-  strength:    { min: 1.8, max: 2.2 },
-  weight_loss: { min: 1.8, max: 2.0 },
-  endurance:   { min: 1.2, max: 1.6 },
-  general:     { min: 1.4, max: 1.8 },
-}
-
-function calcMacroTargets(goal?: string, weightKg?: number | null) {
-  const ratio = PROTEIN_RATIO[goal ?? 'general'] ?? PROTEIN_RATIO['general']
-  const w = (weightKg && weightKg > 30 && weightKg < 250) ? weightKg : 75
-  const protein_g = Math.round(w * (ratio.min + ratio.max) / 2)
-  // Glucides et lipides : ratios standards (40% / 30% des kcal restantes)
-  const calories = Math.round(w * 30 + 300) // estimation maintenance
-  const carbs_g = Math.round((calories * 0.40) / 4)
-  const fat_g = Math.round((calories * 0.28) / 9)
-  return { protein_g, carbs_g, fat_g, calories }
-}
 
 export default function CheckinPage() {
   const [form, setForm] = useState<LogData>(EMPTY)
@@ -64,8 +46,12 @@ export default function CheckinPage() {
   const [error, setError] = useState<string | null>(null)
   const ewmaDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [profile, setProfile] = useState<{
-    goal?: string
+    goal?: string | null
     weight_kg?: number | null
+    height_cm?: number | null
+    age?: number | null
+    gender?: string | null
+    sessions_per_week?: number | null
     macro_mode?: string | null
     custom_calories?: number | null
     custom_protein_g?: number | null
@@ -84,7 +70,7 @@ export default function CheckinPage() {
       const [{ data: log }, { data: prof }] = await Promise.all([
         supabase.from('daily_logs').select('*').eq('user_id', user.id)
           .eq('log_date', new Date().toISOString().split('T')[0]).single(),
-        supabase.from('profiles').select('goal, weight_kg, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g').eq('id', user.id).single(),
+        supabase.from('profiles').select('goal, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g').eq('id', user.id).single(),
       ])
 
       if (prof) setProfile(prof)
@@ -175,8 +161,18 @@ export default function CheckinPage() {
     }
   }
 
-  // Cibles macros : custom si définies, sinon auto selon poids + objectif
-  const autoTarget = calcMacroTargets(profile?.goal, profile?.weight_kg)
+  // Cibles macros : custom si définies, sinon TDEE Mifflin-St Jeor + activité
+  const autoTarget = profile?.weight_kg
+    ? calcTDEESimple({
+        weight_kg: profile.weight_kg,
+        height_cm: profile.height_cm,
+        age: profile.age,
+        gender: profile.gender,
+        goal: profile.goal,
+        sessions_per_week: profile.sessions_per_week,
+      })
+    : { protein_g: 150, carbs_g: 200, fat_g: 70, calories: 2000 }
+
   const macroTarget = profile?.macro_mode === 'custom' && (profile.custom_protein_g || profile.custom_calories)
     ? {
         protein_g: profile.custom_protein_g ?? autoTarget.protein_g,

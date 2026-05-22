@@ -6,30 +6,11 @@ import { AlertBar } from '@/components/ui/AlertBar'
 import { StatCard } from '@/components/ui/StatCard'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { Dumbbell, TrendingUp, ClipboardList, MessageCircle } from 'lucide-react'
+import { calcBMR, calcStepsCalories, calcTrainingCalories, goalAdjustment, calcMacrosFromCalories } from '@/lib/utils/tdee'
 
 export const dynamic = 'force-dynamic'
 
 const SESSIONS_TARGET = 4
-
-// Fourchette protéines selon objectif (g/kg de poids de corps)
-// Sources : ISSN, ACSM, méta-analyses 2023
-const PROTEIN_RATIO: Record<string, { min: number; max: number }> = {
-  muscle_gain: { min: 1.8, max: 2.2 },
-  strength:    { min: 1.8, max: 2.2 },
-  weight_loss: { min: 1.8, max: 2.0 }, // élevé pour préserver le muscle en déficit
-  endurance:   { min: 1.2, max: 1.6 },
-  general:     { min: 1.4, max: 1.8 },
-}
-
-function calcProteinTarget(goal: string | null, weightKg: number | null): { min: number; max: number; mid: number } {
-  const ratio = PROTEIN_RATIO[goal ?? 'general'] ?? PROTEIN_RATIO['general']
-  const w = weightKg && weightKg > 30 && weightKg < 250 ? weightKg : 75 // fallback 75kg
-  return {
-    min: Math.round(w * ratio.min),
-    max: Math.round(w * ratio.max),
-    mid: Math.round(w * (ratio.min + ratio.max) / 2),
-  }
-}
 
 async function generateAIAlerts(
   logs: { log_date: string; sleep_deep_min: number | null; protein_g: number | null; fatigue_score: number | null; steps: number | null }[],
@@ -90,7 +71,7 @@ export default async function DashboardPage() {
     { data: weekLogs },
   ] = await Promise.all([
     supabase.from('profiles')
-      .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, macro_mode, custom_protein_g, custom_calories, steps_goal, target_weight_kg')
+      .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, height_cm, age, gender, macro_mode, custom_protein_g, custom_calories, steps_goal, target_weight_kg')
       .eq('id', user.id).single(),
 
     supabase.from('daily_logs').select('*')
@@ -169,10 +150,28 @@ export default async function DashboardPage() {
     }
   }
 
-  // Cible protéines : custom si définie, sinon auto selon poids + objectif
+  // TDEE Mifflin-St Jeor + NEAT depuis les logs (30j disponibles dans weekLogs)
+  // Sur le dashboard on utilise les 7 derniers jours disponibles pour les steps
+  const w = profile?.weight_kg ?? 75
+  const hasLogsWithSteps = (weekLogs ?? []).filter(l => l.steps != null).length >= 3
+  const avgSteps7d = hasLogsWithSteps
+    ? Math.round((weekLogs ?? []).filter(l => l.steps != null).reduce((a, l) => a + (l.steps ?? 0), 0) / (weekLogs ?? []).filter(l => l.steps != null).length)
+    : 0
+
+  const bmr = calcBMR(w, profile?.height_cm ?? 175, profile?.age ?? 30, profile?.gender ?? 'male')
+  const stepsKcal = hasLogsWithSteps ? calcStepsCalories(avgSteps7d) : 0
+  const trainKcal = calcTrainingCalories(0, profile?.sessions_per_week ?? 3) // tonnage inconnu côté dashboard
+  const tdeeCalc = hasLogsWithSteps
+    ? bmr + stepsKcal + trainKcal
+    : Math.round(bmr * (profile?.sessions_per_week ?? 3 >= 5 ? 1.725 : profile?.sessions_per_week ?? 3 >= 3 ? 1.55 : 1.375))
+
+  const targetCaloriesDash = Math.max(1200, tdeeCalc + goalAdjustment(profile?.goal ?? 'general'))
+  const autoMacros = calcMacrosFromCalories(targetCaloriesDash, w)
+
+  // Cible protéines : custom si définie, sinon TDEE auto
   const proteinTarget = profile?.macro_mode === 'custom' && profile?.custom_protein_g
     ? { min: profile.custom_protein_g, max: profile.custom_protein_g, mid: profile.custom_protein_g }
-    : calcProteinTarget(profile?.goal ?? null, profile?.weight_kg ?? null)
+    : { min: autoMacros.protein_g, max: autoMacros.protein_g, mid: autoMacros.protein_g }
 
   // Alertes statiques immédiates
   const staticAlerts: { type: 'red' | 'yellow' | 'green' | 'blue'; message: string; sub: string }[] = []
