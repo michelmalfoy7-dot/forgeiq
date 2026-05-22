@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { NutritionClient } from '@/components/nutrition/NutritionClient'
+import { calcTDEESimple } from '@/lib/utils/tdee'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,32 +21,32 @@ export default async function NutritionPage() {
       .order('created_at', { ascending: true }),
     supabase
       .from('profiles')
-      .select('goal, weight_kg, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g')
+      .select('goal, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g')
       .eq('id', user.id)
       .single(),
   ])
 
-  // Objectifs selon profil (mêmes ratios que le coach)
-  const PROTEIN_RATIO: Record<string, { min: number; max: number }> = {
-    muscle_gain: { min: 1.8, max: 2.2 },
-    strength:    { min: 1.8, max: 2.2 },
-    weight_loss: { min: 1.8, max: 2.0 },
-    endurance:   { min: 1.2, max: 1.6 },
-    general:     { min: 1.4, max: 1.8 },
-  }
+  // Objectifs nutritionnels via Mifflin-St Jeor + multiplicateur d'activité
   const w = (profile?.weight_kg && profile.weight_kg > 30 && profile.weight_kg < 250) ? profile.weight_kg : 75
-  const ratio = PROTEIN_RATIO[profile?.goal ?? 'general'] ?? PROTEIN_RATIO['general']
+  const autoMacros = calcTDEESimple({
+    weight_kg: w,
+    height_cm: profile?.height_cm,
+    age: profile?.age,
+    gender: profile?.gender,
+    goal: profile?.goal,
+    sessions_per_week: profile?.sessions_per_week,
+  })
 
   const targets = profile?.macro_mode === 'custom' && profile.custom_protein_g ? {
-    calories:  profile.custom_calories  ?? Math.round(w * 30 + 300),
+    calories:  profile.custom_calories  ?? autoMacros.calories,
     protein_g: profile.custom_protein_g,
-    carbs_g:   profile.custom_carbs_g   ?? Math.round((w * 30 + 300) * 0.40 / 4),
-    fat_g:     profile.custom_fat_g     ?? Math.round((w * 30 + 300) * 0.28 / 9),
+    carbs_g:   profile.custom_carbs_g   ?? autoMacros.carbs_g,
+    fat_g:     profile.custom_fat_g     ?? autoMacros.fat_g,
   } : {
-    calories:  Math.round(w * 30 + 300),
-    protein_g: Math.round(w * (ratio.min + ratio.max) / 2),
-    carbs_g:   Math.round((w * 30 + 300) * 0.40 / 4),
-    fat_g:     Math.round((w * 30 + 300) * 0.28 / 9),
+    calories:  autoMacros.calories,
+    protein_g: autoMacros.protein_g,
+    carbs_g:   autoMacros.carbs_g,
+    fat_g:     autoMacros.fat_g,
   }
 
   return (

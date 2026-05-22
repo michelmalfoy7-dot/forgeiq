@@ -185,7 +185,7 @@ export default async function DashboardPage() {
       staticAlerts.push({ type: 'yellow', message: '😴 Sommeil profond insuffisant', sub: `${deepSleep}min — réduis le volume d'entraînement de 15-20% aujourd'hui.` })
 
     if (protein !== null && protein < proteinTarget.min)
-      staticAlerts.push({ type: 'yellow', message: '🥩 Protéines en dessous de l\'objectif', sub: `${protein}g — objectif ${proteinTarget.min}-${proteinTarget.max}g · pense à une source supplémentaire.` })
+      staticAlerts.push({ type: 'yellow', message: '🥩 Protéines en dessous de l\'objectif', sub: `${protein}g — objectif ${proteinTarget.min}g · pense à une source supplémentaire.` })
 
     if (sysBP !== null && sysBP > 135)
       staticAlerts.push({ type: 'red', message: '🫀 Tension systolique élevée', sub: `${sysBP} mmHg — consulte un médecin si ça persiste.` })
@@ -254,7 +254,7 @@ export default async function DashboardPage() {
           label="Protéines"
           value={todayLog?.protein_g !== null && todayLog?.protein_g !== undefined ? `${todayLog.protein_g}` : '—'}
           unit={todayLog?.protein_g !== null && todayLog?.protein_g !== undefined ? 'g' : ''}
-          sub={`Objectif : ${proteinTarget.min}-${proteinTarget.max}g`}
+          sub={`Objectif : ${proteinTarget.min}g`}
           alert={!!todayLog?.protein_g && todayLog.protein_g < proteinTarget.min}
         />
         <StatCard
@@ -343,7 +343,7 @@ export default async function DashboardPage() {
           value={todayLog?.protein_g ?? 0}
           max={proteinTarget.max}
           color="var(--fiq-accent)"
-          label={`Protéines : ${todayLog?.protein_g ?? 0}g / ${proteinTarget.min}-${proteinTarget.max}g`}
+          label={`Protéines : ${todayLog?.protein_g ?? 0}g / ${proteinTarget.min}g`}
         />
         <ProgressBar
           value={todayLog?.steps ?? 0}

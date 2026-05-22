@@ -169,8 +169,8 @@ export function ProgressCharts({
             </p>
           </div>
 
-          {weeklyTonnage.length < 2 ? (
-            <EmptyState label="Complète quelques séances pour voir ton évolution de charge." />
+          {weeklyTonnage.length < 1 ? (
+            <EmptyState label="Complète ta première séance pour voir ton évolution de charge." />
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={weeklyTonnage} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>

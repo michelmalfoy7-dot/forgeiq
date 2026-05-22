@@ -60,6 +60,26 @@ export default function CheckinPage() {
   } | null>(null)
   const router = useRouter()
 
+  // Calcul EWMA dès que le poids change (déclaré avant le useEffect qui en dépend)
+  const fetchEwma = useCallback(async (weight: string) => {
+    if (!weight || isNaN(parseFloat(weight))) { setEwma(null); return }
+    setEwmaLoading(true)
+    try {
+      const res = await fetch('/api/ewma', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          weight_kg: parseFloat(weight),
+          log_date: new Date().toISOString().split('T')[0],
+        }),
+      })
+      const { data } = await res.json()
+      if (data?.weight_trend) setEwma(data.weight_trend)
+    } finally {
+      setEwmaLoading(false)
+    }
+  }, [])
+
   // Charger le log existant du jour
   useEffect(() => {
     async function loadToday() {
@@ -92,31 +112,15 @@ export default function CheckinPage() {
           motivation_score: log.motivation_score ?? 5,
           notes: log.notes ?? '',
         })
-        if (log.weight_trend) setEwma(log.weight_trend)
+        // Recalcule toujours l'EWMA depuis l'historique réel (ignore la valeur stockée
+        // qui peut être périmée si le check-in a été sauvegardé avec un poids différent)
+        if (log.weight_kg) {
+          fetchEwma(log.weight_kg.toString())
+        }
       }
     }
     loadToday()
-  }, [])
-
-  // Calcul EWMA dès que le poids change
-  const fetchEwma = useCallback(async (weight: string) => {
-    if (!weight || isNaN(parseFloat(weight))) { setEwma(null); return }
-    setEwmaLoading(true)
-    try {
-      const res = await fetch('/api/ewma', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          weight_kg: parseFloat(weight),
-          log_date: new Date().toISOString().split('T')[0],
-        }),
-      })
-      const { data } = await res.json()
-      if (data?.weight_trend) setEwma(data.weight_trend)
-    } finally {
-      setEwmaLoading(false)
-    }
-  }, [])
+  }, [fetchEwma])
 
   function set(key: keyof LogData, value: string | number) {
     setForm((prev) => ({ ...prev, [key]: value }))
