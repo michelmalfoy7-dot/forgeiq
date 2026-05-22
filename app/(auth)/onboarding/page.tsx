@@ -226,47 +226,54 @@ export default function OnboardingPage() {
 
     setLoading(true)
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      if (authError || !user) {
+        router.push('/login')
+        return
+      }
+
+      // maybeSingle() est safe : retourne null si aucun programme trouvé, sans erreur
+      let programId: string | null = null
+      if (slug && slug !== 'custom') {
+        const { data: program, error: progError } = await supabase
+          .from('programs')
+          .select('id')
+          .eq('slug', slug)
+          .maybeSingle()
+        if (progError) console.error('Erreur lecture programme:', progError.message)
+        programId = program?.id ?? null
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          goal: data.goal ?? 'general',
+          gender: data.gender ?? null,
+          weight_kg: data.weight_kg ?? null,
+          level: data.level ?? 'beginner',
+          equipment: data.equipment ?? 'full_gym',
+          sessions_per_week: data.sessions_per_week ?? 3,
+          current_program_id: programId,
+          onboarding_done: true,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' })
+
+      if (error) {
+        console.error('Onboarding upsert error:', error)
+        setFinishError('Une erreur est survenue. Réessaie.')
+        return
+      }
+
+      router.push('/dashboard')
+    } catch (err) {
+      console.error('Onboarding finish exception:', err)
+      setFinishError('Une erreur est survenue. Vérifie ta connexion et réessaie.')
+    } finally {
+      // Toujours débloquer le bouton, même en cas d'exception
       setLoading(false)
-      router.push('/login')
-      return
     }
-
-    let programId: string | null = null
-    if (slug && slug !== 'custom') {
-      const { data: program } = await supabase
-        .from('programs')
-        .select('id')
-        .eq('slug', slug)
-        .single()
-      programId = program?.id ?? null
-    }
-
-    const { error } = await supabase
-      .from('profiles')
-      .upsert({
-        id: user.id,
-        goal: data.goal ?? 'general',
-        gender: data.gender ?? null,
-        weight_kg: data.weight_kg ?? null,
-        level: data.level ?? 'beginner',
-        equipment: data.equipment ?? 'full_gym',
-        sessions_per_week: data.sessions_per_week ?? 3,
-        current_program_id: programId,
-        onboarding_done: true,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'id' })
-
-    setLoading(false)
-
-    if (error) {
-      console.error('Onboarding upsert error:', error)
-      setFinishError(`Erreur : ${error.message}. Réessaie.`)
-      return
-    }
-
-    router.push('/dashboard')
   }
 
   const progressPercent = (step / TOTAL_STEPS) * 100

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, LogOut, Trash2, Dumbbell, Trophy, Flame, BarChart2, ChevronRight, MessageCircle, Info } from 'lucide-react'
+import { Loader2, LogOut, Trash2, Dumbbell, Trophy, Flame, BarChart2, ChevronRight, MessageCircle, Info, Crown } from 'lucide-react'
 import type { TDEEBreakdown } from '@/lib/utils/tdee'
 
 type Profile = {
@@ -249,6 +249,23 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
           />
         </div>
       </div>
+
+      {/* Upgrade Pro */}
+      <Link
+        href="/pricing"
+        className="fiq-card flex items-center gap-4 transition-all"
+        style={{ background: '#B4FF4A10', borderColor: '#B4FF4A40' }}
+      >
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: '#B4FF4A20' }}>
+          <Crown className="w-5 h-5" style={{ color: 'var(--fiq-accent)' }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-black text-sm" style={{ color: 'var(--fiq-text)' }}>Passer à Pro</p>
+          <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>À partir de 4,99€/mois · Coach IA illimité</p>
+        </div>
+        <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
+      </Link>
 
       {/* Paramètres */}
       <div className="fiq-card space-y-4">
