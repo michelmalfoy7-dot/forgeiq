@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     }
 
     const res = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-3-5-sonnet-20241022', // Vision confirmée — claude-sonnet-4 ne supporte pas les images
       max_tokens: 800,
       messages: [
         {
@@ -135,6 +135,8 @@ Règles :
     })
   } catch (err) {
     console.error('Nutrition photo error:', err)
-    return NextResponse.json({ data: null, error: 'Erreur analyse photo' }, { status: 500 })
+    // Exposer le message réel pour faciliter le debug (à retirer en prod stable)
+    const detail = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ data: null, error: `Erreur analyse photo: ${detail}` }, { status: 500 })
   }
 }

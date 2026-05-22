@@ -113,7 +113,7 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown):
 Inclure 4-6 exercices adaptés à la séance "${sessionName}". weight_kg basé sur les PRs (environ 75-85% du PR). Si pas de PR disponible, mettre null.`
 
         const res = await anthropic.messages.create({
-          model: 'claude-haiku-4-5',
+          model: 'claude-3-haiku-20240307',
           max_tokens: 600,
           messages: [{ role: 'user', content: prompt }],
         })
