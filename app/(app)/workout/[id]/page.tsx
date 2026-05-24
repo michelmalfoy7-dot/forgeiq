@@ -92,40 +92,62 @@ export default function WorkoutSessionPage() {
         sessionStorage.removeItem(`workout-exercises-${workoutId}`)
         try {
           const suggested: { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[] = JSON.parse(stored)
-          const preloaded: ExerciseGroup[] = []
 
-          for (const s of suggested) {
-            const match = library.find((e) =>
-              (e.name_fr ?? '').toLowerCase() === s.name.toLowerCase() ||
-              e.name.toLowerCase() === s.name.toLowerCase()
-            )
-            if (!match) continue
+          // Résoudre les exercices en une seule passe (pas de requête ici)
+          const matches = suggested
+            .map((s) => ({
+              s,
+              match: library.find((e) =>
+                (e.name_fr ?? '').toLowerCase() === s.name.toLowerCase() ||
+                e.name.toLowerCase() === s.name.toLowerCase()
+              ),
+            }))
+            .filter((x): x is { s: typeof suggested[0]; match: Exercise } => x.match !== undefined)
 
-            let lastSession: { weight_kg: number; reps: number }[] = []
-            let pr: number | undefined
+          if (matches.length > 0) {
+            const matchIds = matches.map((x) => x.match.id)
 
-            const [{ data: lastSets }, { data: prData }] = await Promise.all([
-              supabase.from('workout_sets').select('weight_kg, reps, workout_id, workouts!inner(user_id)')
-                .eq('exercise_id', match.id).eq('workouts.user_id', user.id)
-                .not('is_warmup', 'eq', true).order('created_at', { ascending: false }).limit(4),
-              supabase.from('personal_records').select('value').eq('exercise_id', match.id)
-                .eq('user_id', user.id).eq('record_type', 'top_set').single(),
+            // Batch : 2 requêtes au lieu de 2N
+            const [{ data: allLastSets }, { data: allPRs }] = await Promise.all([
+              supabase.from('workout_sets')
+                .select('weight_kg, reps, exercise_id, workouts!inner(user_id)')
+                .in('exercise_id', matchIds)
+                .eq('workouts.user_id', user.id)
+                .not('is_warmup', 'eq', true)
+                .order('created_at', { ascending: false })
+                .limit(matchIds.length * 5),
+              supabase.from('personal_records')
+                .select('exercise_id, value')
+                .in('exercise_id', matchIds)
+                .eq('user_id', user.id)
+                .eq('record_type', 'top_set'),
             ])
 
-            lastSession = (lastSets ?? []).map((ls: { weight_kg: number; reps: number }) => ({ weight_kg: ls.weight_kg, reps: ls.reps }))
-            pr = prData?.value
-
-            const sets: SetRow[] = []
-            const count = s.sets ?? 3
-            const initWeight: number | '' = s.weight_kg ?? lastSession[0]?.weight_kg ?? ''
-            const initReps: number | '' = lastSession[0]?.reps ?? ''
-
-            for (let i = 0; i < count; i++) {
-              sets.push({ id: uid(), exercise_id: match.id, exercise_name: match.name_fr ?? match.name, set_number: i + 1, weight_kg: initWeight, reps: initReps, rpe: '', is_warmup: false })
+            // Grouper par exercise_id (max 4 sets par exercice)
+            const lastSetsByEx: Record<string, { weight_kg: number; reps: number }[]> = {}
+            for (const s of allLastSets ?? []) {
+              const exId = (s as { exercise_id: string }).exercise_id
+              if (!lastSetsByEx[exId]) lastSetsByEx[exId] = []
+              if (lastSetsByEx[exId].length < 4) lastSetsByEx[exId].push({ weight_kg: s.weight_kg, reps: s.reps })
             }
-            preloaded.push({ exercise_id: match.id, exercise_name: match.name_fr ?? match.name, sets, lastSession, pr })
+            const prByEx: Record<string, number> = {}
+            for (const pr of allPRs ?? []) prByEx[pr.exercise_id] = pr.value
+
+            const preloaded: ExerciseGroup[] = matches.map(({ s, match }) => {
+              const lastSession = lastSetsByEx[match.id] ?? []
+              const pr = prByEx[match.id]
+              const count = s.sets ?? 3
+              const initWeight: number | '' = s.weight_kg ?? lastSession[0]?.weight_kg ?? ''
+              const initReps: number | '' = lastSession[0]?.reps ?? ''
+              const sets: SetRow[] = Array.from({ length: count }, (_, i) => ({
+                id: uid(), exercise_id: match.id, exercise_name: match.name_fr ?? match.name,
+                set_number: i + 1, weight_kg: initWeight, reps: initReps, rpe: '', is_warmup: false,
+              }))
+              return { exercise_id: match.id, exercise_name: match.name_fr ?? match.name, sets, lastSession, pr }
+            })
+
+            if (preloaded.length > 0) setGroups(preloaded)
           }
-          if (preloaded.length > 0) setGroups(preloaded)
         } catch { /* Silencieux si parsing échoue */ }
       }
     }
@@ -331,7 +353,10 @@ export default function WorkoutSessionPage() {
 
           <Button
             className="w-full font-black py-5"
-            onClick={() => router.push('/dashboard')}
+            onClick={() => {
+              router.refresh()
+              router.push('/dashboard')
+            }}
             style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
           >
             Retour au dashboard
@@ -351,7 +376,18 @@ export default function WorkoutSessionPage() {
       >
         <div>
           <p className="font-bold text-sm" style={{ color: 'var(--fiq-text)' }}>{sessionName}</p>
-          <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>{formatTime(elapsed)}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>{formatTime(elapsed)}</p>
+            {/* Timer repos affiché dans le header = toujours visible même avec clavier ouvert */}
+            {restTimer !== null && (
+              <span
+                className="fiq-timer-pulse flex items-center gap-1 text-xs font-black px-2 py-0.5 rounded-full"
+                style={{ background: '#3D8BFF22', color: 'var(--fiq-blue)', border: '1px solid #3D8BFF44' }}
+              >
+                <Timer className="w-3 h-3" />{formatTime(restTimer)}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {totalTonnage > 0 && (
@@ -565,12 +601,31 @@ function ExerciseCard({
 
       {showHistory && group.lastSession && group.lastSession.length > 0 && (
         <div className="rounded-lg p-3 space-y-1" style={{ background: 'var(--fiq-faint)' }}>
-          <p className="fiq-label mb-2">Dernière fois</p>
-          {group.lastSession.map((s, i) => (
-            <p key={i} className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
-              Série {i + 1} : <strong style={{ color: 'var(--fiq-text)' }}>{s.weight_kg}kg × {s.reps}</strong>
-            </p>
-          ))}
+          <p className="fiq-label mb-2">Dernière séance</p>
+          {group.lastSession.map((s, i) => {
+            const current = group.sets[i]
+            const weightDiff = current && current.weight_kg !== '' ? Number(current.weight_kg) - s.weight_kg : null
+            const repsDiff = current && current.reps !== '' ? Number(current.reps) - s.reps : null
+            return (
+              <div key={i} className="flex items-center justify-between">
+                <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+                  Série {i + 1} : <strong style={{ color: 'var(--fiq-text)' }}>{s.weight_kg}kg × {s.reps}</strong>
+                </p>
+                {weightDiff !== null && weightDiff !== 0 && (
+                  <span className="text-xs font-bold"
+                    style={{ color: weightDiff > 0 ? 'var(--fiq-accent)' : 'var(--fiq-orange)' }}>
+                    {weightDiff > 0 ? '+' : ''}{weightDiff}kg
+                  </span>
+                )}
+                {weightDiff === 0 && repsDiff !== null && repsDiff !== 0 && (
+                  <span className="text-xs font-bold"
+                    style={{ color: repsDiff > 0 ? 'var(--fiq-accent)' : 'var(--fiq-orange)' }}>
+                    {repsDiff > 0 ? '+' : ''}{repsDiff} reps
+                  </span>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 

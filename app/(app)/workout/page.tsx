@@ -4,9 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { AlertBar } from '@/components/ui/AlertBar'
-import { Loader2, Plus, Dumbbell, ChevronRight, History } from 'lucide-react'
+import { Loader2, Plus, Dumbbell, ChevronRight, History, Moon, Bike } from 'lucide-react'
 import Link from 'next/link'
 
 type Exercise = {
@@ -33,6 +32,9 @@ export default function WorkoutPage() {
   const [suggestion, setSuggestion] = useState<SuggestedSession | null>(null)
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
+  const [loggingRest, setLoggingRest] = useState(false)
+  const [restLogged, setRestLogged] = useState(false)
+  const [showActivityModal, setShowActivityModal] = useState(false)
   const [recentWorkouts, setRecentWorkouts] = useState<{id: string; session_name: string; session_date: string; total_tonnage_kg: number}[]>([])
   const router = useRouter()
 
@@ -83,6 +85,37 @@ export default function WorkoutPage() {
     }
   }
 
+  // Enregistrer un jour de repos (workout complété immédiatement, 0 tonnage)
+  async function logRestDay() {
+    setLoggingRest(true)
+    try {
+      const startRes = await fetch('/api/workout/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_name: 'Jour de repos', program_id: null }),
+      })
+      const { data: startData } = await startRes.json()
+      if (!startData?.id) return
+
+      await fetch('/api/workout/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workout_id: startData.id, sets: [], notes: 'Repos', rpe_overall: null }),
+      })
+
+      setRestLogged(true)
+      setTimeout(() => setRestLogged(false), 3000)
+    } finally {
+      setLoggingRest(false)
+    }
+  }
+
+  // Démarrer une activité cardio / autre sport
+  async function startActivity(activityName: string) {
+    setShowActivityModal(false)
+    await startWorkout(activityName)
+  }
+
   const volumeColors = {
     reduce: 'var(--fiq-orange)',
     normal: 'var(--fiq-accent)',
@@ -97,8 +130,29 @@ export default function WorkoutPage() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--fiq-muted)' }} />
+        <div className="space-y-4">
+          {/* Skeleton branded — même structure que le vrai contenu */}
+          <div className="fiq-card space-y-4">
+            <div className="space-y-2">
+              <div className="fiq-shimmer h-3 w-28 rounded-xl" />
+              <div className="fiq-shimmer h-7 w-44 rounded-xl" />
+              <div className="fiq-shimmer h-3 w-36 rounded-xl" />
+            </div>
+            <div className="fiq-shimmer h-14 w-full rounded-2xl" />
+          </div>
+          <div className="fiq-shimmer h-16 w-full rounded-2xl" />
+          <div className="fiq-card space-y-3">
+            <div className="fiq-shimmer h-4 w-32 rounded-xl" />
+            {[0, 1, 2].map(i => (
+              <div key={i} className="flex justify-between pt-2" style={{ borderTop: '1px solid var(--fiq-border)' }}>
+                <div className="space-y-1.5">
+                  <div className="fiq-shimmer h-4 w-28 rounded-xl" />
+                  <div className="fiq-shimmer h-3 w-20 rounded-xl" />
+                </div>
+                <div className="fiq-shimmer h-5 w-16 rounded-xl" />
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <div className="space-y-4">
@@ -152,6 +206,79 @@ export default function WorkoutPage() {
             </div>
             <ChevronRight className="ml-auto w-4 h-4" style={{ color: 'var(--fiq-muted)' }} />
           </button>
+
+          {/* Autre activité */}
+          <button
+            onClick={() => setShowActivityModal(true)}
+            disabled={starting}
+            className="w-full fiq-card flex items-center gap-3 text-left transition-all"
+          >
+            <Bike className="w-5 h-5" style={{ color: 'var(--fiq-blue)' }} />
+            <div>
+              <p className="font-semibold text-sm" style={{ color: 'var(--fiq-text)' }}>Autre activité</p>
+              <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Cardio, sport, natation…</p>
+            </div>
+            <ChevronRight className="ml-auto w-4 h-4" style={{ color: 'var(--fiq-muted)' }} />
+          </button>
+
+          {/* Jour de repos */}
+          <button
+            onClick={logRestDay}
+            disabled={loggingRest || restLogged}
+            className="w-full fiq-card flex items-center gap-3 text-left transition-all"
+          >
+            {loggingRest
+              ? <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--fiq-muted)' }} />
+              : <Moon className="w-5 h-5" style={{ color: restLogged ? 'var(--fiq-accent)' : 'var(--fiq-muted)' }} />
+            }
+            <div>
+              <p className="font-semibold text-sm" style={{ color: 'var(--fiq-text)' }}>
+                {restLogged ? '✓ Repos enregistré !' : 'Jour de repos'}
+              </p>
+              <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+                {restLogged ? 'Ta récupération compte aussi' : 'Noter un jour sans entraînement'}
+              </p>
+            </div>
+          </button>
+
+          {/* Modal activités */}
+          {showActivityModal && (
+            <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(0,0,0,0.6)' }}>
+              <div
+                className="w-full max-w-lg mx-auto rounded-t-3xl p-6 space-y-4"
+                style={{ background: 'var(--surface)', borderTop: '1px solid var(--fiq-border)' }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>Choisir une activité</h3>
+                  <button onClick={() => setShowActivityModal(false)} style={{ color: 'var(--fiq-muted)' }}>✕</button>
+                </div>
+                {[
+                  { name: 'Vélo / Cyclisme', emoji: '🚴' },
+                  { name: 'Course à pied', emoji: '🏃' },
+                  { name: 'Natation', emoji: '🏊' },
+                  { name: 'Yoga / Pilates', emoji: '🧘' },
+                  { name: 'Randonnée', emoji: '🥾' },
+                  { name: 'Football', emoji: '⚽' },
+                  { name: 'Tennis', emoji: '🎾' },
+                  { name: 'Combat / Boxe', emoji: '🥊' },
+                  { name: 'Stretching', emoji: '🤸' },
+                  { name: 'Autre sport', emoji: '🏅' },
+                ].map((act) => (
+                  <button
+                    key={act.name}
+                    onClick={() => startActivity(act.name)}
+                    disabled={starting}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-all"
+                    style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}
+                  >
+                    <span className="text-xl">{act.emoji}</span>
+                    <span className="font-semibold text-sm" style={{ color: 'var(--fiq-text)' }}>{act.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
 
           {/* Historique récent */}
           {recentWorkouts.length > 0 && (

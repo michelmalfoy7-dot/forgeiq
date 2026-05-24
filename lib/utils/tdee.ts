@@ -20,14 +20,59 @@ export type TDEEMacros = {
 export type TDEEBreakdown = {
   bmr: number             // Métabolisme de base Mifflin-St Jeor
   stepsCalories: number   // Calories steps (avgSteps × 0.04)
-  trainingCalories: number // Calories entraînement par jour
-  tdee: number            // TDEE total = BMR + steps + training
+  trainingCalories: number // Calories entraînement musculaire par jour
+  cardioCalories: number  // Calories cardio (MET × poids × durée) par jour
+  tdee: number            // TDEE total = BMR + steps + training + cardio
   adjustment: number      // Ajustement objectif (+250 masse, -350 sèche)
   targetCalories: number  // Calories cibles = TDEE + adjustment
   macros: TDEEMacros
   hasEnoughData: boolean  // ≥ 7 jours de daily_logs avec steps
   avgStepsPerDay: number
   logsCount: number
+}
+
+// ── Activités cardio — MET (Metabolic Equivalent of Task) ─────
+// Source : Ainsworth BE et al., Compendium of Physical Activities, Med Sci Sports Exerc 2011
+
+/** Map keyword (nom session) → valeur MET scientifique */
+export const CARDIO_ACTIVITY_KEYWORDS: Record<string, number> = {
+  'vélo':       8.0,
+  'cyclisme':   8.0,
+  'course':     9.8,
+  'natation':   8.0,
+  'yoga':       3.0,
+  'pilates':    3.0,
+  'randonnée':  6.0,
+  'football':   8.0,
+  'tennis':     7.3,
+  'combat':     9.5,
+  'boxe':       9.5,
+  'stretching': 2.5,
+}
+
+// MET par défaut pour les activités non reconnues
+const DEFAULT_MET = 6.0
+
+/** Retourne le MET correspondant au nom de session (recherche par mot-clé) */
+export function getActivityMET(sessionName: string): number {
+  const lower = sessionName.toLowerCase()
+  for (const [keyword, met] of Object.entries(CARDIO_ACTIVITY_KEYWORDS)) {
+    if (lower.includes(keyword)) return met
+  }
+  return DEFAULT_MET
+}
+
+/**
+ * Calcule les calories brûlées pour une session cardio
+ * Formule MET standard : kcal = MET × poids_kg × durée_h
+ */
+export function calcCardioCalories(
+  sessionName: string,
+  durationMin: number,
+  weightKg: number
+): number {
+  const met = getActivityMET(sessionName)
+  return Math.round(met * weightKg * (durationMin / 60))
 }
 
 // ── Fonctions pures ───────────────────────────────────────────
@@ -116,30 +161,33 @@ export function buildTDEEBreakdown(params: {
   sessionsPerWeek: number
   avgStepsPerDay: number
   avgTonnagePerSession: number
+  avgCardioCaloriesPerDay: number
   hasEnoughData: boolean
   logsCount: number
 }): TDEEBreakdown {
   const {
     weight_kg, height_cm, age, gender, goal,
     sessionsPerWeek, avgStepsPerDay, avgTonnagePerSession,
-    hasEnoughData, logsCount,
+    avgCardioCaloriesPerDay, hasEnoughData, logsCount,
   } = params
 
   const bmr = calcBMR(weight_kg, height_cm, age, gender)
   const trainingCalories = calcTrainingCalories(avgTonnagePerSession, sessionsPerWeek)
+  // Cardio lissé sur 30 jours — indépendant du flag hasEnoughData
+  const cardioCalories = Math.round(avgCardioCaloriesPerDay)
 
   let stepsCalories = 0
   let tdee: number
 
   if (hasEnoughData) {
     stepsCalories = calcStepsCalories(avgStepsPerDay)
-    tdee = bmr + stepsCalories + trainingCalories
+    tdee = bmr + stepsCalories + trainingCalories + cardioCalories
   } else {
-    // Fallback multiplicateur classique
+    // Fallback multiplicateur classique + cardio si disponible
     const multiplier =
       sessionsPerWeek >= 5 ? 1.725 :
       sessionsPerWeek >= 3 ? 1.55  : 1.375
-    tdee = Math.round(bmr * multiplier)
+    tdee = Math.round(bmr * multiplier) + cardioCalories
   }
 
   const adjustment = goalAdjustment(goal)
@@ -150,6 +198,7 @@ export function buildTDEEBreakdown(params: {
     bmr,
     stepsCalories: hasEnoughData ? stepsCalories : 0,
     trainingCalories,
+    cardioCalories,
     tdee,
     adjustment,
     targetCalories,

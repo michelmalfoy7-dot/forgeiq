@@ -1,5 +1,5 @@
 {
-  "name": "ForgeIQ",
+  "name": "ForgeIQ — Build smarter. Lift harder.",
   "short_name": "ForgeIQ",
   "description": "Ton coach IA fitness — Entraînement, nutrition, progression.",
   "start_url": "/dashboard",
@@ -8,6 +8,8 @@
   "background_color": "#0A0C0F",
   "theme_color": "#0A0C0F",
   "orientation": "portrait",
+  "lang": "fr",
+  "categories": ["health", "fitness", "sports"],
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -40,6 +42,27 @@
       "purpose": "any"
     }
   ],
-  "categories": ["health", "fitness", "sports"],
-  "lang": "fr"
+  "shortcuts": [
+    {
+      "name": "Démarrer une séance",
+      "short_name": "Séance",
+      "description": "Logger une séance d'entraînement",
+      "url": "/workout",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Check-in du jour",
+      "short_name": "Check-in",
+      "description": "Remplir ton bilan quotidien",
+      "url": "/checkin",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Coach IA",
+      "short_name": "Coach",
+      "description": "Poser une question à ton coach",
+      "url": "/coach",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
 }

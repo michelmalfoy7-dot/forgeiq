@@ -2,7 +2,9 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
-import { ChevronDown, ChevronUp, Dumbbell, Trophy, Calendar, ArrowLeft } from 'lucide-react'
+import { ChevronDown, ChevronUp, Dumbbell, Trophy, Calendar, ArrowLeft, ChevronDown as LoadMore } from 'lucide-react'
+
+const PAGE_SIZE = 20
 
 type WorkoutSet = {
   id: string
@@ -198,7 +200,10 @@ function WorkoutCard({ workout }: { workout: Workout }) {
 }
 
 export function WorkoutHistoryClient({ workouts }: Props) {
-  const months = useMemo(() => groupByMonth(workouts), [workouts])
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const visibleWorkouts = workouts.slice(0, visibleCount)
+  const hasMore = visibleCount < workouts.length
+  const months = useMemo(() => groupByMonth(visibleWorkouts), [visibleWorkouts])
 
   if (workouts.length === 0) {
     return (
@@ -285,6 +290,18 @@ export function WorkoutHistoryClient({ workouts }: Props) {
           </div>
         </div>
       ))}
+
+      {/* Bouton "Voir plus" */}
+      {hasMore && (
+        <button
+          onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+          className="w-full py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold"
+          style={{ border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)', background: 'transparent' }}
+        >
+          <LoadMore className="w-4 h-4" />
+          Voir {Math.min(PAGE_SIZE, workouts.length - visibleCount)} séance{Math.min(PAGE_SIZE, workouts.length - visibleCount) > 1 ? 's' : ''} de plus
+        </button>
+      )}
     </div>
   )
 }

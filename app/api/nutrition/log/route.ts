@@ -29,8 +29,20 @@ export async function POST(req: NextRequest) {
 
     if (!food_name) return NextResponse.json({ data: null, error: 'Nom aliment manquant' }, { status: 400 })
 
+    // Validation des inputs numériques
+    const qty = Number(quantity_g)
+    if (!qty || qty <= 0 || qty > 10000) {
+      return NextResponse.json({ data: null, error: 'Quantité invalide (1–10 000g)' }, { status: 400 })
+    }
+    if (calories_per_100g != null && (Number(calories_per_100g) < 0 || Number(calories_per_100g) > 900)) {
+      return NextResponse.json({ data: null, error: 'Calories invalides (max 900 kcal/100g)' }, { status: 400 })
+    }
+    if (protein_per_100g != null && (Number(protein_per_100g) < 0 || Number(protein_per_100g) > 100)) {
+      return NextResponse.json({ data: null, error: 'Protéines invalides (0–100g/100g)' }, { status: 400 })
+    }
+
     // Calculer les macros pour la quantité saisie
-    const ratio = quantity_g / 100
+    const ratio = qty / 100
     const entry = {
       user_id: user.id,
       log_date,

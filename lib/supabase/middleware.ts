@@ -29,8 +29,8 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
-  // Routes totalement publiques (landing + auth + reset mdp)
-  const publicRoutes = ['/', '/login', '/register', '/auth/callback', '/auth/confirm', '/auth/reset', '/onboarding', '/forgot-password']
+  // Routes totalement publiques (landing + auth + install PWA + pages marketing)
+  const publicRoutes = ['/', '/login', '/register', '/auth/callback', '/auth/confirm', '/auth/reset', '/onboarding', '/forgot-password', '/install', '/pricing']
   const isPublicRoute = publicRoutes.some((route) =>
     pathname === route || pathname.startsWith(route + '/')
   )

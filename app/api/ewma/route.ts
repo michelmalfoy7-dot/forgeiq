@@ -26,15 +26,16 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
 
-    // Récupérer le dernier trend connu
+    // Récupérer le dernier trend connu (.maybeSingle évite l'erreur PGRST116 si aucun log)
     const { data: lastLog } = await supabase
       .from('daily_logs')
       .select('weight_trend')
       .eq('user_id', user.id)
       .lt('log_date', log_date)
+      .not('weight_trend', 'is', null)
       .order('log_date', { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     const previousTrend = lastLog?.weight_trend ?? null
     const weight_trend = calculateEWMA(previousTrend, weight_kg)

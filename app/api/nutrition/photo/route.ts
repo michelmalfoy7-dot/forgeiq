@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     }
 
     const res = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5', // vision + text — seul modele accessible avec cette cle API
+      model: 'claude-sonnet-4-20250514', // vision + analyse macros
       max_tokens: 800,
       messages: [
         {

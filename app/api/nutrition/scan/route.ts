@@ -45,20 +45,29 @@ export async function GET(req: NextRequest) {
     const p = offData.product
     const n = p.nutriments ?? {}
 
+    // Open Food Facts a des noms de champs inconsistants selon les produits
+    // On essaie toutes les variantes connues
+    const kcal =
+      n['energy-kcal_100g'] ?? n['energy-kcal'] ??
+      n['energy_kcal_100g'] ?? n['energy_kcal'] ??
+      // Fallback kJ → kcal (1 kcal ≈ 4.184 kJ)
+      (n['energy_100g'] ? Math.round(n['energy_100g'] / 4.184) : null) ??
+      (n['energy-kj_100g'] ? Math.round(n['energy-kj_100g'] / 4.184) : null) ?? null
+
     const food = {
-      name:      p.product_name ?? p.product_name_fr ?? 'Produit inconnu',
+      name:      p.product_name_fr ?? p.product_name ?? 'Produit inconnu',
       name_fr:   p.product_name_fr ?? p.product_name ?? null,
       brand:     p.brands ?? null,
       barcode,
-      calories:  n['energy-kcal_100g'] ?? n['energy-kcal'] ?? null,
-      protein_g: n.proteins_100g ?? null,
-      carbs_g:   n.carbohydrates_100g ?? null,
-      fat_g:     n.fat_100g ?? null,
-      fiber_g:   n.fiber_100g ?? null,
-      sugar_g:   n.sugars_100g ?? null,
-      sodium_mg: n.sodium_100g ? n.sodium_100g * 1000 : null,
+      calories:  kcal,
+      protein_g: n.proteins_100g ?? n.protein_100g ?? n['proteins-dry-matter_100g'] ?? null,
+      carbs_g:   n.carbohydrates_100g ?? n.carbohydrate_100g ?? null,
+      fat_g:     n.fat_100g ?? n.fats_100g ?? null,
+      fiber_g:   n.fiber_100g ?? n.fibers_100g ?? null,
+      sugar_g:   n.sugars_100g ?? n.sugar_100g ?? null,
+      sodium_mg: n.sodium_100g ? Math.round(n.sodium_100g * 1000) : null,
       source:    'openfoodfacts' as const,
-      image_url: p.image_url ?? null,
+      image_url: p.image_front_url ?? p.image_url ?? null,
     }
 
     // 3. Mettre en cache dans foods_library

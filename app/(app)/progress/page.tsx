@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { ProgressCharts } from '@/components/progress/ProgressCharts'
+import { ProgressChartsLazy as ProgressCharts } from '@/components/progress/ProgressChartsLazy'
 
 export const dynamic = 'force-dynamic'
 

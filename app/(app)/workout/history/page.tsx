@@ -9,7 +9,7 @@ export default async function WorkoutHistoryPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Charger les 50 dernières séances avec leurs sets
+  // Charger les 100 dernières séances avec leurs sets (pagination côté client par 20)
   const { data: workouts } = await supabase
     .from('workouts')
     .select(`
@@ -22,7 +22,7 @@ export default async function WorkoutHistoryPage() {
     .eq('user_id', user.id)
     .not('completed_at', 'is', null)
     .order('session_date', { ascending: false })
-    .limit(50)
+    .limit(100)
 
   return (
     <div className="p-4 max-w-lg mx-auto pb-24">

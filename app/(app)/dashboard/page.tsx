@@ -33,7 +33,7 @@ async function generateAIAlerts(
     ).join('\n')
 
     const res = await anthropic.messages.create({
-      model: 'claude-haiku-4-5',
+      model: 'claude-haiku-4-20250514',
       max_tokens: 400,
       messages: [{
         role: 'user',
@@ -68,6 +68,7 @@ export default async function DashboardPage() {
 
   const today = new Date().toISOString().split('T')[0]
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]
 
   const [
     { data: profile },
@@ -95,7 +96,7 @@ export default async function DashboardPage() {
     supabase.from('daily_logs')
       .select('log_date, sleep_deep_min, protein_g, fatigue_score, steps')
       .eq('user_id', user.id)
-      .gte('log_date', sevenDaysAgo)
+      .gte('log_date', thirtyDaysAgo)
       .order('log_date', { ascending: false }),
   ])
 
@@ -226,6 +227,10 @@ export default async function DashboardPage() {
   // Fusionner alertes (statiques d'abord, puis IA si pas de doublon)
   const allAlerts = [...staticAlerts, ...aiAlerts].slice(0, 4)
 
+  // Calcul du streak (jours consécutifs de check-in)
+  const checkInDates = (weekLogs ?? []).map((l) => l.log_date)
+  const streak = calcStreak(checkInDates)
+
   const prenom = profile?.display_name?.split(' ')[0] ?? 'Athlete'
   const sessionsThisWeek = weekWorkouts?.length ?? 0
   const sessionsTarget = profile?.sessions_per_week ?? SESSIONS_TARGET
@@ -242,6 +247,14 @@ export default async function DashboardPage() {
           <h1 className="text-2xl fiq-display mt-0.5" style={{ color: 'var(--fiq-text)' }}>
             {prenom} 👋
           </h1>
+          {streak >= 2 && (
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="text-sm">🔥</span>
+              <span className="text-xs font-bold" style={{ color: 'var(--fiq-orange)' }}>
+                {streak} jours d&apos;affilée
+              </span>
+            </div>
+          )}
         </div>
         <Link href="/profile" className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-black"
           style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
@@ -263,6 +276,7 @@ export default async function DashboardPage() {
           value={todayLog?.weight_trend ? `${todayLog.weight_trend}` : '—'}
           unit={todayLog?.weight_trend ? 'kg' : ''}
           sub={todayLog?.weight_kg ? `Brut : ${todayLog.weight_kg}kg` : 'Non renseigné'}
+          accent={!!todayLog?.weight_trend}
           trend={todayLog?.weight_trend && todayLog?.weight_kg
             ? todayLog.weight_kg > todayLog.weight_trend ? 'up' : todayLog.weight_kg < todayLog.weight_trend ? 'down' : 'flat'
             : undefined}
@@ -273,6 +287,7 @@ export default async function DashboardPage() {
           unit={todayLog?.sleep_deep_min !== null && todayLog?.sleep_deep_min !== undefined ? 'min' : ''}
           sub={todayLog?.sleep_total_min ? `Total : ${Math.round(todayLog.sleep_total_min / 60)}h` : 'Non renseigné'}
           alert={!!todayLog?.sleep_deep_min && todayLog.sleep_deep_min < 60}
+          accent={!!todayLog?.sleep_deep_min && todayLog.sleep_deep_min >= 60}
         />
         <StatCard
           label="Protéines"
@@ -280,12 +295,14 @@ export default async function DashboardPage() {
           unit={todayLog?.protein_g !== null && todayLog?.protein_g !== undefined ? 'g' : ''}
           sub={`Objectif : ${proteinTarget.min}g`}
           alert={!!todayLog?.protein_g && todayLog.protein_g < proteinTarget.min}
+          accent={!!todayLog?.protein_g && todayLog.protein_g >= proteinTarget.min}
         />
         <StatCard
           label="Pas"
           value={todayLog?.steps ? todayLog.steps.toLocaleString('fr-FR') : '—'}
           sub={`Objectif : ${stepsTarget.toLocaleString('fr-FR')}`}
           alert={!!todayLog?.steps && todayLog.steps < stepsTarget * 0.5}
+          accent={!!todayLog?.steps && todayLog.steps >= stepsTarget}
         />
       </div>
 
@@ -421,6 +438,26 @@ export default async function DashboardPage() {
       </div>
     </div>
   )
+}
+
+// Calcule le nombre de jours consécutifs de check-in (streak)
+function calcStreak(dates: string[]): number {
+  if (!dates.length) return 0
+  const unique = [...new Set(dates)].sort().reverse()
+  const today = new Date().toISOString().split('T')[0]
+  let streak = 0
+  let expected = today
+  for (const d of unique) {
+    if (d === expected) {
+      streak++
+      const prev = new Date(expected)
+      prev.setDate(prev.getDate() - 1)
+      expected = prev.toISOString().split('T')[0]
+    } else {
+      break
+    }
+  }
+  return streak
 }
 
 function getWeekStart() {

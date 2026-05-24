@@ -21,7 +21,7 @@ export async function GET() {
       { data: topPRs },
     ] = await Promise.all([
       supabase.from('profiles')
-        .select('current_program_id, sessions_per_week, goal, level')
+        .select('current_program_id, sessions_per_week, goal, level, weight_kg')
         .eq('id', user.id).single(),
       supabase.from('daily_logs')
         .select('sleep_deep_min, fatigue_score, weight_trend')
@@ -63,21 +63,30 @@ export async function GET() {
       }
     }
 
-    // Volume adaptation basique
+    // Volume adaptation — sommeil, fatigue ET tendance poids (perte rapide = récupération diminuée)
     let volumeAdjustment: 'reduce' | 'normal' | 'increase' = 'normal'
-    let adjustmentReason = ''
+    const adjustmentReasons: string[] = []
 
     if (todayLog) {
       const deepSleep = todayLog.sleep_deep_min ?? 90
       const fatigue = todayLog.fatigue_score ?? 5
-      if (deepSleep < 60 || fatigue >= 8) {
+      const weightTrend = todayLog.weight_trend ?? null
+
+      if (deepSleep < 60) adjustmentReasons.push('Sommeil profond insuffisant')
+      if (fatigue >= 8) adjustmentReasons.push('Fatigue élevée')
+      // Perte de poids > 0.5kg/semaine = catabolisme potentiel → volume réduit
+      if (weightTrend !== null && profile?.weight_kg && profile.weight_kg - weightTrend > 0.5) {
+        adjustmentReasons.push('Perte de poids rapide')
+      }
+
+      if (adjustmentReasons.length > 0) {
         volumeAdjustment = 'reduce'
-        adjustmentReason = deepSleep < 60 ? 'Sommeil profond insuffisant' : 'Fatigue élevée'
       } else if (deepSleep > 90 && fatigue <= 4) {
         volumeAdjustment = 'increase'
-        adjustmentReason = 'Récupération optimale'
+        adjustmentReasons.push('Récupération optimale')
       }
     }
+    const adjustmentReason = adjustmentReasons.join(' · ')
 
     // Générer la raison narrative avec Claude (non-bloquant si pas de clé)
     let adaptationReason = adjustmentReason || 'Récupération normale'
@@ -113,14 +122,21 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown):
 Inclure 4-6 exercices adaptés à la séance "${sessionName}". weight_kg basé sur les PRs (environ 75-85% du PR). Si pas de PR disponible, mettre null.`
 
         const res = await anthropic.messages.create({
-          model: 'claude-haiku-4-5',
+          model: 'claude-haiku-4-20250514',
           max_tokens: 600,
           messages: [{ role: 'user', content: prompt }],
         })
 
         const raw = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
-        const parsed = JSON.parse(raw)
-        if (parsed.reason) adaptationReason = parsed.reason
+        // JSON.parse avec fallback regex si Claude ajoute du markdown
+        let parsed: Record<string, unknown>
+        try {
+          parsed = JSON.parse(raw)
+        } catch {
+          const m = raw.match(/\{[\s\S]*\}/)
+          parsed = m ? JSON.parse(m[0]) : {}
+        }
+        if (parsed.reason && typeof parsed.reason === 'string') adaptationReason = parsed.reason
         if (Array.isArray(parsed.exercises)) aiExercises = parsed.exercises
       } catch {
         // Fallback silencieux si Claude échoue
