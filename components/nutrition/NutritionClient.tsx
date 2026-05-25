@@ -859,34 +859,43 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
   }
 
   async function logRecipe() {
-    if (!selectedRecipe?.recipe_ingredients) return
+    if (!selectedRecipe) return
     setAdding(true)
     try {
-      for (const ingr of selectedRecipe.recipe_ingredients) {
-        const scaledQty = (ingr.quantity_g / selectedRecipe.total_servings) * recipePortions
-        const payload = {
-          log_date: today,
-          meal_type: mealType,
-          food_id: ingr.food_id ?? null,
-          food_name: ingr.food_name,
-          quantity_g: Math.round(scaledQty * 10) / 10,
-          calories_per_100g: ingr.calories_per_100g,
-          protein_per_100g: ingr.protein_per_100g,
-          carbs_per_100g: ingr.carbs_per_100g,
-          fat_per_100g: ingr.fat_per_100g,
-          fiber_per_100g: ingr.fiber_per_100g,
-          source: 'recipe',
-          ai_note: `${selectedRecipe.name} (${recipePortions} portion${recipePortions > 1 ? 's' : ''})`,
-        }
-        const res = await fetch('/api/nutrition/log', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        const { data } = await res.json()
-        if (data) onAdded(data)
+      // Logger la recette comme UN seul aliment en utilisant les macros par portion
+      // quantity_g = recipePortions * 100 (astuce: 100 = 1 portion)
+      // → calories affichées = (recipePortions*100)/100 * cal_per_serving = recipePortions * cal_per_serving ✓
+      const portionLabel = recipePortions === 1
+        ? '1 portion'
+        : `${recipePortions} portion${recipePortions > 1 ? 's' : ''}`
+
+      const payload = {
+        log_date: today,
+        meal_type: mealType,
+        food_id: null,
+        food_name: selectedRecipe.name,
+        quantity_g: recipePortions * 100,
+        calories_per_100g: selectedRecipe.calories_per_serving ?? null,
+        protein_per_100g: selectedRecipe.protein_per_serving ?? null,
+        carbs_per_100g: selectedRecipe.carbs_per_serving ?? null,
+        fat_per_100g: selectedRecipe.fat_per_serving ?? null,
+        fiber_per_100g: selectedRecipe.fiber_per_serving ?? null,
+        source: 'recipe',
+        ai_note: portionLabel,
       }
-      onClose()
+
+      const res = await fetch('/api/nutrition/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const { data, error } = await res.json()
+      if (data) {
+        onAdded(data)
+        onClose()
+      } else {
+        console.error('Erreur ajout recette:', error)
+      }
     } finally {
       setAdding(false)
     }

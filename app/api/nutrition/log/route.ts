@@ -31,14 +31,16 @@ export async function POST(req: NextRequest) {
 
     // Validation des inputs numériques
     const qty = Number(quantity_g)
-    if (!qty || qty <= 0 || qty > 10000) {
-      return NextResponse.json({ data: null, error: 'Quantité invalide (1–10 000g)' }, { status: 400 })
+    if (!qty || qty <= 0 || qty > 100000) {
+      return NextResponse.json({ data: null, error: 'Quantité invalide' }, { status: 400 })
     }
-    if (calories_per_100g != null && (Number(calories_per_100g) < 0 || Number(calories_per_100g) > 900)) {
-      return NextResponse.json({ data: null, error: 'Calories invalides (max 900 kcal/100g)' }, { status: 400 })
+    // Pas de validation stricte sur les macros car les recettes peuvent avoir des valeurs élevées
+    // (ex: 1200 kcal/portion = recipePortions * 100g → 1200 kcal/100g dans le payload)
+    if (calories_per_100g != null && (Number(calories_per_100g) < 0 || Number(calories_per_100g) > 50000)) {
+      return NextResponse.json({ data: null, error: 'Calories invalides' }, { status: 400 })
     }
-    if (protein_per_100g != null && (Number(protein_per_100g) < 0 || Number(protein_per_100g) > 100)) {
-      return NextResponse.json({ data: null, error: 'Protéines invalides (0–100g/100g)' }, { status: 400 })
+    if (protein_per_100g != null && (Number(protein_per_100g) < 0 || Number(protein_per_100g) > 10000)) {
+      return NextResponse.json({ data: null, error: 'Protéines invalides' }, { status: 400 })
     }
 
     // Calculer les macros pour la quantité saisie
