@@ -1077,7 +1077,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
             </div>
 
             <button
-              onClick={() => setMode('search')}
+              onClick={() => { setMode('search'); loadFavorites() }}
               className="flex items-center gap-4 p-4 rounded-2xl text-left transition-all"
               style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
             >
@@ -1543,32 +1543,84 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
               style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
             />
 
+            {/* Aliments fréquents — affichés quand la recherche est vide */}
+            {!searchQuery && favorites.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-[10px] fiq-label px-1">Fréquents</p>
+                <div className="space-y-1 max-h-[42vh] overflow-y-auto pb-2">
+                  {[...favorites]
+                    .sort((a, b) => (b.use_count ?? 0) - (a.use_count ?? 0))
+                    .slice(0, 8)
+                    .map(fav => (
+                      <button
+                        key={fav.id}
+                        onClick={() => {
+                          setSelectedFood({
+                            id: fav.food_id ?? null,
+                            name: fav.food_name,
+                            name_fr: fav.food_name,
+                            brand: fav.brand ?? null,
+                            calories: fav.calories_per_100g ?? null,
+                            protein_g: fav.protein_per_100g ?? null,
+                            carbs_g: fav.carbs_per_100g ?? null,
+                            fat_g: fav.fat_per_100g ?? null,
+                            fiber_g: null,
+                            barcode: null,
+                          })
+                          setMode('confirm')
+                        }}
+                        className="w-full text-left px-3 py-2.5 rounded-xl transition-all"
+                        style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
+                      >
+                        <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>
+                          {fav.food_name}
+                          {fav.use_count > 1 && (
+                            <span className="ml-1.5 text-[10px] font-normal" style={{ color: 'var(--fiq-muted)' }}>
+                              ×{fav.use_count}
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                          {fav.brand && `${fav.brand} · `}
+                          {fav.calories_per_100g ? `${Math.round(fav.calories_per_100g)} kcal` : ''}
+                          {fav.protein_per_100g ? ` · ${Math.round(fav.protein_per_100g)}g prot.` : ''}
+                          {' pour 100g'}
+                        </p>
+                      </button>
+                    ))
+                  }
+                </div>
+              </div>
+            )}
+
             {searchLoading && (
               <div className="flex justify-center py-4">
                 <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--fiq-muted)' }} />
               </div>
             )}
 
-            <div className="space-y-1 max-h-[42vh] overflow-y-auto pb-2">
-              {searchResults.map((f, i) => (
-                <button
-                  key={i}
-                  onClick={() => { setSelectedFood(f); setMode('confirm') }}
-                  className="w-full text-left px-3 py-2.5 rounded-xl transition-all"
-                  style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
-                >
-                  <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>
-                    {f.name_fr ?? f.name}
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
-                    {f.brand && `${f.brand} · `}
-                    {f.calories ? `${Math.round(f.calories)} kcal` : ''}
-                    {f.protein_g ? ` · ${Math.round(f.protein_g)}g prot.` : ''}
-                    {' pour 100g'}
-                  </p>
-                </button>
-              ))}
-            </div>
+            {searchQuery && (
+              <div className="space-y-1 max-h-[42vh] overflow-y-auto pb-2">
+                {searchResults.map((f, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { setSelectedFood(f); setMode('confirm') }}
+                    className="w-full text-left px-3 py-2.5 rounded-xl transition-all"
+                    style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
+                  >
+                    <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>
+                      {f.name_fr ?? f.name}
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                      {f.brand && `${f.brand} · `}
+                      {f.calories ? `${Math.round(f.calories)} kcal` : ''}
+                      {f.protein_g ? ` · ${Math.round(f.protein_g)}g prot.` : ''}
+                      {' pour 100g'}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

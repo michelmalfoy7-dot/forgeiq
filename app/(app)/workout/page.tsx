@@ -217,6 +217,10 @@ export default function WorkoutPage() {
     increase: 'var(--fiq-blue)',
   }
 
+  // Séance du jour : vérifier si une séance a déjà été complétée aujourd'hui
+  const today = new Date().toISOString().split('T')[0]
+  const todayWorkout = recentWorkouts.find(w => w.session_date === today && w.session_name !== 'Jour de repos')
+
   return (
     <div className="p-4 max-w-lg mx-auto">
       <div className="pt-4 mb-6">
@@ -265,6 +269,25 @@ export default function WorkoutPage() {
               </div>
               <Play className="w-5 h-5" style={{ color: 'var(--fiq-accent)' }} />
             </Link>
+          )}
+
+          {/* Bannière "Séance du jour terminée" */}
+          {todayWorkout && !activeWorkoutId && (
+            <div
+              className="flex items-center gap-3 px-4 py-4 rounded-2xl"
+              style={{ background: '#B4FF4A12', border: '1px solid #B4FF4A33' }}
+            >
+              <Check className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
+              <div className="flex-1 min-w-0">
+                <p className="font-black text-sm" style={{ color: 'var(--fiq-accent)' }}>
+                  {todayWorkout.session_name} — terminée ✓
+                </p>
+                <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+                  {todayWorkout.total_tonnage_kg ? `${Math.round(todayWorkout.total_tonnage_kg)} kg soulevés` : 'Séance enregistrée'}
+                  {todayWorkout.duration_min ? ` · ${todayWorkout.duration_min} min` : ''}
+                </p>
+              </div>
+            </div>
           )}
 
           {/* Card séance suggérée */}
