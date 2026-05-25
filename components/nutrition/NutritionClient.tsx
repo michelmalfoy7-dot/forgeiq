@@ -1001,7 +1001,14 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
     <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.75)' }} onClick={onClose}>
       <div
         className="w-full max-w-[480px] rounded-t-3xl p-5 space-y-4"
-        style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)', maxHeight: '90dvh', overflowY: 'auto' }}
+        style={{
+          background: 'var(--fiq-card)',
+          border: '1px solid var(--fiq-border)',
+          maxHeight: 'calc(92dvh - 70px)',
+          overflowY: 'auto',
+          marginBottom: '70px',
+          paddingBottom: '24px',
+        }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

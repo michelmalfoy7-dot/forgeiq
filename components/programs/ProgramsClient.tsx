@@ -82,13 +82,13 @@ function AdoptModal({ program, onClose, onConfirm, loading }: {
   program: Program; onClose: () => void; onConfirm: () => void; loading: boolean
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:pb-4"
       style={{ background: 'rgba(0,0,0,0.7)' }}
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl p-6 space-y-5"
-        style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}
+        className="w-full max-w-sm rounded-2xl p-6 space-y-5 sm:mb-0"
+        style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)', marginBottom: '70px' }}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between">
