@@ -186,7 +186,9 @@ function DayCard({ day, index, total }: { day: string | ProgramDay; index: numbe
       {!hasExercises && (
         <div className="px-4 pb-4">
           <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
-            Exercices générés par le coach IA selon ton niveau
+            {name.toLowerCase().includes('cardio') || name.toLowerCase().includes('liss')
+              ? '🚴 Séance cardio — enregistre via "Autre activité" dans la section Séances'
+              : 'Exercices générés par le coach IA selon ton niveau'}
           </p>
         </div>
       )}

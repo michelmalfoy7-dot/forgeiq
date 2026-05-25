@@ -42,6 +42,10 @@ export async function GET() {
     let nextIndex = 0
     let totalSessions = 0
 
+    // Exercices du programme pour la séance suivante (si définis dans la structure)
+    type ProgramExercise = { slug: string; name_fr: string; sets: number; reps: string; rest_sec?: number; note?: string }
+    let programExercises: ProgramExercise[] = []
+
     if (profile?.current_program_id) {
       const { data: program } = await supabase
         .from('programs').select('name, structure').eq('id', profile.current_program_id).single()
@@ -49,7 +53,7 @@ export async function GET() {
       if (program) {
         programName = program.name
         // Support both old format (string[]) and new format ({name, exercises}[])
-        const rawDays: (string | { name: string; exercises?: unknown[] })[] = program.structure?.days ?? []
+        const rawDays: (string | { name: string; exercises?: ProgramExercise[] })[] = program.structure?.days ?? []
         totalSessions = rawDays.length
         const dayNames: string[] = rawDays.map((d) => (typeof d === 'string' ? d : d.name))
 
@@ -64,6 +68,12 @@ export async function GET() {
           nextIndex = lastIdx >= 0 ? (lastIdx + 1) % dayNames.length : 0
         }
         sessionName = dayNames[nextIndex] ?? 'Séance libre'
+
+        // Récupérer les exercices de la séance si définis dans la structure
+        const nextDay = rawDays[nextIndex]
+        if (nextDay && typeof nextDay !== 'string' && Array.isArray(nextDay.exercises) && nextDay.exercises.length > 0) {
+          programExercises = nextDay.exercises
+        }
       }
     }
 
@@ -92,10 +102,23 @@ export async function GET() {
     }
     const adjustmentReason = adjustmentReasons.join(' · ')
 
-    // Générer la raison narrative avec Claude (non-bloquant si pas de clé)
+    // Si le programme a des exercices définis, les utiliser directement (pas d'IA nécessaire)
     let adaptationReason = adjustmentReason || 'Récupération normale'
     let aiExercises: { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[] = []
 
+    // Pré-charger les exercices du programme comme base
+    if (programExercises.length > 0) {
+      aiExercises = programExercises.map(ex => ({
+        name: ex.name_fr,
+        sets: ex.sets,
+        reps: ex.reps,
+        weight_kg: null, // Sera rempli par les PRs dans le logger
+        note: ex.note ?? '',
+      }))
+    }
+
+    // Utiliser l'IA uniquement si le programme n'a pas d'exercices définis
+    // Ou pour enrichir la raison narrative + les poids suggérés
     if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'your_anthropic_api_key_here') {
       try {
         const prSummary = (topPRs ?? [])
@@ -103,7 +126,51 @@ export async function GET() {
           .map(p => `${p.exercise_name}: ${p.value}${p.unit}`)
           .join(', ')
 
-        const prompt = `Tu es un coach fitness expert. Génère une suggestion de séance courte en JSON.
+        if (programExercises.length > 0) {
+          // Programme avec exercices — IA génère uniquement la raison narrative + les poids suggérés
+          const exoList = programExercises.map(e => e.name_fr).join(', ')
+          const prompt = `Tu es un coach fitness. Suggère des poids pour cette séance en JSON.
+
+Séance: ${sessionName} (${programName})
+Exercices: ${exoList}
+Ajustement: ${volumeAdjustment} — ${adjustmentReason || 'normal'}
+PRs: ${prSummary || 'aucun'}
+
+JSON uniquement (sans markdown):
+{
+  "reason": "adaptation du jour en 10 mots max",
+  "weights": { "nom_exercice": 80 }
+}
+weights = 75-85% du PR si disponible, sinon null.`
+
+          const getCachedReason = unstable_cache(
+            () => anthropic.messages.create({
+              model: 'claude-haiku-4-20250514',
+              max_tokens: 300,
+              messages: [{ role: 'user', content: prompt }],
+            }),
+            [`reason-${user.id}-${sessionName}-${today}`],
+            { revalidate: 24 * 3600 }
+          )
+          const res = await getCachedReason()
+          const raw = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
+          let parsed: Record<string, unknown>
+          try { parsed = JSON.parse(raw) } catch {
+            const m = raw.match(/\{[\s\S]*\}/)
+            parsed = m ? JSON.parse(m[0]) : {}
+          }
+          if (parsed.reason && typeof parsed.reason === 'string') adaptationReason = parsed.reason
+          // Appliquer les poids suggérés sur les exercices du programme
+          if (parsed.weights && typeof parsed.weights === 'object') {
+            const weights = parsed.weights as Record<string, number | null>
+            aiExercises = aiExercises.map(ex => ({
+              ...ex,
+              weight_kg: weights[ex.name] ?? ex.weight_kg,
+            }))
+          }
+        } else {
+          // Séance libre — IA génère les exercices complets
+          const prompt = `Tu es un coach fitness expert. Génère une suggestion de séance courte en JSON.
 
 Contexte:
 - Séance: ${sessionName}
@@ -119,35 +186,36 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown):
 {
   "reason": "phrase courte expliquant l'adaptation du jour (max 15 mots)",
   "exercises": [
-    { "name": "nom exercice", "sets": 4, "reps": "6-8", "weight_kg": 80, "note": "conseil bref" }
+    { "name": "nom exercice en français", "sets": 4, "reps": "6-8", "weight_kg": 80, "note": "conseil bref" }
   ]
 }
 
 Inclure 4-6 exercices adaptés à la séance "${sessionName}". weight_kg basé sur les PRs (environ 75-85% du PR). Si pas de PR disponible, mettre null.`
 
-        // Cache 24h par user+séance — 1 génération IA max par jour
-        const getCachedSuggestion = unstable_cache(
-          () => anthropic.messages.create({
-            model: 'claude-haiku-4-20250514',
-            max_tokens: 600,
-            messages: [{ role: 'user', content: prompt }],
-          }),
-          [`suggest-${user.id}-${sessionName}-${today}`],
-          { revalidate: 24 * 3600 }
-        )
-        const res = await getCachedSuggestion()
+          // Cache 24h par user+séance — 1 génération IA max par jour
+          const getCachedSuggestion = unstable_cache(
+            () => anthropic.messages.create({
+              model: 'claude-haiku-4-20250514',
+              max_tokens: 600,
+              messages: [{ role: 'user', content: prompt }],
+            }),
+            [`suggest-${user.id}-${sessionName}-${today}`],
+            { revalidate: 24 * 3600 }
+          )
+          const res = await getCachedSuggestion()
 
-        const raw = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
-        // JSON.parse avec fallback regex si Claude ajoute du markdown
-        let parsed: Record<string, unknown>
-        try {
-          parsed = JSON.parse(raw)
-        } catch {
-          const m = raw.match(/\{[\s\S]*\}/)
-          parsed = m ? JSON.parse(m[0]) : {}
+          const raw = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
+          // JSON.parse avec fallback regex si Claude ajoute du markdown
+          let parsed: Record<string, unknown>
+          try {
+            parsed = JSON.parse(raw)
+          } catch {
+            const m = raw.match(/\{[\s\S]*\}/)
+            parsed = m ? JSON.parse(m[0]) : {}
+          }
+          if (parsed.reason && typeof parsed.reason === 'string') adaptationReason = parsed.reason
+          if (Array.isArray(parsed.exercises)) aiExercises = parsed.exercises
         }
-        if (parsed.reason && typeof parsed.reason === 'string') adaptationReason = parsed.reason
-        if (Array.isArray(parsed.exercises)) aiExercises = parsed.exercises
       } catch {
         // Fallback silencieux si Claude échoue
       }
