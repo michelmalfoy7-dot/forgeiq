@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +24,10 @@ export async function POST(request: Request) {
       .single()
 
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
+
+    // Invalider le cache du dashboard pour mise à jour immédiate après check-in
+    revalidatePath('/dashboard')
+
     return NextResponse.json({ data, error: null })
   } catch (e) {
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
