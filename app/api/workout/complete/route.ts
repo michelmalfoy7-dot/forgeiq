@@ -15,7 +15,7 @@ type SetInput = {
 
 export async function POST(request: Request) {
   try {
-    const { workout_id, sets, notes, rpe_overall } = await request.json()
+    const { workout_id, sets, notes, rpe_overall, duration_min, distance_km, workout_type } = await request.json()
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
@@ -36,6 +36,9 @@ export async function POST(request: Request) {
         total_reps: totalReps,
         notes,
         rpe_overall,
+        ...(duration_min != null && { duration_min }),
+        ...(distance_km != null && { distance_km }),
+        ...(workout_type != null && { workout_type }),
       })
       .eq('id', workout_id)
       .eq('user_id', user.id)

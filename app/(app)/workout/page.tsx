@@ -5,8 +5,24 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { AlertBar } from '@/components/ui/AlertBar'
-import { Loader2, Plus, Dumbbell, ChevronRight, History, Moon, Bike, Play } from 'lucide-react'
+import { Loader2, Plus, Dumbbell, ChevronRight, History, Moon, Bike, Play, Minus, Check } from 'lucide-react'
 import Link from 'next/link'
+
+const ACTIVITIES = [
+  { name: 'Vélo / Cyclisme',  emoji: '🚴', hasDistance: true  },
+  { name: 'Course à pied',    emoji: '🏃', hasDistance: true  },
+  { name: 'Natation',         emoji: '🏊', hasDistance: true  },
+  { name: 'Randonnée',        emoji: '🥾', hasDistance: true  },
+  { name: 'Yoga / Pilates',   emoji: '🧘', hasDistance: false },
+  { name: 'Football',         emoji: '⚽', hasDistance: false },
+  { name: 'Tennis',           emoji: '🎾', hasDistance: false },
+  { name: 'Combat / Boxe',    emoji: '🥊', hasDistance: false },
+  { name: 'Stretching',       emoji: '🤸', hasDistance: false },
+  { name: 'Autre sport',      emoji: '🏅', hasDistance: false },
+]
+
+const EFFORT_LABELS = ['', 'Très facile', 'Facile', 'Modéré', 'Intense', 'Maximal']
+const EFFORT_COLORS = ['', 'var(--fiq-accent)', 'var(--fiq-accent)', 'var(--fiq-blue)', 'var(--fiq-orange)', 'var(--fiq-red)']
 
 /** Récupère l'ID de séance en cours depuis localStorage */
 function getActiveWorkoutId(): string | null {
@@ -52,7 +68,15 @@ export default function WorkoutPage() {
   const [loggingRest, setLoggingRest] = useState(false)
   const [restLogged, setRestLogged] = useState(false)
   const [showActivityModal, setShowActivityModal] = useState(false)
-  const [recentWorkouts, setRecentWorkouts] = useState<{id: string; session_name: string; session_date: string; total_tonnage_kg: number}[]>([])
+  // Cardio form state
+  const [cardioActivity, setCardioActivity] = useState<typeof ACTIVITIES[0] | null>(null)
+  const [cardioDuration, setCardioDuration] = useState(30)
+  const [cardioDistance, setCardioDistance] = useState('')
+  const [cardioEffort, setCardioEffort] = useState<1|2|3|4|5>(3)
+  const [loggingCardio, setLoggingCardio] = useState(false)
+  const [cardioLogged, setCardioLogged] = useState(false)
+
+  const [recentWorkouts, setRecentWorkouts] = useState<{id: string; session_name: string; session_date: string; total_tonnage_kg: number; duration_min?: number; distance_km?: number; workout_type?: string}[]>([])
   const [activeWorkoutId, setActiveWorkoutId] = useState<string | null>(null)
   const router = useRouter()
 
@@ -74,7 +98,7 @@ export default function WorkoutPage() {
       if (user) {
         const { data: workouts } = await supabase
           .from('workouts')
-          .select('id, session_name, session_date, total_tonnage_kg')
+          .select('id, session_name, session_date, total_tonnage_kg, duration_min, distance_km, workout_type')
           .eq('user_id', user.id)
           .not('completed_at', 'is', null)
           .order('session_date', { ascending: false })
@@ -132,10 +156,59 @@ export default function WorkoutPage() {
     }
   }
 
-  // Démarrer une activité cardio / autre sport
-  async function startActivity(activityName: string) {
-    setShowActivityModal(false)
-    await startWorkout(activityName)
+  // Enregistrer une activité cardio directement (sans passer par le logger musculation)
+  async function logCardio() {
+    if (!cardioActivity || cardioDuration < 1) return
+    setLoggingCardio(true)
+    try {
+      const startRes = await fetch('/api/workout/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_name: cardioActivity.name, program_id: null }),
+      })
+      const { data: startData } = await startRes.json()
+      if (!startData?.id) return
+
+      await fetch('/api/workout/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workout_id: startData.id,
+          sets: [],
+          notes: null,
+          rpe_overall: cardioEffort,
+          duration_min: cardioDuration,
+          distance_km: cardioDistance ? parseFloat(cardioDistance) : null,
+          workout_type: 'cardio',
+        }),
+      })
+
+      // Rafraîchir l'historique
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: workouts } = await supabase
+          .from('workouts')
+          .select('id, session_name, session_date, total_tonnage_kg, duration_min, distance_km, workout_type')
+          .eq('user_id', user.id)
+          .not('completed_at', 'is', null)
+          .order('session_date', { ascending: false })
+          .limit(5)
+        setRecentWorkouts(workouts ?? [])
+      }
+
+      setCardioLogged(true)
+      setTimeout(() => {
+        setCardioLogged(false)
+        setShowActivityModal(false)
+        setCardioActivity(null)
+        setCardioDuration(30)
+        setCardioDistance('')
+        setCardioEffort(3)
+      }, 1500)
+    } finally {
+      setLoggingCardio(false)
+    }
   }
 
   const volumeColors = {
@@ -279,40 +352,165 @@ export default function WorkoutPage() {
             </div>
           </button>
 
-          {/* Modal activités */}
+          {/* Modal activités — 2 étapes : choix → formulaire cardio */}
           {showActivityModal && (
-            <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(0,0,0,0.6)' }}>
+            <div
+              className="fixed inset-0 z-50 flex items-end"
+              style={{ background: 'rgba(0,0,0,0.6)' }}
+              onClick={e => { if (e.target === e.currentTarget) { setShowActivityModal(false); setCardioActivity(null) } }}
+            >
               <div
-                className="w-full max-w-lg mx-auto rounded-t-3xl p-6 space-y-4"
+                className="w-full max-w-lg mx-auto rounded-t-3xl pb-8"
                 style={{ background: 'var(--surface)', borderTop: '1px solid var(--fiq-border)' }}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>Choisir une activité</h3>
-                  <button onClick={() => setShowActivityModal(false)} style={{ color: 'var(--fiq-muted)' }}>✕</button>
-                </div>
-                {[
-                  { name: 'Vélo / Cyclisme', emoji: '🚴' },
-                  { name: 'Course à pied', emoji: '🏃' },
-                  { name: 'Natation', emoji: '🏊' },
-                  { name: 'Yoga / Pilates', emoji: '🧘' },
-                  { name: 'Randonnée', emoji: '🥾' },
-                  { name: 'Football', emoji: '⚽' },
-                  { name: 'Tennis', emoji: '🎾' },
-                  { name: 'Combat / Boxe', emoji: '🥊' },
-                  { name: 'Stretching', emoji: '🤸' },
-                  { name: 'Autre sport', emoji: '🏅' },
-                ].map((act) => (
-                  <button
-                    key={act.name}
-                    onClick={() => startActivity(act.name)}
-                    disabled={starting}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-all"
-                    style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}
-                  >
-                    <span className="text-xl">{act.emoji}</span>
-                    <span className="font-semibold text-sm" style={{ color: 'var(--fiq-text)' }}>{act.name}</span>
-                  </button>
-                ))}
+                {/* ── Étape 1 : choix de l'activité ── */}
+                {!cardioActivity ? (
+                  <div className="p-6 space-y-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>Choisir une activité</h3>
+                      <button onClick={() => setShowActivityModal(false)} style={{ color: 'var(--fiq-muted)' }}>✕</button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {ACTIVITIES.map(act => (
+                        <button
+                          key={act.name}
+                          onClick={() => setCardioActivity(act)}
+                          className="flex items-center gap-2 px-3 py-3 rounded-2xl text-left transition-all"
+                          style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}
+                        >
+                          <span className="text-2xl">{act.emoji}</span>
+                          <span className="font-semibold text-xs leading-tight" style={{ color: 'var(--fiq-text)' }}>{act.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  /* ── Étape 2 : formulaire cardio ── */
+                  <div className="p-6 space-y-5">
+                    {/* Header */}
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setCardioActivity(null)}
+                        className="w-8 h-8 flex items-center justify-center rounded-xl"
+                        style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)' }}
+                      >
+                        ←
+                      </button>
+                      <div className="flex items-center gap-2 flex-1">
+                        <span className="text-2xl">{cardioActivity.emoji}</span>
+                        <h3 className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>{cardioActivity.name}</h3>
+                      </div>
+                      <button onClick={() => { setShowActivityModal(false); setCardioActivity(null) }} style={{ color: 'var(--fiq-muted)' }}>✕</button>
+                    </div>
+
+                    {/* Durée */}
+                    <div>
+                      <p className="fiq-label mb-3">Durée</p>
+                      <div className="flex items-center gap-4 justify-center">
+                        <button
+                          onClick={() => setCardioDuration(d => Math.max(5, d - 5))}
+                          className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+                        >
+                          <Minus className="w-5 h-5" />
+                        </button>
+                        <div className="text-center min-w-[100px]">
+                          <p className="text-4xl font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>
+                            {cardioDuration >= 60
+                              ? `${Math.floor(cardioDuration / 60)}h${cardioDuration % 60 > 0 ? String(cardioDuration % 60).padStart(2, '0') : ''}`
+                              : cardioDuration}
+                          </p>
+                          <p className="text-xs mt-1" style={{ color: 'var(--fiq-muted)' }}>
+                            {cardioDuration >= 60 ? '' : 'minutes'}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setCardioDuration(d => d + 5)}
+                          className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+                        >
+                          <Plus className="w-5 h-5" />
+                        </button>
+                      </div>
+                      {/* Raccourcis rapides */}
+                      <div className="flex gap-2 mt-3 justify-center flex-wrap">
+                        {[15, 30, 45, 60, 90].map(d => (
+                          <button
+                            key={d}
+                            onClick={() => setCardioDuration(d)}
+                            className="px-3 py-1 rounded-xl text-xs font-bold transition-all"
+                            style={{
+                              background: cardioDuration === d ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
+                              color: cardioDuration === d ? 'var(--bg)' : 'var(--fiq-muted)',
+                              border: `1px solid ${cardioDuration === d ? 'var(--fiq-accent)' : 'var(--fiq-border)'}`,
+                            }}
+                          >
+                            {d >= 60 ? `${d / 60}h` : `${d}min`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Distance (seulement pour les activités avec distance) */}
+                    {cardioActivity.hasDistance && (
+                      <div>
+                        <p className="fiq-label mb-2">Distance <span style={{ color: 'var(--fiq-muted)', textTransform: 'none', fontSize: '10px' }}>(optionnel)</span></p>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={cardioDistance}
+                            onChange={e => setCardioDistance(e.target.value)}
+                            placeholder="0.0"
+                            step="0.1"
+                            min="0"
+                            className="flex-1 px-4 py-3 rounded-xl text-sm outline-none text-center font-black text-lg"
+                            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+                          />
+                          <span className="font-bold text-sm w-8" style={{ color: 'var(--fiq-muted)' }}>km</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Effort */}
+                    <div>
+                      <p className="fiq-label mb-2">Intensité</p>
+                      <div className="flex gap-2">
+                        {([1,2,3,4,5] as const).map(lvl => (
+                          <button
+                            key={lvl}
+                            onClick={() => setCardioEffort(lvl)}
+                            className="flex-1 py-2.5 rounded-xl text-xs font-black transition-all"
+                            style={{
+                              background: cardioEffort >= lvl ? EFFORT_COLORS[lvl] + '22' : 'var(--fiq-faint)',
+                              border: `1px solid ${cardioEffort >= lvl ? EFFORT_COLORS[lvl] : 'var(--fiq-border)'}`,
+                              color: cardioEffort >= lvl ? EFFORT_COLORS[lvl] : 'var(--fiq-muted)',
+                            }}
+                          >
+                            {lvl}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-center mt-1.5" style={{ color: EFFORT_COLORS[cardioEffort] }}>
+                        {EFFORT_LABELS[cardioEffort]}
+                      </p>
+                    </div>
+
+                    {/* Bouton enregistrer */}
+                    <button
+                      onClick={logCardio}
+                      disabled={loggingCardio || cardioLogged}
+                      className="w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2"
+                      style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+                    >
+                      {loggingCardio
+                        ? <Loader2 className="w-5 h-5 animate-spin" />
+                        : cardioLogged
+                        ? <><Check className="w-5 h-5" /> Enregistré !</>
+                        : `Enregistrer ${cardioDuration >= 60 ? `${Math.floor(cardioDuration / 60)}h${cardioDuration % 60 > 0 ? String(cardioDuration % 60).padStart(2,'0') : ''}` : `${cardioDuration} min`}`
+                      }
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -340,11 +538,22 @@ export default function WorkoutPage() {
                       {new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(w.session_date))}
                     </p>
                   </div>
-                  {w.total_tonnage_kg && (
-                    <span className="text-sm fiq-data" style={{ color: 'var(--fiq-accent)' }}>
-                      {w.total_tonnage_kg.toLocaleString('fr-FR')} kg
-                    </span>
-                  )}
+                  <div className="text-right">
+                    {w.workout_type === 'cardio' ? (
+                      <span className="text-sm fiq-data" style={{ color: 'var(--fiq-blue)' }}>
+                        {w.duration_min != null && (
+                          w.duration_min >= 60
+                            ? `${Math.floor(w.duration_min / 60)}h${w.duration_min % 60 > 0 ? String(w.duration_min % 60).padStart(2,'0') : ''}`
+                            : `${w.duration_min} min`
+                        )}
+                        {w.distance_km ? ` · ${w.distance_km} km` : ''}
+                      </span>
+                    ) : w.total_tonnage_kg ? (
+                      <span className="text-sm fiq-data" style={{ color: 'var(--fiq-accent)' }}>
+                        {w.total_tonnage_kg.toLocaleString('fr-FR')} kg
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>
