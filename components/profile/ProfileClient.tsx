@@ -109,7 +109,19 @@ function NumberField({ label, value, onChange, min, max, unit }: {
   )
 }
 
-export function ProfileClient({ profile, email, stats }: { profile: Profile; email: string; stats: Stats }) {
+export function ProfileClient({
+  profile, email, stats,
+  subscriptionStatus = 'free',
+  subscriptionPlan = null,
+  hasStripeCustomer = false,
+}: {
+  profile: Profile
+  email: string
+  stats: Stats
+  subscriptionStatus?: string
+  subscriptionPlan?: string | null
+  hasStripeCustomer?: boolean
+}) {
   const router = useRouter()
   const [goal, setGoal] = useState(profile?.goal ?? 'general')
   const [level, setLevel] = useState(profile?.level ?? 'beginner')
@@ -144,6 +156,22 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
+  const [portalLoading, setPortalLoading] = useState(false)
+
+  const isPro = subscriptionStatus === 'pro' || subscriptionStatus === 'lifetime'
+  const isLifetime = subscriptionStatus === 'lifetime'
+
+  async function openBillingPortal() {
+    setPortalLoading(true)
+    try {
+      const res = await fetch('/api/stripe/portal', { method: 'POST' })
+      const { data, error: err } = await res.json()
+      if (data?.url) window.location.href = data.url
+      else console.error('Portal error:', err)
+    } finally {
+      setPortalLoading(false)
+    }
+  }
   const [resetStep, setResetStep] = useState(0) // 0=hidden, 1=first, 2=confirm
   const [resetting, setResetting] = useState(false)
 
@@ -250,22 +278,65 @@ export function ProfileClient({ profile, email, stats }: { profile: Profile; ema
         </div>
       </div>
 
-      {/* Upgrade Pro */}
-      <Link
-        href="/pricing"
-        className="fiq-card flex items-center gap-4 transition-all"
-        style={{ background: '#B4FF4A10', borderColor: '#B4FF4A40' }}
-      >
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: '#B4FF4A20' }}>
-          <Crown className="w-5 h-5" style={{ color: 'var(--fiq-accent)' }} />
+      {/* Abonnement */}
+      {isPro ? (
+        <div className="fiq-card space-y-3">
+          {/* Badge statut Pro */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: isLifetime ? '#A855F720' : '#B4FF4A20' }}>
+              <Crown className="w-5 h-5" style={{ color: isLifetime ? '#A855F7' : 'var(--fiq-accent)' }} />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <p className="font-black text-sm" style={{ color: 'var(--fiq-text)' }}>
+                  {isLifetime ? 'ForgeIQ Pro — À vie' : 'ForgeIQ Pro'}
+                </p>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black"
+                  style={{
+                    background: isLifetime ? '#A855F720' : '#B4FF4A20',
+                    color: isLifetime ? '#A855F7' : 'var(--fiq-accent)',
+                    border: `1px solid ${isLifetime ? '#A855F744' : '#B4FF4A44'}`,
+                  }}>
+                  {isLifetime ? '∞ VIE' : subscriptionPlan === 'annual' ? 'ANNUEL' : 'MENSUEL'}
+                </span>
+              </div>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                {isLifetime ? 'Accès permanent — Coach IA illimité' : 'Actif — Coach IA illimité'}
+              </p>
+            </div>
+          </div>
+
+          {/* Bouton gérer (uniquement si customer Stripe, pas lifetime sans subscription) */}
+          {hasStripeCustomer && !isLifetime && (
+            <button
+              onClick={openBillingPortal}
+              disabled={portalLoading}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all"
+              style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}>
+              {portalLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Gérer mon abonnement
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-black text-sm" style={{ color: 'var(--fiq-text)' }}>Passer à Pro</p>
-          <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>À partir de 4,99€/mois · Coach IA illimité</p>
-        </div>
-        <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
-      </Link>
+      ) : (
+        <Link
+          href="/pricing"
+          className="fiq-card flex items-center gap-4 transition-all"
+          style={{ background: '#B4FF4A10', borderColor: '#B4FF4A40' }}
+        >
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: '#B4FF4A20' }}>
+            <Crown className="w-5 h-5" style={{ color: 'var(--fiq-accent)' }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-black text-sm" style={{ color: 'var(--fiq-text)' }}>Passer à Pro</p>
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>À partir de 4,99€/mois · Coach IA illimité</p>
+          </div>
+          <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
+        </Link>
+      )}
 
       {/* Paramètres */}
       <div className="fiq-card space-y-4">

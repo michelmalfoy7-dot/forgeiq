@@ -4,6 +4,10 @@ import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
+// Cache journalier par user — 1 seule génération IA / utilisateur / jour
+// Évite de rappeler Haiku à chaque ouverture de /workout
+import { unstable_cache } from 'next/cache'
+
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export async function GET() {
@@ -121,11 +125,17 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown):
 
 Inclure 4-6 exercices adaptés à la séance "${sessionName}". weight_kg basé sur les PRs (environ 75-85% du PR). Si pas de PR disponible, mettre null.`
 
-        const res = await anthropic.messages.create({
-          model: 'claude-haiku-4-20250514',
-          max_tokens: 600,
-          messages: [{ role: 'user', content: prompt }],
-        })
+        // Cache 24h par user+séance — 1 génération IA max par jour
+        const getCachedSuggestion = unstable_cache(
+          () => anthropic.messages.create({
+            model: 'claude-haiku-4-20250514',
+            max_tokens: 600,
+            messages: [{ role: 'user', content: prompt }],
+          }),
+          [`suggest-${user.id}-${sessionName}-${today}`],
+          { revalidate: 24 * 3600 }
+        )
+        const res = await getCachedSuggestion()
 
         const raw = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
         // JSON.parse avec fallback regex si Claude ajoute du markdown

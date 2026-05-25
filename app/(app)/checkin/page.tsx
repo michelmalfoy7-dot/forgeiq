@@ -3,12 +3,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { AlertBar } from '@/components/ui/AlertBar'
-import { Loader2, Save, TrendingDown, TrendingUp, Minus, CheckCircle2 } from 'lucide-react'
+import { Loader2, Save, TrendingDown, TrendingUp, Minus, CheckCircle2, ChevronDown, ChevronUp, Moon, Footprints, Utensils, Brain, Activity, Scale } from 'lucide-react'
 import { calcTDEESimple } from '@/lib/utils/tdee'
+import { hMinToMinutes, minutesToHMin, formatSleep } from '@/lib/formatSleep'
 
 // ── Types ────────────────────────────────────────────────────
 type LogData = {
@@ -36,6 +34,30 @@ const EMPTY: LogData = {
   fatigue_score: 5, motivation_score: 5, notes: '',
 }
 
+// Chips preset pour les pas
+const STEPS_CHIPS = [
+  { label: '5k', value: 5000 },
+  { label: '7.5k', value: 7500 },
+  { label: '8k', value: 8000 },
+  { label: '10k', value: 10000 },
+  { label: '12k', value: 12000 },
+  { label: '15k+', value: 15000 },
+]
+
+// Formate la date du jour en français
+function formatDateFR(date: Date): string {
+  return date.toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).replace(/^\w/, (c) => c.toUpperCase())
+}
+
+function getLogDate(isYesterday: boolean): string {
+  const d = new Date()
+  if (isYesterday) d.setDate(d.getDate() - 1)
+  return d.toISOString().split('T')[0]
+}
 
 export default function CheckinPage() {
   const [form, setForm] = useState<LogData>(EMPTY)
@@ -44,6 +66,9 @@ export default function CheckinPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isYesterday, setIsYesterday] = useState(false)
+  const [stepsChip, setStepsChip] = useState<number | null>(null)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const ewmaDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [profile, setProfile] = useState<{
     goal?: string | null
@@ -60,7 +85,7 @@ export default function CheckinPage() {
   } | null>(null)
   const router = useRouter()
 
-  // Calcul EWMA dès que le poids change (déclaré avant le useEffect qui en dépend)
+  // Calcul EWMA dès que le poids change
   const fetchEwma = useCallback(async (weight: string) => {
     if (!weight || isNaN(parseFloat(weight))) { setEwma(null); return }
     setEwmaLoading(true)
@@ -70,7 +95,7 @@ export default function CheckinPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           weight_kg: parseFloat(weight),
-          log_date: new Date().toISOString().split('T')[0],
+          log_date: getLogDate(isYesterday),
         }),
       })
       const { data } = await res.json()
@@ -78,7 +103,7 @@ export default function CheckinPage() {
     } finally {
       setEwmaLoading(false)
     }
-  }, [])
+  }, [isYesterday])
 
   // Charger le log existant du jour
   useEffect(() => {
@@ -89,7 +114,7 @@ export default function CheckinPage() {
 
       const [{ data: log }, { data: prof }] = await Promise.all([
         supabase.from('daily_logs').select('*').eq('user_id', user.id)
-          .eq('log_date', new Date().toISOString().split('T')[0]).single(),
+          .eq('log_date', getLogDate(isYesterday)).single(),
         supabase.from('profiles').select('goal, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g').eq('id', user.id).single(),
       ])
 
@@ -112,15 +137,12 @@ export default function CheckinPage() {
           motivation_score: log.motivation_score ?? 5,
           notes: log.notes ?? '',
         })
-        // Recalcule toujours l'EWMA depuis l'historique réel (ignore la valeur stockée
-        // qui peut être périmée si le check-in a été sauvegardé avec un poids différent)
-        if (log.weight_kg) {
-          fetchEwma(log.weight_kg.toString())
-        }
+        if (log.weight_kg) fetchEwma(log.weight_kg.toString())
       }
     }
     loadToday()
-  }, [fetchEwma])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchEwma, isYesterday])
 
   function set(key: keyof LogData, value: string | number) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -131,6 +153,7 @@ export default function CheckinPage() {
     setError(null)
     try {
       const payload = {
+        log_date: getLogDate(isYesterday),
         weight_kg: parseFloat(form.weight_kg) || null,
         weight_trend: ewma,
         sys_bp: parseInt(form.sys_bp) || null,
@@ -157,7 +180,6 @@ export default function CheckinPage() {
       const { error: err } = await res.json()
       if (err) { setError(err); return }
       setSaved(true)
-      // Invalide le cache serveur pour que le dashboard affiche les données fraîches
       router.refresh()
       setTimeout(() => router.push('/dashboard'), 1400)
     } finally {
@@ -204,7 +226,7 @@ export default function CheckinPage() {
   const carb = parseFloat(form.carbs_g) || 0
   const fat = parseFloat(form.fat_g) || 0
 
-  // Toast de confirmation flottant (affiché par-dessus le formulaire)
+  // Toast de confirmation flottant
   const SavedToast = saved ? (
     <div
       className="fixed left-1/2 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl shadow-lg"
@@ -214,7 +236,7 @@ export default function CheckinPage() {
         background: '#B4FF4A22',
         border: '1px solid #B4FF4A66',
         backdropFilter: 'blur(12px)',
-        color: 'var(--fiq-accent)',
+        color: 'var(--accent)',
         whiteSpace: 'nowrap',
       }}
     >
@@ -224,186 +246,481 @@ export default function CheckinPage() {
   ) : null
 
   return (
-    <div className="p-4 max-w-lg mx-auto pb-6">
-      {SavedToast}
-      <div className="pt-4 mb-6">
-        <p className="fiq-label">Bilan quotidien</p>
-        <h1 className="text-2xl fiq-display mt-1" style={{ color: 'var(--fiq-text)' }}>
-          Check-in du jour
-        </h1>
-        <p className="text-xs mt-1" style={{ color: 'var(--fiq-muted)' }}>
-          Tout est optionnel — remplis ce que tu as.
-        </p>
-      </div>
+    <div style={{ background: 'var(--bg)', minHeight: '100vh' }}>
+      <div className="p-4 max-w-lg mx-auto pb-32">
+        {SavedToast}
 
-      {/* Alertes inline */}
-      {alerts.length > 0 && (
-        <div className="space-y-2 mb-5">
-          {alerts.map((a, i) => (
-            <AlertBar key={i} type={a.type as 'red' | 'yellow' | 'green' | 'blue'} message={a.msg} sub={a.sub} />
-          ))}
+        {/* ── Header ─────────────────────────────────────────── */}
+        <div className="pt-4 mb-6">
+          <p className="fiq-label" style={{ color: 'var(--accent)' }}>Bilan quotidien</p>
+          <h1 className="fiq-display mt-1" style={{ fontSize: 28, color: 'var(--text)' }}>
+            Check-in
+          </h1>
+          <p className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>
+            {formatDateFR(isYesterday ? new Date(Date.now() - 86400000) : new Date())}
+          </p>
+
+          {/* Toggle Aujourd'hui / Hier */}
+          <div
+            className="flex mt-3 rounded-xl overflow-hidden"
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)', width: 'fit-content' }}
+          >
+            {['Aujourd\'hui', 'Hier'].map((label, i) => {
+              const active = i === 0 ? !isYesterday : isYesterday
+              return (
+                <button
+                  key={label}
+                  onClick={() => setIsYesterday(i === 1)}
+                  style={{
+                    padding: '6px 16px',
+                    fontSize: 13,
+                    fontWeight: active ? 700 : 500,
+                    background: active ? 'var(--accent)' : 'transparent',
+                    color: active ? 'var(--bg)' : 'var(--muted)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                    borderRadius: active ? 10 : 0,
+                  }}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
+            Tout est optionnel — remplis ce que tu as.
+          </p>
         </div>
-      )}
 
-      {/* ── SECTION : Corps ─────────────────────────────────── */}
-      <Section title="🏋️ Corps" icon="">
-        <Field label="Poids (kg)">
-          <Input
-            type="number" step="0.1" placeholder="74.5"
-            value={form.weight_kg}
-            onChange={(e) => {
-              const val = e.target.value
-              set('weight_kg', val)
-              // Debounce EWMA 500ms pour éviter les calculs aberrants pendant la saisie
-              if (ewmaDebounceRef.current) clearTimeout(ewmaDebounceRef.current)
-              ewmaDebounceRef.current = setTimeout(() => fetchEwma(val), 500)
-            }}
-            style={inputStyle}
-          />
-          {/* EWMA */}
-          {form.weight_kg && (
-            <div className="flex items-center gap-2 mt-2 px-1">
-              {ewmaLoading
-                ? <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Calcul tendance…</span>
-                : ewma !== null && (
-                  <>
-                    <EwmaTrend current={parseFloat(form.weight_kg)} trend={ewma} />
-                    <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
-                      Tendance lissée : <strong style={{ color: 'var(--fiq-text)' }}>{ewma} kg</strong>
-                    </span>
-                  </>
+        {/* Alertes inline */}
+        {alerts.length > 0 && (
+          <div className="space-y-2 mb-5">
+            {alerts.map((a, i) => (
+              <AlertBar key={i} type={a.type as 'red' | 'yellow' | 'green' | 'blue'} message={a.msg} sub={a.sub} />
+            ))}
+          </div>
+        )}
+
+        {/* ── SECTION : Corps ─────────────────────────────────── */}
+        <SectionCard
+          icon={<Scale className="w-4 h-4" />}
+          iconColor="var(--blue)"
+          title="Corps"
+        >
+          <Field label="Poids (kg)">
+            <input
+              type="number"
+              step="0.1"
+              placeholder="74.5"
+              value={form.weight_kg}
+              onChange={(e) => {
+                const val = e.target.value
+                set('weight_kg', val)
+                // Debounce EWMA 500ms pour éviter les calculs aberrants pendant la saisie
+                if (ewmaDebounceRef.current) clearTimeout(ewmaDebounceRef.current)
+                ewmaDebounceRef.current = setTimeout(() => fetchEwma(val), 500)
+              }}
+              style={fiqInput}
+            />
+            {/* EWMA */}
+            {form.weight_kg && (
+              <div className="flex items-center gap-2 mt-2 px-1">
+                {ewmaLoading
+                  ? <span className="text-xs" style={{ color: 'var(--muted)' }}>Calcul tendance…</span>
+                  : ewma !== null && (
+                    <>
+                      <EwmaTrend current={parseFloat(form.weight_kg)} trend={ewma} />
+                      <span className="text-xs" style={{ color: 'var(--muted)' }}>
+                        Tendance lissée : <strong style={{ color: 'var(--text)' }}>{ewma} kg</strong>
+                      </span>
+                    </>
+                  )
+                }
+              </div>
+            )}
+          </Field>
+        </SectionCard>
+
+        {/* ── SECTION : Sommeil ───────────────────────────────── */}
+        <SectionCard
+          icon={<Moon className="w-4 h-4" />}
+          iconColor="#8B5CF6"
+          title="Sommeil"
+        >
+          {/* Total : saisie h + min */}
+          <Field label="Total de sommeil">
+            <SleepHMinInput
+              valueMin={form.sleep_total_min}
+              onChange={(min) => set('sleep_total_min', min ? String(min) : '')}
+              placeholderH="8"
+              placeholderMin="30"
+            />
+          </Field>
+
+          {/* Détail phases */}
+          <div>
+            <p className="fiq-label mb-2">Phases (données montre / app)</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { key: 'sleep_deep_min' as keyof LogData, label: 'Profond', emoji: '🌑', phH: '1', phM: '30' },
+                { key: 'sleep_light_min' as keyof LogData, label: 'Léger',   emoji: '🌓', phH: '4', phM: '00' },
+                { key: 'sleep_rem_min'   as keyof LogData, label: 'REM',     emoji: '🌙', phH: '1', phM: '30' },
+              ].map(({ key, label, emoji, phH, phM }) => (
+                <div key={key}>
+                  <p className="text-[10px] mb-1.5 text-center" style={{ color: 'var(--muted)' }}>{emoji} {label}</p>
+                  <SleepHMinInput
+                    valueMin={form[key] as string}
+                    onChange={(min) => set(key, min ? String(min) : '')}
+                    placeholderH={phH}
+                    placeholderMin={phM}
+                    compact
+                  />
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] mt-2" style={{ color: 'var(--muted)' }}>
+              Données depuis ta montre ou app sommeil
+            </p>
+          </div>
+
+          {/* Aperçu formaté */}
+          {form.sleep_total_min && parseInt(form.sleep_total_min) > 0 && (
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+              Total : <strong style={{ color: 'var(--text)' }}>{formatSleep(parseInt(form.sleep_total_min))}</strong>
+              {form.sleep_deep_min && parseInt(form.sleep_deep_min) > 0 && (
+                <span> · Profond : <strong style={{ color: '#8B5CF6' }}>{formatSleep(parseInt(form.sleep_deep_min))}</strong></span>
+              )}
+            </p>
+          )}
+
+          {form.sleep_deep_min && (
+            <SleepBar deepMin={parseInt(form.sleep_deep_min)} totalMin={parseInt(form.sleep_total_min) || 480} />
+          )}
+        </SectionCard>
+
+        {/* ── SECTION : Pas ───────────────────────────────────── */}
+        <SectionCard
+          icon={<Footprints className="w-4 h-4" />}
+          iconColor="var(--accent)"
+          title="Activité"
+        >
+          <Field label="Pas aujourd'hui">
+            {/* Chips preset */}
+            <div className="flex flex-wrap gap-2 mb-3">
+              {STEPS_CHIPS.map((chip) => {
+                const active = stepsChip === chip.value
+                return (
+                  <button
+                    key={chip.label}
+                    onClick={() => {
+                      setStepsChip(chip.value)
+                      set('steps', String(chip.value))
+                    }}
+                    style={{
+                      padding: '7px 14px',
+                      borderRadius: 20,
+                      border: active ? 'none' : '1px solid var(--border)',
+                      background: active ? 'var(--accent)' : 'var(--surface)',
+                      color: active ? 'var(--bg)' : 'var(--text)',
+                      fontSize: 13,
+                      fontWeight: active ? 800 : 500,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {chip.label}
+                  </button>
                 )
-              }
+              })}
+            </div>
+            {/* Input numérique optionnel */}
+            <div>
+              <p className="fiq-label mb-1.5">Autre valeur</p>
+              <input
+                type="number"
+                placeholder="ex : 9200"
+                value={stepsChip ? '' : form.steps}
+                onChange={(e) => {
+                  setStepsChip(null)
+                  set('steps', e.target.value)
+                }}
+                style={fiqInput}
+              />
+            </div>
+          </Field>
+        </SectionCard>
+
+        {/* ── SECTION : Nutrition ─────────────────────────────── */}
+        <SectionCard
+          icon={<Utensils className="w-4 h-4" />}
+          iconColor="var(--orange)"
+          title="Nutrition"
+        >
+          <Field label="Calories">
+            <input
+              type="number"
+              placeholder="2200"
+              value={form.calories}
+              onChange={(e) => set('calories', e.target.value)}
+              style={fiqInput}
+            />
+            {cal > 0 && <MacroBar value={cal} target={macroTarget.calories} color="var(--blue)" label={`${cal} / ${macroTarget.calories} kcal`} />}
+          </Field>
+
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Protéines">
+              <input
+                type="number"
+                placeholder="160"
+                value={form.protein_g}
+                onChange={(e) => set('protein_g', e.target.value)}
+                style={{ ...fiqInput, textAlign: 'center' }}
+              />
+              <p className="text-[9px] text-center mt-0.5" style={{ color: 'var(--muted)' }}>grammes</p>
+              {prot > 0 && <MacroBar value={prot} target={macroTarget.protein_g} color="var(--accent)" label={`${prot}g`} />}
+            </Field>
+            <Field label="Glucides">
+              <input
+                type="number"
+                placeholder="250"
+                value={form.carbs_g}
+                onChange={(e) => set('carbs_g', e.target.value)}
+                style={{ ...fiqInput, textAlign: 'center' }}
+              />
+              <p className="text-[9px] text-center mt-0.5" style={{ color: 'var(--muted)' }}>grammes</p>
+              {carb > 0 && <MacroBar value={carb} target={macroTarget.carbs_g} color="var(--blue)" label={`${carb}g`} />}
+            </Field>
+            <Field label="Lipides">
+              <input
+                type="number"
+                placeholder="70"
+                value={form.fat_g}
+                onChange={(e) => set('fat_g', e.target.value)}
+                style={{ ...fiqInput, textAlign: 'center' }}
+              />
+              <p className="text-[9px] text-center mt-0.5" style={{ color: 'var(--muted)' }}>grammes</p>
+              {fat > 0 && <MacroBar value={fat} target={macroTarget.fat_g} color="var(--orange)" label={`${fat}g`} />}
+            </Field>
+          </div>
+        </SectionCard>
+
+        {/* ── SECTION : Ressenti ──────────────────────────────── */}
+        <SectionCard
+          icon={<Brain className="w-4 h-4" />}
+          iconColor="#EC4899"
+          title="Ressenti"
+        >
+          <div className="space-y-5">
+            <ScoreSlider
+              label="Fatigue"
+              value={form.fatigue_score}
+              onChange={(v) => set('fatigue_score', v)}
+              lowLabel="Frais" highLabel="Épuisé"
+              lowColor="var(--accent)" highColor="var(--red)"
+              emoji={form.fatigue_score <= 3 ? '💪' : form.fatigue_score <= 6 ? '😐' : '😴'}
+            />
+            <ScoreSlider
+              label="Motivation"
+              value={form.motivation_score}
+              onChange={(v) => set('motivation_score', v)}
+              lowLabel="Démotivé" highLabel="Au top"
+              lowColor="var(--red)" highColor="var(--accent)"
+              emoji={form.motivation_score <= 3 ? '😴' : form.motivation_score <= 6 ? '😐' : '💪'}
+            />
+          </div>
+
+          <Field label="Notes libres">
+            <textarea
+              placeholder="Douleur au genou, bonne nuit, stressé au boulot…"
+              value={form.notes}
+              onChange={(e) => set('notes', e.target.value)}
+              rows={3}
+              style={{
+                ...fiqInput,
+                resize: 'none',
+                lineHeight: 1.6,
+                paddingTop: 12,
+                paddingBottom: 12,
+              }}
+            />
+          </Field>
+        </SectionCard>
+
+        {/* ── SECTION : Données avancées (collapsible) ─────────── */}
+        <div
+          style={{
+            borderRadius: 16,
+            border: '1px solid var(--border)',
+            background: 'var(--card)',
+            marginBottom: 16,
+            overflow: 'hidden',
+          }}
+        >
+          <button
+            onClick={() => setAdvancedOpen((o) => !o)}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '16px 20px',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--text)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 8,
+                  background: '#EF444422',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Activity className="w-4 h-4" style={{ color: 'var(--red)' }} />
+              </span>
+              <span style={{ fontWeight: 700, fontSize: 15 }}>Données avancées</span>
+            </div>
+            {advancedOpen
+              ? <ChevronUp className="w-4 h-4" style={{ color: 'var(--muted)' }} />
+              : <ChevronDown className="w-4 h-4" style={{ color: 'var(--muted)' }} />
+            }
+          </button>
+
+          {advancedOpen && (
+            <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <p className="text-xs" style={{ color: 'var(--muted)', marginTop: -4 }}>
+                Nécessite un tensiomètre. Consultez un médecin si SYS &gt; 135 mmHg de façon répétée.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <Field label="Tension SYS (mmHg)">
+                  <input
+                    type="number"
+                    placeholder="120"
+                    value={form.sys_bp}
+                    onChange={(e) => set('sys_bp', e.target.value)}
+                    style={fiqInput}
+                  />
+                </Field>
+                <Field label="Tension DIA (mmHg)">
+                  <input
+                    type="number"
+                    placeholder="80"
+                    value={form.dia_bp}
+                    onChange={(e) => set('dia_bp', e.target.value)}
+                    style={fiqInput}
+                  />
+                </Field>
+              </div>
             </div>
           )}
-        </Field>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Tension SYS (mmHg)">
-            <Input type="number" placeholder="120" value={form.sys_bp}
-              onChange={(e) => set('sys_bp', e.target.value)} style={inputStyle} />
-          </Field>
-          <Field label="Tension DIA (mmHg)">
-            <Input type="number" placeholder="80" value={form.dia_bp}
-              onChange={(e) => set('dia_bp', e.target.value)} style={inputStyle} />
-          </Field>
         </div>
 
-        <Field label="Pas (steps)">
-          <Input type="number" placeholder="8000" value={form.steps}
-            onChange={(e) => set('steps', e.target.value)} style={inputStyle} />
-        </Field>
-      </Section>
+        {error && <AlertBar type="red" message={error} className="mb-4" />}
 
-      {/* ── SECTION : Sommeil ───────────────────────────────── */}
-      <Section title="😴 Sommeil">
-        <Field label="Total (min)">
-          <Input type="number" placeholder="480" value={form.sleep_total_min}
-            onChange={(e) => set('sleep_total_min', e.target.value)} style={inputStyle} />
-        </Field>
-        <div className="grid grid-cols-3 gap-3">
-          <Field label="Profond (min)">
-            <Input type="number" placeholder="90" value={form.sleep_deep_min}
-              onChange={(e) => set('sleep_deep_min', e.target.value)} style={inputStyle} />
-          </Field>
-          <Field label="Léger (min)">
-            <Input type="number" placeholder="240" value={form.sleep_light_min}
-              onChange={(e) => set('sleep_light_min', e.target.value)} style={inputStyle} />
-          </Field>
-          <Field label="REM (min)">
-            <Input type="number" placeholder="90" value={form.sleep_rem_min}
-              onChange={(e) => set('sleep_rem_min', e.target.value)} style={inputStyle} />
-          </Field>
-        </div>
-        {form.sleep_deep_min && (
-          <SleepBar deepMin={parseInt(form.sleep_deep_min)} totalMin={parseInt(form.sleep_total_min) || 480} />
-        )}
-      </Section>
-
-      {/* ── SECTION : Nutrition ─────────────────────────────── */}
-      <Section title="🥗 Nutrition">
-        <Field label="Calories">
-          <Input type="number" placeholder="2200" value={form.calories}
-            onChange={(e) => set('calories', e.target.value)} style={inputStyle} />
-          {cal > 0 && <MacroBar value={cal} target={macroTarget.calories} color="var(--fiq-blue)" label={`${cal} / ${macroTarget.calories} kcal`} />}
-        </Field>
-
-        <div className="grid grid-cols-3 gap-3">
-          <Field label="Protéines (g)">
-            <Input type="number" placeholder="160" value={form.protein_g}
-              onChange={(e) => set('protein_g', e.target.value)} style={inputStyle} />
-            {prot > 0 && <MacroBar value={prot} target={macroTarget.protein_g} color="var(--fiq-accent)" label={`${prot}g`} />}
-          </Field>
-          <Field label="Glucides (g)">
-            <Input type="number" placeholder="250" value={form.carbs_g}
-              onChange={(e) => set('carbs_g', e.target.value)} style={inputStyle} />
-            {carb > 0 && <MacroBar value={carb} target={macroTarget.carbs_g} color="var(--fiq-blue)" label={`${carb}g`} />}
-          </Field>
-          <Field label="Lipides (g)">
-            <Input type="number" placeholder="70" value={form.fat_g}
-              onChange={(e) => set('fat_g', e.target.value)} style={inputStyle} />
-            {fat > 0 && <MacroBar value={fat} target={macroTarget.fat_g} color="var(--fiq-orange)" label={`${fat}g`} />}
-          </Field>
-        </div>
-      </Section>
-
-      {/* ── SECTION : Ressenti ──────────────────────────────── */}
-      <Section title="🧠 Ressenti">
-        <div className="space-y-4">
-          <ScoreSlider
-            label="Fatigue"
-            value={form.fatigue_score}
-            onChange={(v) => set('fatigue_score', v)}
-            lowLabel="Frais" highLabel="Épuisé"
-            lowColor="var(--fiq-accent)" highColor="var(--fiq-red)"
-          />
-          <ScoreSlider
-            label="Motivation"
-            value={form.motivation_score}
-            onChange={(v) => set('motivation_score', v)}
-            lowLabel="Démotivé" highLabel="Au top"
-            lowColor="var(--fiq-red)" highColor="var(--fiq-accent)"
-          />
-        </div>
-
-        <Field label="Notes libres">
-          <Textarea
-            placeholder="Douleur au genou, bonne nuit, stressé au boulot…"
-            value={form.notes}
-            onChange={(e) => set('notes', e.target.value)}
-            rows={3}
-            style={{ ...inputStyle, resize: 'none' }}
-          />
-        </Field>
-      </Section>
-
-      {error && <AlertBar type="red" message={error} className="mb-4" />}
-
-      <Button
-        className="w-full py-6 text-base font-black"
-        onClick={handleSave}
-        disabled={saving}
-        style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
-      >
-        {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Save className="w-5 h-5 mr-2" />Sauvegarder le bilan</>}
-      </Button>
+        {/* ── Bouton Save ─────────────────────────────────────── */}
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            width: '100%',
+            padding: '18px 24px',
+            borderRadius: 18,
+            background: saving ? 'var(--accent-dim)' : 'var(--accent)',
+            color: 'var(--bg)',
+            border: 'none',
+            cursor: saving ? 'not-allowed' : 'pointer',
+            fontSize: 16,
+            fontWeight: 900,
+            letterSpacing: '-0.02em',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 10,
+            transition: 'opacity 0.15s',
+            opacity: saving ? 0.8 : 1,
+          }}
+        >
+          {saving
+            ? <Loader2 className="w-5 h-5 animate-spin" />
+            : (
+              <>
+                <Save className="w-5 h-5" />
+                Sauvegarder le bilan
+              </>
+            )
+          }
+        </button>
+      </div>
     </div>
   )
 }
 
 // ── Sous-composants ──────────────────────────────────────────
 
-const inputStyle: React.CSSProperties = {
+// Style input natif réutilisable
+const fiqInput: React.CSSProperties = {
+  width: '100%',
   background: 'var(--surface)',
-  borderColor: 'var(--fiq-border)',
-  color: 'var(--fiq-text)',
+  border: '1px solid var(--border)',
   borderRadius: 10,
+  color: 'var(--text)',
+  fontSize: 16,
+  padding: '11px 14px',
+  outline: 'none',
+  boxSizing: 'border-box',
+  fontVariantNumeric: 'tabular-nums',
 }
 
-function Section({ title, children }: { title: string; icon?: string; children: React.ReactNode }) {
+function SectionCard({
+  icon, iconColor, title, children,
+}: {
+  icon: React.ReactNode
+  iconColor: string
+  title: string
+  children: React.ReactNode
+}) {
   return (
-    <div className="fiq-card mb-4 space-y-4">
-      <h2 className="font-bold text-base" style={{ color: 'var(--fiq-text)' }}>{title}</h2>
+    <div
+      style={{
+        borderRadius: 16,
+        border: '1px solid var(--border)',
+        background: 'var(--card)',
+        padding: 20,
+        marginBottom: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+      }}
+    >
+      {/* En-tête de section */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            background: iconColor + '22',
+            border: `1px solid ${iconColor}44`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: iconColor,
+            flexShrink: 0,
+          }}
+        >
+          {icon}
+        </span>
+        <h2 style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', margin: 0 }}>
+          {title}
+        </h2>
+      </div>
       {children}
     </div>
   )
@@ -411,8 +728,8 @@ function Section({ title, children }: { title: string; icon?: string; children: 
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5">
-      <label className="fiq-label block">{label}</label>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <label className="fiq-label">{label}</label>
       {children}
     </div>
   )
@@ -420,20 +737,20 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function MacroBar({ value, target, color, label }: { value: number; target: number; color: string; label: string }) {
   const rawPct = Math.round((value / target) * 100)
-  const barPct = Math.min(100, rawPct) // la barre se remplit max à 100%
+  const barPct = Math.min(100, rawPct)
   const over = value > target
   return (
     <div className="mt-1.5">
       <div className="flex justify-between mb-0.5">
-        <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>{label}</span>
-        <span className="text-[10px] font-semibold" style={{ color: over ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+        <span className="text-[10px]" style={{ color: 'var(--muted)' }}>{label}</span>
+        <span className="text-[10px] font-semibold" style={{ color: over ? 'var(--orange)' : 'var(--muted)' }}>
           {rawPct}%{over && ' ⚠'}
         </span>
       </div>
-      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--fiq-border)' }}>
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
         <div
           className="h-full rounded-full transition-all duration-300"
-          style={{ width: `${barPct}%`, background: over ? 'var(--fiq-orange)' : color }}
+          style={{ width: `${barPct}%`, background: over ? 'var(--orange)' : color }}
         />
       </div>
     </div>
@@ -444,17 +761,17 @@ function SleepBar({ deepMin, totalMin }: { deepMin: number; totalMin: number }) 
   const pct = Math.min(100, Math.round((deepMin / totalMin) * 100))
   const isGood = deepMin >= 60
   return (
-    <div className="rounded-lg p-3" style={{ background: 'var(--fiq-faint)' }}>
+    <div className="rounded-xl p-3" style={{ background: 'var(--faint)' }}>
       <div className="flex justify-between mb-1">
-        <span className="text-xs font-semibold" style={{ color: isGood ? 'var(--fiq-accent)' : 'var(--fiq-orange)' }}>
+        <span className="text-xs font-semibold" style={{ color: isGood ? 'var(--accent)' : 'var(--orange)' }}>
           {isGood ? '✓ Sommeil profond OK' : '⚠ Sommeil profond faible'}
         </span>
-        <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>{deepMin}min / {totalMin}min total</span>
+        <span className="text-xs" style={{ color: 'var(--muted)' }}>{deepMin}min / {totalMin}min</span>
       </div>
-      <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--fiq-border)' }}>
+      <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
         <div
           className="h-full rounded-full"
-          style={{ width: `${pct}%`, background: isGood ? 'var(--fiq-accent)' : 'var(--fiq-orange)' }}
+          style={{ width: `${pct}%`, background: isGood ? 'var(--accent)' : 'var(--orange)' }}
         />
       </div>
     </div>
@@ -463,35 +780,117 @@ function SleepBar({ deepMin, totalMin }: { deepMin: number; totalMin: number }) 
 
 function EwmaTrend({ current, trend }: { current: number; trend: number }) {
   const diff = current - trend
-  if (Math.abs(diff) < 0.05) return <Minus className="w-3 h-3" style={{ color: 'var(--fiq-muted)' }} />
-  if (diff > 0) return <TrendingUp className="w-3 h-3" style={{ color: 'var(--fiq-orange)' }} />
-  return <TrendingDown className="w-3 h-3" style={{ color: 'var(--fiq-accent)' }} />
+  if (Math.abs(diff) < 0.05) return <Minus className="w-3 h-3" style={{ color: 'var(--muted)' }} />
+  if (diff > 0) return <TrendingUp className="w-3 h-3" style={{ color: 'var(--orange)' }} />
+  return <TrendingDown className="w-3 h-3" style={{ color: 'var(--accent)' }} />
 }
 
 function ScoreSlider({
-  label, value, onChange, lowLabel, highLabel, lowColor, highColor,
+  label, value, onChange, lowLabel, highLabel, lowColor, highColor, emoji,
 }: {
   label: string; value: number; onChange: (v: number) => void
-  lowLabel: string; highLabel: string; lowColor: string; highColor: string
+  lowLabel: string; highLabel: string; lowColor: string; highColor: string; emoji: string
 }) {
   const pct = (value - 1) / 9
   const color = interpolateColor(lowColor, highColor, pct)
 
   return (
-    <div className="space-y-2">
-      <div className="flex justify-between items-center">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <label className="fiq-label">{label}</label>
-        <span className="text-lg font-black fiq-data" style={{ color }}>{value}/10</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 18 }}>{emoji}</span>
+          <span className="fiq-data" style={{ fontSize: 20, fontWeight: 900, color }}>{value}<span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>/10</span></span>
+        </div>
       </div>
       <input
         type="range" min={1} max={10} value={value}
         onChange={(e) => onChange(parseInt(e.target.value))}
-        className="w-full h-2 rounded-full appearance-none cursor-pointer"
-        style={{ accentColor: color, background: 'var(--fiq-border)' }}
+        style={{
+          width: '100%',
+          height: 6,
+          borderRadius: 99,
+          appearance: 'none',
+          cursor: 'pointer',
+          accentColor: color,
+          background: `linear-gradient(to right, ${color} ${(value - 1) / 9 * 100}%, var(--border) ${(value - 1) / 9 * 100}%)`,
+        }}
       />
-      <div className="flex justify-between">
-        <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>{lowLabel}</span>
-        <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>{highLabel}</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 10, color: 'var(--muted)' }}>{lowLabel}</span>
+        <span style={{ fontSize: 10, color: 'var(--muted)' }}>{highLabel}</span>
+      </div>
+    </div>
+  )
+}
+
+// ── SleepHMinInput : saisie heures + minutes ────────────────
+function SleepHMinInput({
+  valueMin,
+  onChange,
+  placeholderH = '0',
+  placeholderMin = '00',
+  compact = false,
+}: {
+  valueMin: string
+  onChange: (minutes: number | null) => void
+  placeholderH?: string
+  placeholderMin?: string
+  compact?: boolean
+}) {
+  const parsed = minutesToHMin(valueMin)
+
+  function handleH(v: string) {
+    const h = parseInt(v) || 0
+    const m = parsed.min
+    onChange(hMinToMinutes(h, m))
+  }
+  function handleMin(v: string) {
+    const h = parsed.h
+    const m = Math.min(59, parseInt(v) || 0)
+    onChange(hMinToMinutes(h, m))
+  }
+
+  const inputStyle: React.CSSProperties = {
+    background: 'var(--surface)',
+    border: '1px solid var(--border)',
+    borderRadius: 10,
+    color: 'var(--text)',
+    fontSize: compact ? 14 : 16,
+    padding: compact ? '8px 6px' : '11px 10px',
+    outline: 'none',
+    textAlign: 'center',
+    width: '100%',
+    fontVariantNumeric: 'tabular-nums',
+    boxSizing: 'border-box',
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: compact ? 4 : 8 }}>
+      <div style={{ flex: 1 }}>
+        <input
+          type="number"
+          min={0}
+          max={12}
+          placeholder={placeholderH}
+          value={parsed.h > 0 ? parsed.h : ''}
+          onChange={(e) => handleH(e.target.value)}
+          style={inputStyle}
+        />
+        <p style={{ fontSize: 9, color: 'var(--muted)', textAlign: 'center', marginTop: 2 }}>h</p>
+      </div>
+      <span style={{ color: 'var(--muted)', fontSize: compact ? 14 : 18, fontWeight: 700, flexShrink: 0 }}>:</span>
+      <div style={{ flex: 1 }}>
+        <input
+          type="number"
+          min={0}
+          max={59}
+          placeholder={placeholderMin}
+          value={parsed.min > 0 ? parsed.min : ''}
+          onChange={(e) => handleMin(e.target.value)}
+          style={inputStyle}
+        />
+        <p style={{ fontSize: 9, color: 'var(--muted)', textAlign: 'center', marginTop: 2 }}>min</p>
       </div>
     </div>
   )
@@ -500,6 +899,12 @@ function ScoreSlider({
 // Interpole entre deux couleurs hex
 function interpolateColor(c1: string, c2: string, t: number): string {
   const presets: Record<string, [number, number, number]> = {
+    'var(--accent)':  [180, 255, 74],
+    'var(--red)':     [239, 68,  68],
+    'var(--orange)':  [255, 107, 53],
+    'var(--blue)':    [61,  139, 255],
+    'var(--muted)':   [107, 114, 128],
+    // Compatibilité anciens noms fiq-
     'var(--fiq-accent)':  [180, 255, 74],
     'var(--fiq-red)':     [239, 68,  68],
     'var(--fiq-orange)':  [255, 107, 53],

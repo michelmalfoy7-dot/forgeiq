@@ -19,7 +19,7 @@ export default async function ProfilePage() {
     { data: streakData },
   ] = await Promise.all([
     supabase.from('profiles')
-      .select('display_name, username, goal, level, equipment, sessions_per_week, age, height_cm, gender, weight_kg, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, created_at')
+      .select('display_name, username, goal, level, equipment, sessions_per_week, age, height_cm, gender, weight_kg, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, created_at, subscription_status, subscription_plan, stripe_customer_id')
       .eq('id', user.id).single(),
 
     supabase.from('workouts')
@@ -87,6 +87,9 @@ export default async function ProfilePage() {
           prCount: prCount?.length ?? 0,
           streak,
         }}
+        subscriptionStatus={profile?.subscription_status ?? 'free'}
+        subscriptionPlan={profile?.subscription_plan ?? null}
+        hasStripeCustomer={!!profile?.stripe_customer_id}
       />
     </div>
   )

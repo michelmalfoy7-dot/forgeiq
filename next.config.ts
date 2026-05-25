@@ -34,6 +34,15 @@ const nextConfig: NextConfig = {
           { key: 'Cache-Control', value: 'no-store' },
         ],
       },
+      {
+        // TWA Digital Asset Links — nécessaire pour Google Play Store
+        // Content-Type JSON explicite + pas de cache agressif (le fingerprint peut changer)
+        source: '/.well-known/assetlinks.json',
+        headers: [
+          { key: 'Content-Type', value: 'application/json' },
+          { key: 'Cache-Control', value: 'public, max-age=3600' },
+        ],
+      },
     ]
   },
 

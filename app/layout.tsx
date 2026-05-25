@@ -13,10 +13,48 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 })
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://getforgeiq.com'
+
 export const metadata: Metadata = {
-  title: 'ForgeIQ — Build smarter. Lift harder.',
-  description: 'Ton coach IA fitness. Entraînement, nutrition, progression.',
+  metadataBase: new URL(APP_URL),
+  title: {
+    default: 'ForgeIQ — Build smarter. Lift harder.',
+    template: '%s | ForgeIQ',
+  },
+  description: 'Coach IA fitness : entraînement, nutrition, suivi biométrique et recommandations personnalisées. La seule app qui connecte tout.',
+  keywords: ['fitness', 'coach IA', 'musculation', 'nutrition', 'entraînement', 'suivi sportif', 'workout tracker'],
+  authors: [{ name: 'ForgeIQ' }],
+  creator: 'ForgeIQ',
+  publisher: 'ForgeIQ',
   manifest: '/manifest.json',
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, 'max-image-preview': 'large' },
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'fr_FR',
+    url: APP_URL,
+    siteName: 'ForgeIQ',
+    title: 'ForgeIQ — Build smarter. Lift harder.',
+    description: 'Coach IA fitness : entraînement, nutrition, suivi biométrique. Personnalisé. Instantané.',
+    images: [
+      {
+        url: '/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'ForgeIQ — Coach IA fitness',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ForgeIQ — Build smarter. Lift harder.',
+    description: 'Coach IA fitness : entraînement, nutrition, suivi biométrique. Personnalisé. Instantané.',
+    images: ['/og-image.png'],
+    creator: '@forgeiq',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',

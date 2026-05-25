@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, Send, Bot, User, Sparkles, Trash2 } from 'lucide-react'
+import { Loader2, Send, Bot, User, Sparkles, Trash2, Crown } from 'lucide-react'
+import Link from 'next/link'
 
 type Message = { role: 'user' | 'assistant'; content: string; streaming?: boolean }
 
@@ -204,13 +205,15 @@ export default function CoachPage() {
   const [dailyCtx, setDailyCtx] = useState<DailyCtx | null>(null)
   const [proteinTarget, setProteinTarget] = useState(160)
   const [coachCount, setCoachCount] = useState(0)
-  const coachLimit = 30
+  const [coachLimit, setCoachLimit] = useState(9999)
+  const [isFree, setIsFree] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [followUps] = useState<string[]>(getFollowUps())
   const [clearing, setClearing] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // Charger l'historique + contexte + compteur mensuel au montage
+  // Charger l'historique + contexte + compteur (all-time free / mensuel pro) au montage
   useEffect(() => {
     async function load() {
       const supabase = createClient()
@@ -222,7 +225,7 @@ export default function CoachPage() {
       startOfMonth.setDate(1)
       startOfMonth.setHours(0, 0, 0, 0)
 
-      const [{ data: history }, { data: log }, { data: profile }, { count: msgCount }] = await Promise.all([
+      const [{ data: history }, { data: log }, { data: profile }] = await Promise.all([
         supabase.from('coach_messages')
           .select('role, content, created_at')
           .eq('user_id', user.id)
@@ -234,14 +237,9 @@ export default function CoachPage() {
           .eq('log_date', today)
           .single(),
         supabase.from('profiles')
-          .select('goal, weight_kg')
+          .select('goal, weight_kg, subscription_status, subscription_plan, is_admin')
           .eq('id', user.id)
           .single(),
-        supabase.from('coach_messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('role', 'user')
-          .gte('created_at', startOfMonth.toISOString()),
       ])
 
       if (history?.length) {
@@ -249,7 +247,41 @@ export default function CoachPage() {
       }
       if (log) setDailyCtx(log)
       if (profile) setProteinTarget(calcProteinTarget(profile.goal, profile.weight_kg))
-      setCoachCount(msgCount ?? 0)
+
+      // Déterminer tier et limite
+      const status = profile?.subscription_status ?? 'free'
+      const plan = profile?.subscription_plan ?? 'free'
+      const admin = profile?.is_admin ?? false
+      setIsAdmin(admin)
+      const free = !admin && status !== 'pro' && status !== 'lifetime'
+      setIsFree(free)
+
+      if (admin) {
+        // Admin : pas de comptage, pas de limite
+        setCoachLimit(9999)
+        setCoachCount(0)
+      } else if (free) {
+        // Comptage all-time pour les free
+        setCoachLimit(3)
+        const { count: total } = await supabase
+          .from('coach_messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('role', 'user')
+        setCoachCount(total ?? 0)
+      } else {
+        // Comptage mensuel pour les Pro
+        const limit = (status === 'lifetime' || plan === 'annual') ? 9999 : 60
+        setCoachLimit(limit)
+        const { count: monthly } = await supabase
+          .from('coach_messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('role', 'user')
+          .gte('created_at', startOfMonth.toISOString())
+        setCoachCount(monthly ?? 0)
+      }
+
       setHistoryLoading(false)
     }
     load()
@@ -364,7 +396,8 @@ export default function CoachPage() {
     messages.length > 0 &&
     messages[messages.length - 1].role === 'assistant' &&
     !messages[messages.length - 1].streaming
-  const remaining = coachLimit - coachCount
+  const remaining = Math.max(0, coachLimit - coachCount)
+  const limitReached = coachCount >= coachLimit
 
   return (
     <div className="flex flex-col h-[calc(100dvh-64px)] max-w-lg mx-auto">
@@ -511,8 +544,8 @@ export default function CoachPage() {
                 sendMessage(input)
               }
             }}
-            placeholder="Pose ta question au coach..."
-            disabled={loading}
+            placeholder={limitReached && isFree ? '🔒 Passe en Pro pour continuer...' : 'Pose ta question au coach...'}
+            disabled={loading || (limitReached && isFree)}
             className="flex-1 resize-none rounded-xl px-4 py-3 text-sm outline-none transition-all"
             style={{
               background: 'var(--fiq-card)',
@@ -524,7 +557,7 @@ export default function CoachPage() {
           />
           <button
             onClick={() => sendMessage(input)}
-            disabled={loading || !input.trim()}
+            disabled={loading || !input.trim() || (limitReached && isFree)}
             className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-all"
             style={{
               background: input.trim() && !loading ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
@@ -538,16 +571,35 @@ export default function CoachPage() {
           </button>
         </div>
 
-        {/* Compteur de messages mensuel */}
-        {coachCount > 0 && (
-          <p
-            className="text-xs mt-2 text-right"
-            style={{ color: remaining <= 5 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}
-          >
-            {remaining > 0
-              ? `${remaining} message${remaining > 1 ? 's' : ''} restant${remaining > 1 ? 's' : ''} ce mois`
-              : '🔒 Limite mensuelle atteinte — passe en Pro'
-            }
+        {/* Compteur + CTA upgrade */}
+        {isFree && coachCount > 0 && !limitReached && (
+          <p className="text-xs mt-2 text-right" style={{ color: remaining <= 1 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+            {remaining} essai{remaining > 1 ? 's' : ''} gratuit{remaining > 1 ? 's' : ''} restant{remaining > 1 ? 's' : ''}
+          </p>
+        )}
+
+        {/* Mur d'upgrade free — CTA visible dans la zone de saisie */}
+        {isFree && limitReached && (
+          <div className="mt-3 rounded-2xl p-4 flex items-center gap-3"
+            style={{ background: '#B4FF4A12', border: '1px solid #B4FF4A44' }}>
+            <Crown className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Tes 3 essais sont utilisés</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Passe en Pro pour continuer avec le coach IA.</p>
+            </div>
+            <Link href="/pricing"
+              className="px-3 py-2 rounded-xl text-xs font-black flex-shrink-0"
+              style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
+              Pro →
+            </Link>
+          </div>
+        )}
+
+        {/* Compteur mensuel Pro */}
+        {!isFree && coachLimit < 9999 && coachCount > 0 && (
+          <p className="text-xs mt-2 text-right"
+            style={{ color: remaining <= 10 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+            {remaining} msg restant{remaining > 1 ? 's' : ''} ce mois
           </p>
         )}
       </div>

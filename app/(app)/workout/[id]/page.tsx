@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, ChevronUp, AlertCircle, RefreshCw } from 'lucide-react'
+import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Dumbbell } from 'lucide-react'
 import { Confetti } from '@/components/ui/Confetti'
 
 // ── Types ─────────────────────────────────────────────────────
@@ -26,11 +26,14 @@ type Exercise = {
   name_fr: string
   muscle_primary: string[]
   equipment: string
+  is_bilateral_dumbbell?: boolean
 }
 
 type ExerciseGroup = {
   exercise_id: string
   exercise_name: string
+  exercise_equipment?: string
+  is_bilateral_dumbbell?: boolean
   sets: SetRow[]
   lastSession?: { weight_kg: number; reps: number }[]
   pr?: number
@@ -39,20 +42,31 @@ type ExerciseGroup = {
 // ── Utils ─────────────────────────────────────────────────────
 function uid() { return Math.random().toString(36).slice(2) }
 
-function calcTonnage(sets: SetRow[]) {
+function calcTonnage(sets: SetRow[], isBilateral = false) {
   return sets
-    .filter((s) => !s.is_warmup && s.weight_kg !== '' && s.reps !== '')
-    .reduce((acc, s) => acc + (Number(s.weight_kg) * Number(s.reps)), 0)
+    .filter((s) => s.weight_kg !== '' && s.reps !== '')
+    .reduce((acc, s) => acc + (Number(s.weight_kg) * Number(s.reps) * (isBilateral ? 2 : 1)), 0)
+}
+
+function calcTonnageGroup(group: ExerciseGroup) {
+  const workSets = group.sets.filter((s) => !s.is_warmup)
+  const warmSets = group.sets.filter((s) => s.is_warmup)
+  const isBilateral = group.is_bilateral_dumbbell ?? false
+  return calcTonnage(workSets, isBilateral) + calcTonnage(warmSets, isBilateral)
 }
 
 export default function WorkoutSessionPage() {
   const { id: workoutId } = useParams<{ id: string }>()
   const router = useRouter()
 
+  // Clé localStorage pour cette séance
+  const STORAGE_KEY = `forgeiq_workout_${workoutId}`
+
   const [groups, setGroups] = useState<ExerciseGroup[]>([])
   const [exercises, setExercises] = useState<Exercise[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
+  const [equipmentFilter, setEquipmentFilter] = useState<string>('all')
   const [restTimer, setRestTimer] = useState<number | null>(null)
   const [restDuration, setRestDuration] = useState(90)
   const [completing, setCompleting] = useState(false)
@@ -61,10 +75,13 @@ export default function WorkoutSessionPage() {
   const [summary, setSummary] = useState<{ tonnage: number; sets: number; newPRs: string[] } | null>(null)
   const [sessionName, setSessionName] = useState('Séance')
   const [elapsed, setElapsed] = useState(0)
+  const [showQuitModal, setShowQuitModal] = useState(false)
+  const [restoredFromStorage, setRestoredFromStorage] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const restRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  // Sauvegarde du payload pour retry sans perte de données
   const lastPayloadRef = useRef<unknown>(null)
+  // Track if initial load is done before trying to restore
+  const loadedRef = useRef(false)
 
   // Chrono séance
   useEffect(() => {
@@ -72,28 +89,90 @@ export default function WorkoutSessionPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [])
 
-  // Charger les exercices + infos séance + pré-charger depuis suggestion IA
+  // ── Auto-save localStorage à chaque modification ──────────
+  useEffect(() => {
+    if (!loadedRef.current) return // Ne pas sauvegarder avant le chargement initial
+    if (groups.length === 0) return
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          groups,
+          sessionName,
+          savedAt: Date.now(),
+        }))
+      } catch { /* quota exceeded */ }
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [groups, sessionName, STORAGE_KEY])
+
+  // ── beforeunload : avertissement si séance en cours ───────
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (groups.length > 0 && !completed) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [groups.length, completed])
+
+  // ── Auto-save Supabase au changement de visibilité ────────
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden' && groups.length > 0) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            groups,
+            sessionName,
+            savedAt: Date.now(),
+          }))
+        } catch { /* ignore */ }
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [groups, sessionName, STORAGE_KEY])
+
+  // ── Charger les exercices + infos séance ──────────────────
   useEffect(() => {
     async function load() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
 
       const [{ data: exos }, { data: workout }] = await Promise.all([
-        supabase.from('exercises_library').select('id,name,name_fr,muscle_primary,equipment').order('name'),
+        supabase.from('exercises_library').select('id,name,name_fr,muscle_primary,equipment,is_bilateral_dumbbell').order('name_fr'),
         supabase.from('workouts').select('session_name').eq('id', workoutId).single(),
       ])
 
-      const library = exos ?? []
+      const library: Exercise[] = (exos ?? []) as Exercise[]
       setExercises(library)
       if (workout?.session_name) setSessionName(workout.session_name)
 
+      // Essayer de restaurer depuis localStorage d'abord
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY)
+        if (stored) {
+          const parsed = JSON.parse(stored) as { groups: ExerciseGroup[]; sessionName: string; savedAt: number }
+          // Données valides et récentes (< 24h)
+          if (parsed.groups?.length > 0 && Date.now() - parsed.savedAt < 86400000) {
+            setGroups(parsed.groups)
+            if (parsed.sessionName) setSessionName(parsed.sessionName)
+            loadedRef.current = true
+            setRestoredFromStorage(true)
+            setTimeout(() => setRestoredFromStorage(false), 4000)
+            return
+          }
+        }
+      } catch { /* ignore */ }
+
+      // Sinon pré-charger depuis suggestion IA (sessionStorage)
       const stored = sessionStorage.getItem(`workout-exercises-${workoutId}`)
       if (stored && user) {
         sessionStorage.removeItem(`workout-exercises-${workoutId}`)
         try {
           const suggested: { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[] = JSON.parse(stored)
 
-          // Résoudre les exercices en une seule passe (pas de requête ici)
           const matches = suggested
             .map((s) => ({
               s,
@@ -107,7 +186,6 @@ export default function WorkoutSessionPage() {
           if (matches.length > 0) {
             const matchIds = matches.map((x) => x.match.id)
 
-            // Batch : 2 requêtes au lieu de 2N
             const [{ data: allLastSets }, { data: allPRs }] = await Promise.all([
               supabase.from('workout_sets')
                 .select('weight_kg, reps, exercise_id, workouts!inner(user_id)')
@@ -123,7 +201,6 @@ export default function WorkoutSessionPage() {
                 .eq('record_type', 'top_set'),
             ])
 
-            // Grouper par exercise_id (max 4 sets par exercice)
             const lastSetsByEx: Record<string, { weight_kg: number; reps: number }[]> = {}
             for (const s of allLastSets ?? []) {
               const exId = (s as { exercise_id: string }).exercise_id
@@ -143,15 +220,24 @@ export default function WorkoutSessionPage() {
                 id: uid(), exercise_id: match.id, exercise_name: match.name_fr ?? match.name,
                 set_number: i + 1, weight_kg: initWeight, reps: initReps, rpe: '', is_warmup: false,
               }))
-              return { exercise_id: match.id, exercise_name: match.name_fr ?? match.name, sets, lastSession, pr }
+              return {
+                exercise_id: match.id,
+                exercise_name: match.name_fr ?? match.name,
+                exercise_equipment: match.equipment,
+                is_bilateral_dumbbell: match.is_bilateral_dumbbell ?? false,
+                sets, lastSession, pr,
+              }
             })
 
             if (preloaded.length > 0) setGroups(preloaded)
           }
         } catch { /* Silencieux si parsing échoue */ }
       }
+
+      loadedRef.current = true
     }
     load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workoutId])
 
   // Chrono repos
@@ -192,8 +278,18 @@ export default function WorkoutSessionPage() {
       pr = prData?.value
     }
 
-    const firstSet: SetRow = { id: uid(), exercise_id: ex.id, exercise_name: ex.name_fr ?? ex.name, set_number: 1, weight_kg: lastSession[0]?.weight_kg ?? '', reps: lastSession[0]?.reps ?? '', rpe: '', is_warmup: false }
-    setGroups((prev) => [...prev, { exercise_id: ex.id, exercise_name: ex.name_fr ?? ex.name, sets: [firstSet], lastSession, pr }])
+    const firstSet: SetRow = {
+      id: uid(), exercise_id: ex.id, exercise_name: ex.name_fr ?? ex.name,
+      set_number: 1, weight_kg: lastSession[0]?.weight_kg ?? '', reps: lastSession[0]?.reps ?? '',
+      rpe: '', is_warmup: false,
+    }
+    setGroups((prev) => [...prev, {
+      exercise_id: ex.id,
+      exercise_name: ex.name_fr ?? ex.name,
+      exercise_equipment: ex.equipment,
+      is_bilateral_dumbbell: ex.is_bilateral_dumbbell ?? false,
+      sets: [firstSet], lastSession, pr,
+    }])
     setShowSearch(false)
     setSearchQuery('')
   }
@@ -264,10 +360,7 @@ export default function WorkoutSessionPage() {
       rpe_overall: null,
     }
 
-    // Sauvegarder le payload pour retry potentiel
     lastPayloadRef.current = payload
-
-    console.log('[workout/complete] payload:', JSON.stringify(payload).slice(0, 300))
 
     try {
       const res = await fetch('/api/workout/complete', {
@@ -277,17 +370,16 @@ export default function WorkoutSessionPage() {
       })
 
       const json = await res.json()
-      console.log('[workout/complete] response:', json)
 
       if (!res.ok || json.error) {
-        const msg = json.error ?? `Erreur HTTP ${res.status}`
-        console.error('[workout/complete] error:', msg)
-        setCompleteError(msg)
+        setCompleteError(json.error ?? `Erreur HTTP ${res.status}`)
         return
       }
 
       const { data } = json
       if (data) {
+        // Nettoyer localStorage après succès
+        try { localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
         setSummary({ tonnage: data.totalTonnage ?? 0, sets: data.totalSets ?? 0, newPRs: data.newPRs ?? [] })
         setCompleted(true)
         if (timerRef.current) clearInterval(timerRef.current)
@@ -295,20 +387,36 @@ export default function WorkoutSessionPage() {
         setCompleteError('Réponse inattendue du serveur. Réessaie.')
       }
     } catch (err) {
-      console.error('[workout/complete] fetch error:', err)
       setCompleteError('Erreur réseau. Vérifie ta connexion et réessaie.')
+      console.error('[workout/complete] fetch error:', err)
     } finally {
       setCompleting(false)
     }
-  }, [groups, workoutId])
+  }, [groups, workoutId, STORAGE_KEY])
 
-  const totalTonnage = groups.reduce((acc, g) => acc + calcTonnage(g.sets), 0)
+  // Tonnage total séance (travail + échauffement)
+  const totalTonnage = groups.reduce((acc, g) => acc + calcTonnageGroup(g), 0)
   const totalSets = groups.reduce((acc, g) => acc + g.sets.filter((s) => !s.is_warmup).length, 0)
-  const filteredExercises = exercises.filter((e) =>
-    searchQuery.length < 2 ||
-    e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (e.name_fr ?? '').toLowerCase().includes(searchQuery.toLowerCase())
-  )
+
+  // Filtres équipement pour la recherche
+  const EQUIPMENT_FILTERS = [
+    { value: 'all', label: 'Tous' },
+    { value: 'barbell', label: 'Barre' },
+    { value: 'dumbbell', label: 'Haltères' },
+    { value: 'cable', label: 'Câble' },
+    { value: 'machine', label: 'Machine' },
+    { value: 'smith', label: 'Smith' },
+    { value: 'bodyweight', label: 'Corps' },
+    { value: 'kettlebell', label: 'Kettlebell' },
+  ]
+
+  const filteredExercises = exercises.filter((e) => {
+    const matchQuery = searchQuery.length < 2 ||
+      e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (e.name_fr ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+    const matchEquip = equipmentFilter === 'all' || e.equipment === equipmentFilter
+    return matchQuery && matchEquip
+  })
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
@@ -369,6 +477,25 @@ export default function WorkoutSessionPage() {
   // ── Vue principale ─────────────────────────────────────────
   return (
     <div className="max-w-lg mx-auto" style={{ paddingBottom: '7rem' }}>
+
+      {/* Toast de restauration */}
+      {restoredFromStorage && (
+        <div
+          className="fixed top-4 left-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl shadow-lg"
+          style={{
+            transform: 'translateX(-50%)',
+            background: '#B4FF4A22',
+            border: '1px solid #B4FF4A55',
+            backdropFilter: 'blur(12px)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <span style={{ fontSize: 13, color: 'var(--fiq-accent)', fontWeight: 700 }}>
+            ✓ Séance restaurée automatiquement
+          </span>
+        </div>
+      )}
+
       {/* Header sticky */}
       <div
         className="sticky top-0 z-40 px-4 py-3 flex items-center justify-between"
@@ -378,7 +505,6 @@ export default function WorkoutSessionPage() {
           <p className="font-bold text-sm" style={{ color: 'var(--fiq-text)' }}>{sessionName}</p>
           <div className="flex items-center gap-2 mt-0.5">
             <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>{formatTime(elapsed)}</p>
-            {/* Timer repos affiché dans le header = toujours visible même avec clavier ouvert */}
             {restTimer !== null && (
               <span
                 className="fiq-timer-pulse flex items-center gap-1 text-xs font-black px-2 py-0.5 rounded-full"
@@ -394,6 +520,16 @@ export default function WorkoutSessionPage() {
             <span className="text-sm fiq-data" style={{ color: 'var(--fiq-accent)' }}>
               {totalTonnage.toLocaleString('fr-FR')} kg
             </span>
+          )}
+          {/* Bouton quitter (si séance en cours) */}
+          {groups.length > 0 && (
+            <button
+              onClick={() => setShowQuitModal(true)}
+              className="text-xs px-2 py-1 rounded-lg"
+              style={{ color: 'var(--fiq-muted)', border: '1px solid var(--fiq-border)' }}
+            >
+              Quitter
+            </button>
           )}
           <Button
             size="sm"
@@ -462,7 +598,7 @@ export default function WorkoutSessionPage() {
         </Button>
       </div>
 
-      {/* ── BARRE STICKY BAS : Timer repos + chrono ────────────── */}
+      {/* ── Timer repos sticky bas ────────────────────────────── */}
       {restTimer !== null && (
         <div
           className="fixed left-0 right-0 z-50 flex items-center justify-between px-4 py-3 gap-3"
@@ -473,7 +609,6 @@ export default function WorkoutSessionPage() {
             borderTop: '1px solid #3D8BFF44',
           }}
         >
-          {/* Chrono repos */}
           <div className="flex items-center gap-2">
             <Timer className="w-4 h-4" style={{ color: 'var(--fiq-blue)' }} />
             <span className="font-black text-xl fiq-data" style={{ color: 'var(--fiq-blue)' }}>
@@ -481,8 +616,6 @@ export default function WorkoutSessionPage() {
             </span>
             <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>repos</span>
           </div>
-
-          {/* Durées rapides */}
           <div className="flex items-center gap-1.5">
             {[60, 90, 120, 180].map((d) => (
               <button
@@ -506,8 +639,6 @@ export default function WorkoutSessionPage() {
               <X className="w-3 h-3" />
             </button>
           </div>
-
-          {/* Tonnage en cours */}
           {totalTonnage > 0 && (
             <span className="text-xs fiq-data" style={{ color: 'var(--fiq-accent)' }}>
               {Math.round(totalTonnage)} kg
@@ -516,43 +647,163 @@ export default function WorkoutSessionPage() {
         </div>
       )}
 
-      {/* Modal recherche exercice */}
+      {/* ── BOTTOM SHEET : Recherche exercice ─────────────────── */}
       {showSearch && (
-        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'var(--bg)' }}>
-          <div className="p-4 space-y-3" style={{ borderBottom: '1px solid var(--fiq-border)' }}>
-            <div className="flex items-center gap-3">
-              <button onClick={() => { setShowSearch(false); setSearchQuery('') }}>
-                <X className="w-5 h-5" style={{ color: 'var(--fiq-muted)' }} />
-              </button>
-              <h2 className="font-bold" style={{ color: 'var(--fiq-text)' }}>Choisir un exercice</h2>
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40"
+            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+            onClick={() => { setShowSearch(false); setSearchQuery('') }}
+          />
+          {/* Sheet */}
+          <div
+            className="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-3xl"
+            style={{
+              maxHeight: '88vh',
+              background: 'var(--surface)',
+              borderTop: '1px solid var(--fiq-border)',
+            }}
+          >
+            {/* Handle bar */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full" style={{ background: 'var(--fiq-border)' }} />
             </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--fiq-muted)' }} />
-              <Input
-                autoFocus
-                placeholder="Rechercher…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-                style={{ background: 'var(--surface)', borderColor: 'var(--fiq-border)', color: 'var(--fiq-text)' }}
-              />
+
+            {/* Header */}
+            <div className="px-4 pb-3 space-y-3" style={{ borderBottom: '1px solid var(--fiq-border)' }}>
+              <div className="flex items-center justify-between">
+                <h2 className="font-bold" style={{ color: 'var(--fiq-text)' }}>Choisir un exercice</h2>
+                <button onClick={() => { setShowSearch(false); setSearchQuery('') }}>
+                  <X className="w-5 h-5" style={{ color: 'var(--fiq-muted)' }} />
+                </button>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--fiq-muted)' }} />
+                <input
+                  autoFocus
+                  placeholder="Rechercher…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    paddingLeft: 36,
+                    paddingRight: 12,
+                    paddingTop: 10,
+                    paddingBottom: 10,
+                    background: 'var(--bg)',
+                    border: '1px solid var(--fiq-border)',
+                    borderRadius: 12,
+                    color: 'var(--fiq-text)',
+                    fontSize: 14,
+                    outline: 'none',
+                  }}
+                />
+              </div>
+              {/* Filtres équipement */}
+              <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+                {EQUIPMENT_FILTERS.map((f) => (
+                  <button
+                    key={f.value}
+                    onClick={() => setEquipmentFilter(f.value)}
+                    style={{
+                      flexShrink: 0,
+                      padding: '5px 12px',
+                      borderRadius: 20,
+                      border: equipmentFilter === f.value ? 'none' : '1px solid var(--fiq-border)',
+                      background: equipmentFilter === f.value ? 'var(--fiq-accent)' : 'var(--bg)',
+                      color: equipmentFilter === f.value ? 'var(--bg)' : 'var(--fiq-muted)',
+                      fontSize: 12,
+                      fontWeight: equipmentFilter === f.value ? 800 : 500,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Liste */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
+              {filteredExercises.length === 0 && (
+                <div className="text-center py-8">
+                  <Dumbbell className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--fiq-muted)' }} />
+                  <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>Aucun exercice trouvé</p>
+                </div>
+              )}
+              {filteredExercises.slice(0, 60).map((ex) => (
+                <button
+                  key={ex.id}
+                  onClick={() => addExercise(ex)}
+                  className="w-full fiq-card flex items-start gap-3 text-left"
+                >
+                  <div className="flex-1">
+                    <p className="font-semibold text-sm" style={{ color: 'var(--fiq-text)' }}>{ex.name_fr ?? ex.name}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                      {ex.muscle_primary?.slice(0, 2).join(', ')} · {ex.equipment}
+                      {ex.is_bilateral_dumbbell && (
+                        <span style={{ color: 'var(--fiq-accent)', marginLeft: 4 }}>× 2</span>
+                      )}
+                    </p>
+                  </div>
+                  <Plus className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--fiq-accent)' }} />
+                </button>
+              ))}
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-2">
-            {filteredExercises.slice(0, 40).map((ex) => (
-              <button
-                key={ex.id}
-                onClick={() => addExercise(ex)}
-                className="w-full fiq-card flex items-start gap-3 text-left"
-              >
-                <div>
-                  <p className="font-semibold text-sm" style={{ color: 'var(--fiq-text)' }}>{ex.name_fr ?? ex.name}</p>
-                  <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
-                    {ex.muscle_primary?.slice(0, 2).join(', ')} · {ex.equipment}
-                  </p>
-                </div>
-              </button>
-            ))}
+        </>
+      )}
+
+      {/* ── Modal : Quitter la séance ──────────────────────────── */}
+      {showQuitModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
+          <div
+            className="w-full max-w-sm rounded-3xl p-6 space-y-4"
+            style={{ background: 'var(--surface)', border: '1px solid var(--fiq-border)' }}
+          >
+            <div className="text-center">
+              <p className="text-2xl mb-2">⚠️</p>
+              <h3 className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>Séance en cours !</h3>
+              <p className="text-sm mt-1" style={{ color: 'var(--fiq-muted)' }}>
+                Ta progression est sauvegardée automatiquement. Tu pourras la reprendre plus tard.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowQuitModal(false)}
+              className="w-full py-3 rounded-2xl font-black text-sm"
+              style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+            >
+              Continuer la séance
+            </button>
+            <button
+              onClick={() => {
+                setShowQuitModal(false)
+                // La séance reste dans localStorage pour reprendre plus tard
+                router.push('/workout')
+              }}
+              className="w-full py-3 rounded-2xl font-semibold text-sm"
+              style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)', border: '1px solid var(--fiq-border)' }}
+            >
+              Mettre en pause
+            </button>
+            <button
+              onClick={async () => {
+                setShowQuitModal(false)
+                // Supprimer la sauvegarde locale + marquer comme abandonné
+                try { localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
+                await fetch(`/api/workout/abandon`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ workout_id: workoutId }),
+                }).catch(() => null)
+                router.push('/workout')
+              }}
+              className="w-full text-sm text-center"
+              style={{ color: 'var(--fiq-red)', opacity: 0.7 }}
+            >
+              Abandonner la séance
+            </button>
           </div>
         </div>
       )}
@@ -570,8 +821,9 @@ function ExerciseCard({
   onUpdateSet: (setId: string, key: keyof SetRow, value: string | boolean | number) => void
   onRemoveSet: (setId: string) => void
 }) {
-  const [showHistory, setShowHistory] = useState(false)
-  const tonnage = calcTonnage(group.sets)
+  const [showHistory, setShowHistory] = useState(true)
+  const tonnage = calcTonnageGroup(group)
+  const isBilateral = group.is_bilateral_dumbbell ?? false
 
   return (
     <div className="fiq-card space-y-3">
@@ -580,7 +832,8 @@ function ExerciseCard({
           <h3 className="font-bold" style={{ color: 'var(--fiq-text)' }}>{group.exercise_name}</h3>
           {tonnage > 0 && (
             <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-accent)' }}>
-              {tonnage.toLocaleString('fr-FR')} kg tonnage
+              {tonnage.toLocaleString('fr-FR')} kg
+              {isBilateral && <span style={{ color: 'var(--fiq-muted)', marginLeft: 4 }}>· × 2 haltères</span>}
             </p>
           )}
         </div>
@@ -627,6 +880,13 @@ function ExerciseCard({
             )
           })}
         </div>
+      )}
+
+      {/* Indication tonnage × 2 si haltères bilatéraux */}
+      {isBilateral && group.sets.some(s => s.weight_kg !== '') && (
+        <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+          × 2 haltères — tonnage calculé sur les 2 côtés
+        </p>
       )}
 
       <div className="grid grid-cols-[40px_1fr_1fr_60px_32px] gap-2">

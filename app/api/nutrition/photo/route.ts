@@ -6,13 +6,78 @@ export const dynamic = 'force-dynamic'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-// Analyse une photo d'aliments avec l'IA ForgeIQ (vision)
-// Retourne une liste d'aliments avec macros estimées (format multi-aliments)
+// Limites analyses photo/mois selon le plan
+const PHOTO_LIMITS = {
+  free:     5,        // Découverte — 5 analyses à vie (coût max $0.02/user)
+  monthly:  60,       // Pro mensuel — ~2/jour, usage confortable
+  annual:   Infinity, // Pro annuel — illimité
+  lifetime: Infinity, // À vie — illimité
+}
+
+// Analyse une photo d'aliments avec l'IA (vision)
+// Retourne une liste d'aliments avec macros estimées
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
+
+    // ── Vérification des limites ────────────────────────────────────────
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('subscription_status, subscription_plan, is_admin')
+      .eq('id', user.id)
+      .single()
+
+    const isAdmin = profile?.is_admin ?? false
+    const status  = profile?.subscription_status ?? 'free'
+    const plan    = profile?.subscription_plan ?? 'free'
+    const isFree  = !isAdmin && status !== 'pro' && status !== 'lifetime'
+
+    let photoLimit: number
+    if (isAdmin) photoLimit = PHOTO_LIMITS.lifetime
+    else if (status === 'lifetime') photoLimit = PHOTO_LIMITS.lifetime
+    else if (status === 'pro' && plan === 'annual') photoLimit = PHOTO_LIMITS.annual
+    else if (status === 'pro') photoLimit = PHOTO_LIMITS.monthly
+    else photoLimit = PHOTO_LIMITS.free
+
+    if (!isAdmin && photoLimit !== Infinity) {
+      // Free → all-time, Pro → ce mois-ci
+      let photoCount: number
+      if (isFree) {
+        const { count } = await supabase
+          .from('food_logs')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('source', 'photo')
+        photoCount = count ?? 0
+      } else {
+        const startOfMonth = new Date()
+        startOfMonth.setDate(1)
+        startOfMonth.setHours(0, 0, 0, 0)
+        const { count } = await supabase
+          .from('food_logs')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('source', 'photo')
+          .gte('created_at', startOfMonth.toISOString())
+        photoCount = count ?? 0
+      }
+
+      if (photoCount >= photoLimit) {
+        return NextResponse.json({
+          data: null,
+          error: isFree
+            ? `Tes ${PHOTO_LIMITS.free} analyses photo gratuites sont épuisées. Passe en Pro pour continuer.`
+            : `Limite de ${photoLimit} analyses photo atteinte ce mois-ci.`,
+          limitReached: true,
+          count: photoCount,
+          limit: photoLimit,
+          isFree,
+        }, { status: 429 })
+      }
+    }
+    // ───────────────────────────────────────────────────────────────────
 
     const body = await req.json()
     const { image_base64, media_type = 'image/jpeg' } = body as {
@@ -25,7 +90,8 @@ export async function POST(req: NextRequest) {
     }
 
     const res = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514', // vision + analyse macros
+      // Haiku vision : ~$0.003/analyse vs $0.015 avec Sonnet — 5x moins cher, qualité suffisante pour la reconnaissance alimentaire
+      model: 'claude-haiku-4-20250514',
       max_tokens: 800,
       messages: [
         {

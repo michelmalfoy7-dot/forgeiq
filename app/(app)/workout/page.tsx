@@ -5,8 +5,25 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { AlertBar } from '@/components/ui/AlertBar'
-import { Loader2, Plus, Dumbbell, ChevronRight, History, Moon, Bike } from 'lucide-react'
+import { Loader2, Plus, Dumbbell, ChevronRight, History, Moon, Bike, Play } from 'lucide-react'
 import Link from 'next/link'
+
+/** Récupère l'ID de séance en cours depuis localStorage */
+function getActiveWorkoutId(): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key?.startsWith('forgeiq_workout_')) {
+        const data = JSON.parse(localStorage.getItem(key) ?? '{}')
+        if (data?.groups?.length > 0 && Date.now() - (data.savedAt ?? 0) < 86400000) {
+          return key.replace('forgeiq_workout_', '')
+        }
+      }
+    }
+  } catch { /* ignore */ }
+  return null
+}
 
 type Exercise = {
   id: string
@@ -36,7 +53,12 @@ export default function WorkoutPage() {
   const [restLogged, setRestLogged] = useState(false)
   const [showActivityModal, setShowActivityModal] = useState(false)
   const [recentWorkouts, setRecentWorkouts] = useState<{id: string; session_name: string; session_date: string; total_tonnage_kg: number}[]>([])
+  const [activeWorkoutId, setActiveWorkoutId] = useState<string | null>(null)
   const router = useRouter()
+
+  useEffect(() => {
+    setActiveWorkoutId(getActiveWorkoutId())
+  }, [])
 
   useEffect(() => {
     async function load() {
@@ -156,6 +178,22 @@ export default function WorkoutPage() {
         </div>
       ) : (
         <div className="space-y-4">
+          {/* Bannière "Séance en cours" si localStorage a une séance active */}
+          {activeWorkoutId && (
+            <Link
+              href={`/workout/${activeWorkoutId}`}
+              className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl"
+              style={{ background: '#B4FF4A18', border: '1px solid #B4FF4A44' }}
+            >
+              <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'var(--fiq-accent)', flexShrink: 0 }} />
+              <div className="flex-1">
+                <p className="font-black text-sm" style={{ color: 'var(--fiq-accent)' }}>Séance en cours</p>
+                <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Ta progression est sauvegardée — reprends où tu t&apos;es arrêté</p>
+              </div>
+              <Play className="w-5 h-5" style={{ color: 'var(--fiq-accent)' }} />
+            </Link>
+          )}
+
           {/* Card séance suggérée */}
           {suggestion && (
             <div className="fiq-card space-y-4">

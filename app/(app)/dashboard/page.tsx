@@ -2,9 +2,13 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { Suspense } from 'react'
+import { unstable_cache } from 'next/cache'
 import { AlertBar } from '@/components/ui/AlertBar'
 import { StatCard } from '@/components/ui/StatCard'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { UpgradeBanner } from '@/components/dashboard/UpgradeBanner'
+import { formatSleep } from '@/lib/formatSleep'
 import { Dumbbell, TrendingUp, ClipboardList, MessageCircle } from 'lucide-react'
 import { calcBMR, calcStepsCalories, calcTrainingCalories, goalAdjustment, calcMacrosFromCalories } from '@/lib/utils/tdee'
 
@@ -76,6 +80,7 @@ export default async function DashboardPage() {
     { data: lastWorkout },
     { data: weekWorkouts },
     { data: weekLogs },
+    { data: todayWorkouts },
   ] = await Promise.all([
     supabase.from('profiles')
       .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, height_cm, age, gender, macro_mode, custom_protein_g, custom_calories, steps_goal, target_weight_kg')
@@ -98,6 +103,13 @@ export default async function DashboardPage() {
       .eq('user_id', user.id)
       .gte('log_date', thirtyDaysAgo)
       .order('log_date', { ascending: false }),
+
+    // Séances complétées aujourd'hui (pour l'état 4 cas)
+    supabase.from('workouts')
+      .select('id, session_name, total_tonnage_kg, total_sets, program_id, completed_at')
+      .eq('user_id', user.id).eq('session_date', today)
+      .not('completed_at', 'is', null)
+      .order('completed_at', { ascending: false }),
   ])
 
   // Si le profil n'existe pas encore (pas de trigger Supabase, ou upsert raté),
@@ -116,6 +128,15 @@ export default async function DashboardPage() {
   }
 
   if (!profile.onboarding_done) redirect('/onboarding')
+
+  // ── État séance du jour (4 cas) ──────────────────────────────
+  const latestTodayWorkout = todayWorkouts?.[0] ?? null
+  const programDoneToday = !!(
+    latestTodayWorkout?.program_id &&
+    profile?.current_program_id &&
+    latestTodayWorkout.program_id === profile.current_program_id
+  )
+  const freeDoneToday = !!latestTodayWorkout && !programDoneToday
 
   // Suggestion séance
   let suggestion: {
@@ -204,7 +225,7 @@ export default async function DashboardPage() {
     const sysBP = todayLog.sys_bp
 
     if (deepSleep !== null && deepSleep < 60)
-      staticAlerts.push({ type: 'yellow', message: '😴 Sommeil profond insuffisant', sub: `${deepSleep}min — réduis le volume d'entraînement de 15-20% aujourd'hui.` })
+      staticAlerts.push({ type: 'yellow', message: '😴 Sommeil profond insuffisant', sub: `${formatSleep(deepSleep)} — réduis le volume d'entraînement de 15-20% aujourd'hui.` })
 
     if (protein !== null && protein < proteinTarget.min)
       staticAlerts.push({ type: 'yellow', message: '🥩 Protéines en dessous de l\'objectif', sub: `${protein}g — objectif ${proteinTarget.min}g · pense à une source supplémentaire.` })
@@ -215,14 +236,22 @@ export default async function DashboardPage() {
     staticAlerts.push({ type: 'blue', message: '📋 Bilan du jour non renseigné', sub: 'Complète ton check-in pour des recommandations personnalisées.' })
   }
 
-  // Alertes IA sur 7 jours — timeout 4s pour ne jamais bloquer le rendu
-  const aiAlerts = await Promise.race([
-    generateAIAlerts(weekLogs ?? [], {
-      goal: profile?.goal ?? 'force',
-      level: profile?.level ?? 'intermédiaire',
-    }),
-    new Promise<Alert[]>(resolve => setTimeout(() => resolve([]), 4000)),
-  ])
+  // Alertes IA — cache 4h par user + date pour ne pas appeler Haiku à chaque load
+  const getCachedAIAlerts = unstable_cache(
+    (logs: typeof weekLogs, goal: string, level: string) =>
+      Promise.race([
+        generateAIAlerts(logs ?? [], { goal, level }),
+        new Promise<Alert[]>(resolve => setTimeout(() => resolve([]), 4000)),
+      ]),
+    [`ai-alerts-${user.id}-${today}`],
+    { revalidate: 4 * 3600 } // 4 heures
+  )
+
+  const aiAlerts = await getCachedAIAlerts(
+    weekLogs,
+    profile?.goal ?? 'force',
+    profile?.level ?? 'intermédiaire',
+  )
 
   // Fusionner alertes (statiques d'abord, puis IA si pas de doublon)
   const allAlerts = [...staticAlerts, ...aiAlerts].slice(0, 4)
@@ -240,6 +269,11 @@ export default async function DashboardPage() {
 
   return (
     <div className="p-4 space-y-5 max-w-lg mx-auto">
+      {/* Banner upgrade Stripe (succès/annulation) */}
+      <Suspense fallback={null}>
+        <UpgradeBanner />
+      </Suspense>
+
       {/* Header */}
       <div className="pt-4 flex items-start justify-between">
         <div>
@@ -283,9 +317,9 @@ export default async function DashboardPage() {
         />
         <StatCard
           label="Sommeil profond"
-          value={todayLog?.sleep_deep_min !== null && todayLog?.sleep_deep_min !== undefined ? `${todayLog.sleep_deep_min}` : '—'}
-          unit={todayLog?.sleep_deep_min !== null && todayLog?.sleep_deep_min !== undefined ? 'min' : ''}
-          sub={todayLog?.sleep_total_min ? `Total : ${Math.round(todayLog.sleep_total_min / 60)}h` : 'Non renseigné'}
+          value={todayLog?.sleep_deep_min != null ? formatSleep(todayLog.sleep_deep_min) : '—'}
+          unit=""
+          sub={todayLog?.sleep_total_min ? `Total : ${formatSleep(todayLog.sleep_total_min)}` : 'Non renseigné'}
           alert={!!todayLog?.sleep_deep_min && todayLog.sleep_deep_min < 60}
           accent={!!todayLog?.sleep_deep_min && todayLog.sleep_deep_min >= 60}
         />
@@ -306,66 +340,194 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* Card séance proposée */}
+      {/* Card séance proposée — 4 cas */}
       <div className="fiq-card space-y-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="fiq-label">Séance du jour</p>
-            <h2 className="text-lg font-black mt-0.5" style={{ color: 'var(--fiq-text)' }}>
-              {suggestion?.session_name ?? 'Séance libre'}
-            </h2>
-            {suggestion?.program_name && (
-              <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>{suggestion.program_name}</p>
+
+        {programDoneToday && latestTodayWorkout ? (
+          /* ── Cas 1 : Séance programme faite aujourd'hui ── */
+          <>
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="fiq-label">Séance du jour</p>
+                <h2 className="text-lg font-black mt-0.5" style={{ color: 'var(--fiq-accent)' }}>
+                  ✅ {latestTodayWorkout.session_name}
+                </h2>
+                {suggestion?.program_name && (
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>{suggestion.program_name}</p>
+                )}
+              </div>
+              <Dumbbell className="w-5 h-5 mt-1" style={{ color: 'var(--fiq-accent)' }} />
+            </div>
+
+            {/* Stats séance */}
+            {(latestTodayWorkout.total_tonnage_kg != null || latestTodayWorkout.total_sets != null) && (
+              <div className="flex items-center gap-6">
+                {latestTodayWorkout.total_tonnage_kg != null && (
+                  <div>
+                    <p className="text-xl font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
+                      {latestTodayWorkout.total_tonnage_kg.toLocaleString('fr-FR')}
+                    </p>
+                    <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>kg soulevés</p>
+                  </div>
+                )}
+                {latestTodayWorkout.total_sets != null && (
+                  <div>
+                    <p className="text-xl font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>
+                      {latestTodayWorkout.total_sets}
+                    </p>
+                    <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>séries</p>
+                  </div>
+                )}
+              </div>
             )}
-          </div>
-          <Dumbbell className="w-5 h-5 mt-1" style={{ color: 'var(--fiq-accent)' }} />
-        </div>
 
-        {/* Raison IA adaptation */}
-        {suggestion?.adaptation_reason && (
-          <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
-            💡 {suggestion.adaptation_reason}
-          </p>
-        )}
+            {/* Prochaine séance */}
+            {suggestion && (
+              <div className="text-xs px-3 py-2 rounded-lg font-semibold"
+                style={{ background: '#B4FF4A18', color: 'var(--fiq-accent)', border: '1px solid #B4FF4A33' }}>
+                📅 Prochaine : {suggestion.session_name}
+              </div>
+            )}
 
-        {suggestion?.volume_adjustment === 'reduce' && (
-          <div className="text-xs px-3 py-2 rounded-lg font-semibold"
-            style={{ background: '#FF6B3518', color: 'var(--fiq-orange)', border: '1px solid #FF6B3544' }}>
-            ⚠️ Volume réduit — {suggestion.adjustment_reason}
-          </div>
-        )}
-        {suggestion?.volume_adjustment === 'increase' && (
-          <div className="text-xs px-3 py-2 rounded-lg font-semibold"
-            style={{ background: '#3D8BFF18', color: 'var(--fiq-blue)', border: '1px solid #3D8BFF44' }}>
-            ⚡ Récupération optimale — {suggestion.adjustment_reason}
-          </div>
-        )}
+            <Link
+              href="/coach?q=Analyse+ma+séance+d'aujourd'hui+et+donne-moi+des+conseils+de+récupération"
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl font-semibold text-xs"
+              style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              Demander au coach
+            </Link>
+          </>
 
-        <Link
-          href="/workout"
-          className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-black text-sm transition-all"
-          style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
-        >
-          <Dumbbell className="w-4 h-4" />
-          Démarrer la séance
-        </Link>
+        ) : freeDoneToday && latestTodayWorkout ? (
+          /* ── Cas 2 : Séance libre faite, programme non effectué ── */
+          <>
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="fiq-label">Séance du jour</p>
+                <h2 className="text-lg font-black mt-0.5" style={{ color: 'var(--fiq-text)' }}>
+                  {latestTodayWorkout.session_name}
+                </h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Séance libre effectuée</p>
+              </div>
+              <Dumbbell className="w-5 h-5 mt-1" style={{ color: 'var(--fiq-accent)' }} />
+            </div>
 
-        {/* Bouton Demander au coach */}
-        <Link
-          href="/coach?q=Analyse+mon+dashboard+et+dis-moi+ce+que+je+dois+améliorer"
-          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl font-semibold text-xs transition-all"
-          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
-        >
-          <MessageCircle className="w-3.5 h-3.5" />
-          Demander au coach
-        </Link>
+            {(latestTodayWorkout.total_tonnage_kg != null || latestTodayWorkout.total_sets != null) && (
+              <div className="flex items-center gap-6">
+                {latestTodayWorkout.total_tonnage_kg != null && (
+                  <div>
+                    <p className="text-xl font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
+                      {latestTodayWorkout.total_tonnage_kg.toLocaleString('fr-FR')}
+                    </p>
+                    <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>kg soulevés</p>
+                  </div>
+                )}
+                {latestTodayWorkout.total_sets != null && (
+                  <div>
+                    <p className="text-xl font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>
+                      {latestTodayWorkout.total_sets}
+                    </p>
+                    <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>séries</p>
+                  </div>
+                )}
+              </div>
+            )}
 
-        {lastWorkout && (
-          <p className="text-xs text-center" style={{ color: 'var(--fiq-muted)' }}>
-            Dernière : {lastWorkout.session_name} ·{' '}
-            {new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(lastWorkout.session_date))}
-            {lastWorkout.total_tonnage_kg ? ` · ${lastWorkout.total_tonnage_kg.toLocaleString('fr-FR')}kg` : ''}
-          </p>
+            {/* Alerte programme non fait */}
+            {suggestion && (
+              <div className="text-xs px-3 py-2 rounded-lg"
+                style={{ background: '#F59E0B18', color: '#F59E0B', border: '1px solid #F59E0B44' }}>
+                ⚠️ Séance programme non effectuée :{' '}
+                <span className="font-black">{suggestion.session_name}</span>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              {suggestion && (
+                <Link
+                  href="/workout"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl font-black text-xs"
+                  style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+                >
+                  <Dumbbell className="w-3.5 h-3.5" />
+                  {suggestion.session_name}
+                </Link>
+              )}
+              <Link
+                href="/coach?q=Analyse+mon+dashboard+et+dis-moi+ce+que+je+dois+améliorer"
+                className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl font-semibold text-xs"
+                style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                Coach
+              </Link>
+            </div>
+          </>
+
+        ) : (
+          /* ── Cas 4 : Rien fait aujourd'hui ── */
+          <>
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="fiq-label">Séance du jour</p>
+                <h2 className="text-lg font-black mt-0.5" style={{ color: 'var(--fiq-text)' }}>
+                  {suggestion?.session_name ?? 'Séance libre'}
+                </h2>
+                {suggestion?.program_name && (
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>{suggestion.program_name}</p>
+                )}
+              </div>
+              <Dumbbell className="w-5 h-5 mt-1" style={{ color: 'var(--fiq-accent)' }} />
+            </div>
+
+            {/* Raison IA — seulement pour le volume normal (pas de badge) */}
+            {suggestion?.adaptation_reason && !suggestion?.adjustment_reason && (
+              <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+                💡 {suggestion.adaptation_reason}
+              </p>
+            )}
+
+            {suggestion?.volume_adjustment === 'reduce' && (
+              <div className="text-xs px-3 py-2 rounded-lg font-semibold"
+                style={{ background: '#FF6B3518', color: 'var(--fiq-orange)', border: '1px solid #FF6B3544' }}>
+                ⚠️ Volume réduit — {suggestion.adjustment_reason}
+              </div>
+            )}
+            {suggestion?.volume_adjustment === 'increase' && (
+              <div className="text-xs px-3 py-2 rounded-lg space-y-0.5"
+                style={{ background: '#3D8BFF18', color: 'var(--fiq-blue)', border: '1px solid #3D8BFF44' }}>
+                <p className="font-black">⚡ {suggestion.adjustment_reason}</p>
+                <p style={{ opacity: 0.75 }}>{suggestion.adaptation_reason}</p>
+              </div>
+            )}
+
+            <Link
+              href="/workout"
+              className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-black text-sm transition-all"
+              style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+            >
+              <Dumbbell className="w-4 h-4" />
+              Démarrer la séance
+            </Link>
+
+            <Link
+              href="/coach?q=Analyse+mon+dashboard+et+dis-moi+ce+que+je+dois+améliorer"
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl font-semibold text-xs transition-all"
+              style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              Demander au coach
+            </Link>
+
+            {lastWorkout && (
+              <p className="text-xs text-center" style={{ color: 'var(--fiq-muted)' }}>
+                Dernière : {lastWorkout.session_name} ·{' '}
+                {new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(lastWorkout.session_date))}
+                {lastWorkout.total_tonnage_kg ? ` · ${lastWorkout.total_tonnage_kg.toLocaleString('fr-FR')}kg` : ''}
+              </p>
+            )}
+          </>
         )}
       </div>
 

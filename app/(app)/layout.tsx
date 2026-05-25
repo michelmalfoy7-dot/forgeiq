@@ -11,14 +11,16 @@ export const metadata: Metadata = {
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
-      <ServiceWorkerRegister />
-      <InstallBanner />
-      <main className="flex-1 mb-nav">
-        {children}
-      </main>
-      <BottomNav />
-      <ToastProvider />
+    <div className="min-h-screen flex justify-center" style={{ background: 'var(--bg)' }}>
+      <div className="w-full max-w-[480px] min-h-screen flex flex-col relative">
+        <ServiceWorkerRegister />
+        <InstallBanner />
+        <main className="flex-1 mb-nav overflow-x-hidden">
+          {children}
+        </main>
+        <BottomNav />
+        <ToastProvider />
+      </div>
     </div>
   )
 }

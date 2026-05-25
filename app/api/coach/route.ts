@@ -6,8 +6,13 @@ export const dynamic = 'force-dynamic'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-// Limite mensuelle de messages coach (utilisateurs non-Pro)
-const FREE_MONTHLY_LIMIT = 30
+// Limites selon le plan — alignées avec la page /pricing
+const LIMITS = {
+  free:     3,         // Gratuit — 3 essais à VIE (pas mensuel), pour découvrir sans saigner sur l'IA
+  monthly:  60,        // Pro mensuel — usage confortable
+  annual:   Infinity,  // Pro annuel — illimité
+  lifetime: Infinity,  // Accès à vie — illimité
+}
 // Nombre de messages d'historique injectés dans le contexte
 const HISTORY_LIMIT = 8
 
@@ -126,33 +131,69 @@ export async function POST(req: NextRequest) {
     const userMessage: string = body.message ?? ''
     if (!userMessage.trim()) return NextResponse.json({ data: null, error: 'Message vide' }, { status: 400 })
 
-    // Vérifier la limite mensuelle de messages coach
-    const startOfMonth = new Date()
-    startOfMonth.setDate(1)
-    startOfMonth.setHours(0, 0, 0, 0)
-
-    const { count: monthlyCount } = await supabase
-      .from('coach_messages')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .eq('role', 'user')
-      .gte('created_at', startOfMonth.toISOString())
-
-    // Vérifier statut Pro via Stripe (webhook met à jour profiles.subscription_status)
+    // Récupérer statut, plan et flag admin — détermine le type de comptage
     const { data: subProfile } = await supabase
       .from('profiles')
-      .select('subscription_status')
+      .select('subscription_status, subscription_plan, is_admin')
       .eq('id', user.id)
       .single()
 
-    const isPro = subProfile?.subscription_status === 'pro' || subProfile?.subscription_status === 'lifetime'
-    if (!isPro && (monthlyCount ?? 0) >= FREE_MONTHLY_LIMIT) {
+    // Comptes admin / bêta : aucune limite, jamais
+    if (subProfile?.is_admin) {
+      // Pas de vérification de limite — on passe directement à l'envoi
+    }
+
+    const status = subProfile?.subscription_status ?? 'free'
+    const plan   = subProfile?.subscription_plan ?? 'free'
+    const isAdmin = subProfile?.is_admin ?? false
+    const isFree = !isAdmin && status !== 'pro' && status !== 'lifetime'
+
+    // Résolution du tier de limite
+    let msgLimit: number
+    if (isAdmin) msgLimit = LIMITS.lifetime            // Admin = illimité
+    else if (status === 'lifetime') msgLimit = LIMITS.lifetime
+    else if (status === 'pro' && plan === 'annual') msgLimit = LIMITS.annual
+    else if (status === 'pro') msgLimit = LIMITS.monthly
+    else msgLimit = LIMITS.free
+
+    // Admin → pas de comptage (inutile)
+    // Free → comptage all-time (pas mensuel) → coût fixe max $0.06/user
+    // Pro  → comptage mensuel (reset chaque mois)
+    let msgCount: number
+    if (isAdmin) {
+      msgCount = 0
+    } else if (isFree) {
+      const { count: total } = await supabase
+        .from('coach_messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('role', 'user')
+      msgCount = total ?? 0
+    } else {
+      const startOfMonth = new Date()
+      startOfMonth.setDate(1)
+      startOfMonth.setHours(0, 0, 0, 0)
+      const { count: monthly } = await supabase
+        .from('coach_messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('role', 'user')
+        .gte('created_at', startOfMonth.toISOString())
+      msgCount = monthly ?? 0
+    }
+
+    if (msgCount >= msgLimit) {
       return NextResponse.json({
         data: null,
-        error: `Limite de ${FREE_MONTHLY_LIMIT} messages coach atteinte ce mois-ci. Passez en Pro pour un accès illimité.`,
+        error: isFree
+          ? `Tes ${LIMITS.free} messages de découverte sont épuisés. Passe en Pro pour accéder au coach IA.`
+          : msgLimit === Infinity
+            ? 'Erreur comptage'
+            : `Limite de ${msgLimit} messages atteinte ce mois-ci.`,
         limitReached: true,
-        count: monthlyCount,
-        limit: FREE_MONTHLY_LIMIT,
+        count: msgCount,
+        limit: msgLimit,
+        isFree,
       }, { status: 429 })
     }
 
@@ -292,9 +333,11 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'text/plain; charset=utf-8',
         'Transfer-Encoding': 'chunked',
         'X-Content-Type-Options': 'nosniff',
-        // Exposer le compteur mensuel dans les headers pour le client
-        'X-Coach-Count': String((monthlyCount ?? 0) + 1),
-        'X-Coach-Limit': String(FREE_MONTHLY_LIMIT),
+        // Exposer le compteur dans les headers pour affichage client
+        'X-Coach-Count': String(isAdmin ? 0 : msgCount + 1),
+        'X-Coach-Limit': String(msgLimit === Infinity ? 9999 : msgLimit),
+        'X-Coach-Is-Free': String(isFree),
+        'X-Coach-Is-Admin': String(isAdmin),
       },
     })
   } catch {

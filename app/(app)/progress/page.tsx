@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { ProgressChartsLazy as ProgressCharts } from '@/components/progress/ProgressChartsLazy'
+import { ProgressPhotos } from '@/components/progress/ProgressPhotos'
 
 export const dynamic = 'force-dynamic'
 
@@ -74,6 +75,14 @@ export default async function ProgressPage() {
         weeklyTonnage={weeklyTonnage}
         personalRecords={prs ?? []}
       />
+
+      {/* Séparateur */}
+      <div className="mt-6 mb-4" style={{ height: '1px', background: 'var(--fiq-border)' }} />
+
+      {/* Photos de progression — opt-in, jamais imposées */}
+      <ProgressPhotos />
+
+      <div className="pb-8" />
     </div>
   )
 }
