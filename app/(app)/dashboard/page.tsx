@@ -82,6 +82,7 @@ export default async function DashboardPage() {
     { data: weekWorkouts },
     { data: weekLogs },
     { data: todayWorkouts },
+    { data: todayFoodLogs },
   ] = await Promise.all([
     supabase.from('profiles')
       .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, height_cm, age, gender, macro_mode, custom_protein_g, custom_calories, steps_goal, target_weight_kg')
@@ -111,6 +112,12 @@ export default async function DashboardPage() {
       .eq('user_id', user.id).eq('session_date', today)
       .not('completed_at', 'is', null)
       .order('completed_at', { ascending: false }),
+
+    // Macros réelles du jour depuis food_logs (nutrition tracker)
+    supabase.from('food_logs')
+      .select('protein_g, calories, carbs_g, fat_g')
+      .eq('user_id', user.id)
+      .eq('log_date', today),
   ])
 
   // Si le profil n'existe pas encore (pas de trigger Supabase, ou upsert raté),
@@ -129,6 +136,21 @@ export default async function DashboardPage() {
   }
 
   if (!profile.onboarding_done) redirect('/onboarding')
+
+  // ── Macros réelles depuis food_logs (priorité sur le check-in manuel) ──
+  const foodLogTotals = (todayFoodLogs ?? []).reduce(
+    (acc, l) => ({
+      calories: acc.calories + (l.calories ?? 0),
+      protein_g: acc.protein_g + (l.protein_g ?? 0),
+      carbs_g: acc.carbs_g + (l.carbs_g ?? 0),
+      fat_g: acc.fat_g + (l.fat_g ?? 0),
+    }),
+    { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+  )
+  const hasFoodLogs = (todayFoodLogs ?? []).length > 0
+  // Protéines : food_logs si dispo, sinon check-in manuel
+  const proteinToday = hasFoodLogs ? Math.round(foodLogTotals.protein_g) : (todayLog?.protein_g ?? null)
+  const caloriesToday = hasFoodLogs ? Math.round(foodLogTotals.calories) : null
 
   // ── État séance du jour (4 cas) ──────────────────────────────
   const latestTodayWorkout = todayWorkouts?.[0] ?? null
@@ -222,14 +244,13 @@ export default async function DashboardPage() {
 
   if (todayLog) {
     const deepSleep = todayLog.sleep_deep_min
-    const protein = todayLog.protein_g
     const sysBP = todayLog.sys_bp
 
     if (deepSleep !== null && deepSleep < 60)
       staticAlerts.push({ type: 'yellow', message: '😴 Sommeil profond insuffisant', sub: `${formatSleep(deepSleep)} — réduis le volume d'entraînement de 15-20% aujourd'hui.` })
 
-    if (protein !== null && protein < proteinTarget.min)
-      staticAlerts.push({ type: 'yellow', message: '🥩 Protéines en dessous de l\'objectif', sub: `${protein}g — objectif ${proteinTarget.min}g · pense à une source supplémentaire.` })
+    if (proteinToday !== null && proteinToday < proteinTarget.min)
+      staticAlerts.push({ type: 'yellow', message: '🥩 Protéines en dessous de l\'objectif', sub: `${proteinToday}g — objectif ${proteinTarget.min}g · pense à une source supplémentaire.` })
 
     if (sysBP !== null && sysBP > 135)
       staticAlerts.push({ type: 'red', message: '🫀 Tension systolique élevée', sub: `${sysBP} mmHg — consulte un médecin si ça persiste.` })
@@ -326,11 +347,11 @@ export default async function DashboardPage() {
         />
         <StatCard
           label="Protéines"
-          value={todayLog?.protein_g !== null && todayLog?.protein_g !== undefined ? `${todayLog.protein_g}` : '—'}
-          unit={todayLog?.protein_g !== null && todayLog?.protein_g !== undefined ? 'g' : ''}
+          value={proteinToday !== null ? `${proteinToday}` : '—'}
+          unit={proteinToday !== null ? 'g' : ''}
           sub={`Objectif : ${proteinTarget.min}g`}
-          alert={!!todayLog?.protein_g && todayLog.protein_g < proteinTarget.min}
-          accent={!!todayLog?.protein_g && todayLog.protein_g >= proteinTarget.min}
+          alert={proteinToday !== null && proteinToday < proteinTarget.min}
+          accent={proteinToday !== null && proteinToday >= proteinTarget.min}
         />
         <StatCard
           label="Pas"
@@ -549,10 +570,10 @@ export default async function DashboardPage() {
           showPercent
         />
         <ProgressBar
-          value={todayLog?.protein_g ?? 0}
+          value={proteinToday ?? 0}
           max={proteinTarget.max}
           color="var(--fiq-accent)"
-          label={`Protéines : ${todayLog?.protein_g ?? 0}g / ${proteinTarget.min}g`}
+          label={`Protéines : ${proteinToday ?? 0}g / ${proteinTarget.min}g`}
         />
         <ProgressBar
           value={todayLog?.steps ?? 0}
