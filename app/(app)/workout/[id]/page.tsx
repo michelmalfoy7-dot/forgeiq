@@ -660,7 +660,7 @@ export default function WorkoutSessionPage() {
           <div
             className="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-3xl"
             style={{
-              maxHeight: '88vh',
+              maxHeight: 'calc(88dvh - 4rem - env(safe-area-inset-bottom))',
               background: 'var(--surface)',
               borderTop: '1px solid var(--fiq-border)',
             }}
@@ -725,7 +725,7 @@ export default function WorkoutSessionPage() {
             </div>
 
             {/* Liste */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ paddingBottom: '1rem' }}>
               {filteredExercises.length === 0 && (
                 <div className="text-center py-8">
                   <Dumbbell className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--fiq-muted)' }} />

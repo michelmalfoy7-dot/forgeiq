@@ -88,7 +88,7 @@ function AdoptModal({ program, onClose, onConfirm, loading }: {
     >
       <div
         className="w-full max-w-sm rounded-2xl p-6 space-y-5 sm:mb-0"
-        style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)', marginBottom: '70px' }}
+        style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)', marginBottom: 'calc(4rem + env(safe-area-inset-bottom))' }}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between">

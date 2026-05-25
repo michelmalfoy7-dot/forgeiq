@@ -400,7 +400,7 @@ export default function CoachPage() {
   const limitReached = coachCount >= coachLimit
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-64px)] max-w-lg mx-auto">
+    <div className="flex flex-col max-w-lg mx-auto" style={{ height: 'calc(100dvh - 4rem - env(safe-area-inset-bottom))' }}>
       {/* Header */}
       <div className="px-4 pt-4 pb-3 flex-shrink-0 flex items-start justify-between">
         <div>

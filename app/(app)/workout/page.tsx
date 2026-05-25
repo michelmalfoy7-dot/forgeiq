@@ -361,7 +361,7 @@ export default function WorkoutPage() {
             >
               <div
                 className="w-full max-w-lg mx-auto rounded-t-3xl"
-                style={{ background: 'var(--surface)', borderTop: '1px solid var(--fiq-border)', maxHeight: 'calc(92dvh - 70px)', overflowY: 'auto', marginBottom: '70px', paddingBottom: '24px' }}
+                style={{ background: 'var(--surface)', borderTop: '1px solid var(--fiq-border)', maxHeight: 'calc(92dvh - 4rem - env(safe-area-inset-bottom))', overflowY: 'auto', marginBottom: 'calc(4rem + env(safe-area-inset-bottom))', paddingBottom: '24px' }}
               >
                 {/* ── Étape 1 : choix de l'activité ── */}
                 {!cardioActivity ? (
