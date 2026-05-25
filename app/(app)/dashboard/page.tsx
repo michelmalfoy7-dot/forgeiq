@@ -8,6 +8,7 @@ import { AlertBar } from '@/components/ui/AlertBar'
 import { StatCard } from '@/components/ui/StatCard'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { UpgradeBanner } from '@/components/dashboard/UpgradeBanner'
+import { CancelWorkoutButton } from '@/components/dashboard/CancelWorkoutButton'
 import { formatSleep } from '@/lib/formatSleep'
 import { Dumbbell, TrendingUp, ClipboardList, MessageCircle } from 'lucide-react'
 import { calcBMR, calcStepsCalories, calcTrainingCalories, goalAdjustment, calcMacrosFromCalories } from '@/lib/utils/tdee'
@@ -400,7 +401,7 @@ export default async function DashboardPage() {
           </>
 
         ) : freeDoneToday && latestTodayWorkout ? (
-          /* ── Cas 2 : Séance libre faite, programme non effectué ── */
+          /* ── Cas 2 : Séance libre / repos faite, programme non effectué ── */
           <>
             <div className="flex items-start justify-between">
               <div>
@@ -408,9 +409,14 @@ export default async function DashboardPage() {
                 <h2 className="text-lg font-black mt-0.5" style={{ color: 'var(--fiq-text)' }}>
                   {latestTodayWorkout.session_name}
                 </h2>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Séance libre effectuée</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                  {latestTodayWorkout.session_name === 'Jour de repos' ? 'Repos enregistré' : 'Séance libre effectuée'}
+                </p>
               </div>
-              <Dumbbell className="w-5 h-5 mt-1" style={{ color: 'var(--fiq-accent)' }} />
+              {/* Bouton annuler uniquement pour repos ou séances sans séries */}
+              {(latestTodayWorkout.session_name === 'Jour de repos' || (latestTodayWorkout.total_sets ?? 0) === 0) && (
+                <CancelWorkoutButton workoutId={latestTodayWorkout.id} label="Annuler" />
+              )}
             </div>
 
             {(latestTodayWorkout.total_tonnage_kg != null || latestTodayWorkout.total_sets != null) && (
