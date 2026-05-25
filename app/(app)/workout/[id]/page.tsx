@@ -344,10 +344,10 @@ export default function WorkoutSessionPage() {
     setCompleting(true)
     setCompleteError(null)
 
-    const allSets = groups.flatMap((g) => g.sets)
     const payload = retryPayload ?? {
       workout_id: workoutId,
-      sets: allSets.map((s) => ({
+      // Inclure is_bilateral_dumbbell par groupe pour le calcul correct du tonnage
+      sets: groups.flatMap((g) => g.sets.map((s) => ({
         exercise_id: s.exercise_id,
         exercise_name: s.exercise_name,
         set_number: s.set_number,
@@ -355,7 +355,8 @@ export default function WorkoutSessionPage() {
         reps: Number(s.reps) || 0,
         rpe: Number(s.rpe) || null,
         is_warmup: s.is_warmup,
-      })),
+        is_bilateral_dumbbell: g.is_bilateral_dumbbell ?? false,
+      }))),
       notes: null,
       rpe_overall: null,
     }

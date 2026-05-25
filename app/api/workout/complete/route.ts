@@ -11,6 +11,7 @@ type SetInput = {
   reps: number
   rpe?: number
   is_warmup?: boolean
+  is_bilateral_dumbbell?: boolean
 }
 
 export async function POST(request: Request) {
@@ -22,7 +23,9 @@ export async function POST(request: Request) {
 
     // Calculer les métriques de la séance
     const workingSets = (sets as SetInput[]).filter((s) => !s.is_warmup)
-    const totalTonnage = workingSets.reduce((acc, s) => acc + s.weight_kg * s.reps, 0)
+    // Tonnage × 2 pour les exercices bilatéraux aux haltères (ex: développé haltères = 2 haltères)
+    const totalTonnage = workingSets.reduce((acc, s) =>
+      acc + s.weight_kg * s.reps * (s.is_bilateral_dumbbell ? 2 : 1), 0)
     const totalSets = workingSets.length
     const totalReps = workingSets.reduce((acc, s) => acc + s.reps, 0)
 
