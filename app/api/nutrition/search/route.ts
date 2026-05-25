@@ -81,7 +81,10 @@ export async function GET(req: NextRequest) {
 
         for (const p of products.slice(0, 15)) {
           const n = p.nutriments ?? {}
-          const kcal = n['energy-kcal_100g'] ?? n['energy-kcal'] ?? null
+          // Parsing robuste des calories OFF (plusieurs formats possibles)
+          const kcal = n['energy-kcal_100g']
+            ?? n['energy-kcal']
+            ?? (n['energy_100g'] ? Math.round(n['energy_100g'] / 4.184 * 10) / 10 : null)
           if (!kcal) continue
 
           const name = p.product_name_fr ?? p.product_name
@@ -95,10 +98,10 @@ export async function GET(req: NextRequest) {
             name_fr: p.product_name_fr ?? null,
             brand: p.brands?.split(',')[0].trim() ?? null,
             calories: kcal,
-            protein_g: n.proteins_100g ?? null,
-            carbs_g: n.carbohydrates_100g ?? null,
-            fat_g: n.fat_100g ?? null,
-            fiber_g: n.fiber_100g ?? null,
+            protein_g: n['proteins_100g'] ?? null,
+            carbs_g: n['carbohydrates_100g'] ?? null,
+            fat_g: n['fat_100g'] ?? null,
+            fiber_g: n['fiber_100g'] ?? n['fibre_100g'] ?? null,
             barcode: p.code ?? null,
           })
         }

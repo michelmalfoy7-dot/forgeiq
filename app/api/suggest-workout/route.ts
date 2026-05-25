@@ -102,8 +102,14 @@ export async function GET() {
     }
     const adjustmentReason = adjustmentReasons.join(' · ')
 
-    // Si le programme a des exercices définis, les utiliser directement (pas d'IA nécessaire)
-    let adaptationReason = adjustmentReason || 'Récupération normale'
+    // Raison narrative distincte du badge d'ajustement (évite la duplication)
+    const adaptationDefaults: Record<string, string> = {
+      'Récupération optimale': 'Conditions idéales — repousse tes limites aujourd\'hui',
+      'Sommeil profond insuffisant': 'Privilégie la technique sur le volume',
+      'Fatigue élevée': 'Séance allégée pour ne pas s\'épuiser',
+      'Perte de poids rapide': 'Préserve la masse musculaire en déficit',
+    }
+    let adaptationReason = adaptationDefaults[adjustmentReason] ?? adjustmentReason ?? 'Séance adaptée à tes données du jour'
     let aiExercises: { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[] = []
 
     // Pré-charger les exercices du programme comme base
