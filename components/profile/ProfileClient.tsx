@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, LogOut, Trash2, Dumbbell, Trophy, Flame, BarChart2, ChevronRight, MessageCircle, Info, Crown } from 'lucide-react'
+import { Loader2, LogOut, Trash2, Dumbbell, Trophy, Flame, BarChart2, ChevronRight, MessageCircle, Info, Crown, Users, Globe, Lock } from 'lucide-react'
 import type { TDEEBreakdown } from '@/lib/utils/tdee'
 
 type Profile = {
@@ -160,6 +160,40 @@ export function ProfileClient({
   const [signingOut, setSigningOut] = useState(false)
   const [portalLoading, setPortalLoading] = useState(false)
 
+  // État profil social
+  type SocialProfile = {
+    username: string | null
+    display_name: string | null
+    bio: string | null
+    is_public: boolean
+    followers_count: number
+    following_count: number
+  }
+  const [socialProfile, setSocialProfile] = useState<SocialProfile | null>(null)
+  const [socialLoading, setSocialLoading] = useState(true)
+  const [socialUsername, setSocialUsername] = useState('')
+  const [socialBio, setSocialBio] = useState('')
+  const [socialPublic, setSocialPublic] = useState(false)
+  const [socialSaving, setSocialSaving] = useState(false)
+  const [socialSaved, setSocialSaved] = useState(false)
+  const [socialError, setSocialError] = useState<string | null>(null)
+
+  // Charger le profil social au montage
+  useEffect(() => {
+    fetch('/api/social/profile')
+      .then(r => r.json())
+      .then(({ data }) => {
+        if (data) {
+          setSocialProfile(data as SocialProfile)
+          setSocialUsername(data.username ?? '')
+          setSocialBio(data.bio ?? '')
+          setSocialPublic(data.is_public ?? false)
+        }
+      })
+      .catch(() => {/* silencieux */})
+      .finally(() => setSocialLoading(false))
+  }, [])
+
   const isPro = subscriptionStatus === 'pro' || subscriptionStatus === 'lifetime'
   const isLifetime = subscriptionStatus === 'lifetime'
 
@@ -228,6 +262,36 @@ export function ProfileClient({
     } finally {
       setResetting(false)
       setResetStep(0)
+    }
+  }
+
+  async function saveSocialProfile() {
+    setSocialSaving(true)
+    setSocialSaved(false)
+    setSocialError(null)
+    try {
+      const res = await fetch('/api/social/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: socialUsername.trim() || undefined,
+          bio: socialBio.trim() || null,
+          is_public: socialPublic,
+          display_name: displayName || null,
+        }),
+      })
+      const json = await res.json() as { data: unknown; error: string | null }
+      if (json.error) {
+        setSocialError(json.error)
+      } else {
+        setSocialSaved(true)
+        setSocialProfile(json.data as SocialProfile)
+        setTimeout(() => setSocialSaved(false), 3000)
+      }
+    } catch {
+      setSocialError('Erreur réseau')
+    } finally {
+      setSocialSaving(false)
     }
   }
 
@@ -636,6 +700,133 @@ export function ProfileClient({
           </div>
         )
       })()}
+
+      {/* Profil social */}
+      <div className="fiq-card space-y-4">
+        <div className="flex items-center gap-3">
+          <Users className="w-5 h-5" style={{ color: 'var(--fiq-accent)' }} />
+          <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>Profil social</p>
+        </div>
+
+        {socialLoading ? (
+          <div className="flex items-center gap-2 py-2">
+            <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--fiq-muted)' }} />
+            <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Chargement…</span>
+          </div>
+        ) : (
+          <>
+            {/* Toggle profil public */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 flex-1 pr-3">
+                {socialPublic
+                  ? <Globe className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-blue)' }} />
+                  : <Lock className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-muted)' }} />
+                }
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>
+                    {socialPublic ? 'Profil public' : 'Profil privé'}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                    {socialPublic ? 'Tes séances peuvent être vues par la communauté' : 'Seul toi vois tes séances'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSocialPublic(v => !v)}
+                className="relative flex-shrink-0 w-12 h-6 rounded-full transition-colors"
+                style={{ background: socialPublic ? 'var(--fiq-blue)' : 'var(--fiq-border)' }}
+              >
+                <span
+                  className="absolute top-1 w-4 h-4 rounded-full transition-transform"
+                  style={{
+                    left: socialPublic ? '28px' : '4px',
+                    background: socialPublic ? 'white' : 'var(--fiq-muted)',
+                  }}
+                />
+              </button>
+            </div>
+
+            {/* Username */}
+            <div>
+              <p className="fiq-label mb-1.5">Username public</p>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--fiq-muted)' }}>@</span>
+                <input
+                  type="text"
+                  value={socialUsername}
+                  onChange={(e) => {
+                    setSocialUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))
+                    setSocialError(null)
+                  }}
+                  placeholder="ton_username"
+                  maxLength={20}
+                  className="w-full pl-7 pr-3 py-3 rounded-xl text-sm outline-none"
+                  style={{ background: 'var(--fiq-faint)', border: `1px solid ${socialError ? 'var(--fiq-red)' : 'var(--fiq-border)'}`, color: 'var(--fiq-text)' }}
+                />
+              </div>
+              <p className="text-[10px] mt-1" style={{ color: 'var(--fiq-muted)' }}>3-20 caractères · lettres minuscules, chiffres, _</p>
+            </div>
+
+            {/* Bio */}
+            <div>
+              <p className="fiq-label mb-1.5">Bio (optionnelle)</p>
+              <textarea
+                value={socialBio}
+                onChange={(e) => setSocialBio(e.target.value)}
+                placeholder="Parle de toi en quelques mots..."
+                rows={2}
+                maxLength={160}
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)', resize: 'none' }}
+              />
+            </div>
+
+            {socialError && (
+              <p className="text-xs" style={{ color: 'var(--fiq-red)' }}>{socialError}</p>
+            )}
+
+            <button
+              onClick={saveSocialProfile}
+              disabled={socialSaving}
+              className="w-full py-2.5 rounded-xl font-black text-sm flex items-center justify-center gap-2"
+              style={{
+                background: socialSaved ? '#3D8BFF33' : 'var(--fiq-blue)',
+                color: socialSaved ? 'var(--fiq-blue)' : 'white',
+                border: socialSaved ? '1px solid var(--fiq-blue)' : 'none',
+              }}
+            >
+              {socialSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : socialSaved ? '✓ Profil mis à jour !' : 'Sauvegarder le profil social'}
+            </button>
+
+            {/* Lien vers profil public */}
+            {socialProfile?.username && socialProfile.is_public && (
+              <Link
+                href={`/u/${socialProfile.username}`}
+                className="flex items-center justify-between py-2.5 px-3 rounded-xl text-sm"
+                style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
+              >
+                <span>Voir mon profil public</span>
+                <ChevronRight className="w-4 h-4" />
+              </Link>
+            )}
+
+            {/* Stats followers */}
+            {socialProfile && (socialProfile.followers_count > 0 || socialProfile.following_count > 0) && (
+              <div className="flex gap-4 pt-1">
+                <div>
+                  <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>{socialProfile.followers_count}</p>
+                  <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>abonnés</p>
+                </div>
+                <div>
+                  <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>{socialProfile.following_count}</p>
+                  <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>abonnements</p>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       {/* Actions compte */}
       <div className="fiq-card space-y-3">

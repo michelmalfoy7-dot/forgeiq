@@ -79,6 +79,11 @@ export default function WorkoutSessionPage() {
   const [elapsed, setElapsed] = useState(0)
   const [showQuitModal, setShowQuitModal] = useState(false)
   const [restoredFromStorage, setRestoredFromStorage] = useState(false)
+  // États partage post-séance
+  const [shareCaption, setShareCaption] = useState('')
+  const [sharing, setSharing] = useState(false)
+  const [sharePosted, setSharePosted] = useState(false)
+  const [shareDismissed, setShareDismissed] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const restRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastPayloadRef = useRef<unknown>(null)
@@ -458,6 +463,42 @@ export default function WorkoutSessionPage() {
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
+  // ── Partage natif mobile ──────────────────────────────────
+  async function handleNativeShare() {
+    const text = `${sessionName} · ${summary?.tonnage.toLocaleString('fr-FR')}kg soulevés · ${summary?.sets} séries`
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'ForgeIQ — Ma séance',
+          text,
+          url: 'https://getforgeiq.com',
+        })
+      } else {
+        await navigator.clipboard.writeText(`${text} — https://getforgeiq.com`)
+      }
+    } catch { /* Annulé par l'utilisateur */ }
+  }
+
+  // ── Partage dans le feed ForgeIQ ─────────────────────────
+  async function handleShareToFeed() {
+    if (sharing) return
+    setSharing(true)
+    try {
+      const res = await fetch('/api/social/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workout_id: workoutId, caption: shareCaption }),
+      })
+      const json = await res.json() as { data: unknown; error: string | null }
+      if (!json.error) {
+        setSharePosted(true)
+      }
+    } catch { /* Erreur réseau silencieuse */ }
+    finally {
+      setSharing(false)
+    }
+  }
+
   // ── Écran de fin ───────────────────────────────────────────
   if (completed && summary) {
     return (
@@ -495,6 +536,71 @@ export default function WorkoutSessionPage() {
                 <p key={name} className="text-sm" style={{ color: 'var(--fiq-text)' }}>🎯 {name}</p>
               ))}
             </div>
+          )}
+
+          {/* Card partage post-séance */}
+          {!shareDismissed && !sharePosted && (
+            <div className="fiq-card space-y-3 text-left">
+              <p className="text-sm font-bold" style={{ color: 'var(--fiq-text)' }}>
+                Partager cette séance
+              </p>
+
+              {/* Preview visuelle */}
+              <div className="rounded-xl p-4 space-y-2" style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+                <p className="text-xs font-black" style={{ color: 'var(--fiq-accent)' }}>💪 ForgeIQ</p>
+                <p className="text-sm font-bold" style={{ color: 'var(--fiq-text)' }}>{sessionName} · {formatTime(elapsed)}</p>
+                <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+                  ⚡ {summary.tonnage.toLocaleString('fr-FR')} kg · {summary.sets} séries
+                  {summary.newPRs.length > 0 && ` · 🏆 ${summary.newPRs.length} PR${summary.newPRs.length > 1 ? 's' : ''}`}
+                </p>
+              </div>
+
+              {/* Caption optionnelle */}
+              <textarea
+                placeholder="Ajoute un commentaire (optionnel)..."
+                value={shareCaption}
+                onChange={(e) => setShareCaption(e.target.value)}
+                rows={2}
+                style={{
+                  width: '100%', padding: '10px 12px', borderRadius: 10,
+                  background: 'var(--bg)', border: '1px solid var(--fiq-border)',
+                  color: 'var(--fiq-text)', fontSize: 13, resize: 'none', outline: 'none',
+                }}
+              />
+
+              <div className="flex gap-2">
+                {/* Partage natif mobile */}
+                <button
+                  onClick={handleNativeShare}
+                  className="flex-1 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-1.5"
+                  style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+                >
+                  ↗️ Partager
+                </button>
+                {/* Partage ForgeIQ feed */}
+                <button
+                  onClick={handleShareToFeed}
+                  disabled={sharing}
+                  className="flex-1 py-2.5 rounded-xl font-black text-sm"
+                  style={{ background: sharing ? 'var(--fiq-faint)' : 'var(--fiq-accent)', color: sharing ? 'var(--fiq-muted)' : 'var(--bg)' }}
+                >
+                  {sharing ? '...' : '📤 Partager sur ForgeIQ'}
+                </button>
+              </div>
+
+              {/* Passer - dismissible */}
+              <button
+                onClick={() => setShareDismissed(true)}
+                className="w-full text-xs py-1"
+                style={{ color: 'var(--fiq-muted)' }}
+              >
+                Passer
+              </button>
+            </div>
+          )}
+
+          {sharePosted && (
+            <p className="text-xs text-center" style={{ color: 'var(--fiq-accent)' }}>✅ Publié dans le feed !</p>
           )}
 
           <Button
