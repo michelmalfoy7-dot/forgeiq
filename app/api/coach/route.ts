@@ -6,6 +6,10 @@ export const dynamic = 'force-dynamic'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+// Modèles — Sonnet pour réponses complexes, Haiku pour questions simples
+const MODEL_SONNET = 'claude-sonnet-4-20250514'
+const MODEL_HAIKU  = 'claude-haiku-3-5-20241022'
+
 // Limites selon le plan — alignées avec la page /pricing
 const LIMITS = {
   free:     3,         // Gratuit — 3 essais à VIE (pas mensuel), pour découvrir sans saigner sur l'IA
@@ -14,7 +18,33 @@ const LIMITS = {
   lifetime: Infinity,  // Accès à vie — illimité
 }
 // Nombre de messages d'historique injectés dans le contexte
-const HISTORY_LIMIT = 8
+const HISTORY_LIMIT = 6  // 6 au lieu de 8 : économise ~200 tokens/appel sans perte de contexte
+
+// Seuil de protection pour les plans illimités (après N messages/mois → Haiku)
+const HAIKU_THRESHOLD_UNLIMITED = 120
+
+/**
+ * Choisit le modèle selon la complexité du message et le volume d'usage.
+ * - Questions simples/courtes → Haiku (~10x moins cher)
+ * - Questions complexes ou utilisateur léger → Sonnet (qualité maximale)
+ * - Utilisateurs très actifs sur plan illimité → Haiku (protection coût)
+ */
+function pickModel(message: string, monthlyCount: number, isUnlimited: boolean): string {
+  // Protection coût : heavy users sur plans illimités → Haiku
+  if (isUnlimited && monthlyCount >= HAIKU_THRESHOLD_UNLIMITED) return MODEL_HAIKU
+
+  // Détection requête complexe : termes techniques ou message long
+  const words = message.trim().split(/\s+/).length
+  const complexTerms = [
+    'programme', 'périodis', 'plan', 'séance', 'exercice', 'explique',
+    'compare', 'analyse', 'volume', 'intensité', 'progression', 'deload',
+    'blessure', 'douleur', 'alimentation', 'macros', 'calories', 'régime',
+    'technique', 'musculation', 'cardio', 'récupération', 'sommeil',
+  ]
+  const isComplex = words > 20 || complexTerms.some(t => message.toLowerCase().includes(t))
+
+  return isComplex ? MODEL_SONNET : MODEL_HAIKU
+}
 
 // Ratios protéines selon objectif (g/kg de poids de corps) — sources ISSN/ACSM
 const PROTEIN_RATIO: Record<string, { min: number; max: number }> = {
@@ -286,19 +316,37 @@ export async function POST(req: NextRequest) {
       content: userMessage,
     })
 
-    // Stream Claude
+    // Choisir le modèle selon complexité + usage mensuel
+    const isUnlimited = msgLimit === Infinity
+    const selectedModel = pickModel(userMessage, msgCount, isUnlimited)
+
+    // Stream Claude avec prompt caching sur le system prompt
+    // Le system prompt (~700 tokens) est mis en cache 5min → économise ~70% des tokens input
+    // sur les messages consécutifs dans une session
     const encoder = new TextEncoder()
     let assistantContent = ''
 
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          const claudeStream = anthropic.messages.stream({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 800,
-            system: systemPrompt,
-            messages,
-          })
+          const claudeStream = anthropic.messages.stream(
+            {
+              model: selectedModel,
+              max_tokens: 600,  // 800 → 600 : suffisant pour 3 paragraphes, -25% sur output tokens
+              system: [
+                {
+                  type: 'text' as const,
+                  text: systemPrompt,
+                  // Cache le system prompt 5 minutes : économise sur les échanges consécutifs
+                  cache_control: { type: 'ephemeral' },
+                },
+              ],
+              messages,
+            },
+            {
+              headers: { 'anthropic-beta': 'prompt-caching-2024-07-31' },
+            }
+          )
 
           for await (const chunk of claudeStream) {
             if (
@@ -338,6 +386,8 @@ export async function POST(req: NextRequest) {
         'X-Coach-Limit': String(msgLimit === Infinity ? 9999 : msgLimit),
         'X-Coach-Is-Free': String(isFree),
         'X-Coach-Is-Admin': String(isAdmin),
+        // Modèle utilisé (debug / monitoring)
+        'X-Coach-Model': selectedModel === MODEL_HAIKU ? 'haiku' : 'sonnet',
       },
     })
   } catch {

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ProfileClient } from '@/components/profile/ProfileClient'
 import { Users } from 'lucide-react'
+import { categorizeBig5 } from '@/lib/utils/big5'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,11 +17,11 @@ export default async function ProfilePage() {
   const [
     { data: profile },
     { data: workoutStats },
-    { data: prCount },
+    { data: allPRs },
     { data: streakData },
   ] = await Promise.all([
     supabase.from('profiles')
-      .select('display_name, username, goal, level, equipment, sessions_per_week, age, height_cm, gender, weight_kg, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, created_at, subscription_status, subscription_plan, stripe_customer_id, include_warmup_in_tonnage')
+      .select('display_name, username, avatar_url, goal, level, equipment, sessions_per_week, age, height_cm, gender, weight_kg, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, created_at, subscription_status, subscription_plan, stripe_customer_id, include_warmup_in_tonnage')
       .eq('id', user.id).single(),
 
     supabase.from('workouts')
@@ -28,10 +29,12 @@ export default async function ProfilePage() {
       .eq('user_id', user.id)
       .not('completed_at', 'is', null),
 
+    // Récupérer TOUS les PRs top_set triés par valeur DESC pour le Big 5
     supabase.from('personal_records')
-      .select('id', { count: 'exact' })
+      .select('value, exercise_name, exercises_library(name, name_fr)')
       .eq('user_id', user.id)
-      .eq('record_type', 'top_set'),
+      .eq('record_type', 'top_set')
+      .order('value', { ascending: false }),
 
     supabase.from('daily_logs')
       .select('log_date')
@@ -42,6 +45,15 @@ export default async function ProfilePage() {
 
   // Calculer le streak (jours consécutifs depuis aujourd'hui)
   const streak = calcStreak(streakData?.map(l => l.log_date) ?? [], today)
+
+  // Catégoriser les PRs en Big 5 mouvements fondamentaux
+  const big5 = categorizeBig5(
+    (allPRs ?? []).map(pr => ({
+      value: pr.value,
+      exercise_name: pr.exercise_name,
+      exercises_library: pr.exercises_library as unknown as { name: string; name_fr: string | null } | null,
+    }))
+  )
 
   const totalSessions = workoutStats?.length ?? 0
   const totalTonnage = workoutStats?.reduce((acc, w) => acc + (w.total_tonnage_kg ?? 0), 0) ?? 0
@@ -104,9 +116,10 @@ export default async function ProfilePage() {
         stats={{
           totalSessions,
           totalTonnageKg: Math.round(totalTonnage),
-          prCount: prCount?.length ?? 0,
+          prCount: allPRs?.length ?? 0,
           streak,
         }}
+        big5={big5}
         subscriptionStatus={profile?.subscription_status ?? 'free'}
         subscriptionPlan={profile?.subscription_plan ?? null}
         hasStripeCustomer={!!profile?.stripe_customer_id}

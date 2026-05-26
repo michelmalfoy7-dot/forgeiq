@@ -7,7 +7,14 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: '*',
-        allow: ['/', '/pricing', '/login', '/register'],
+        allow: [
+          '/',
+          '/pricing',
+          '/login',
+          '/register',
+          '/install',
+          '/u/',       // profils publics indexables
+        ],
         disallow: [
           '/dashboard',
           '/workout',
@@ -18,7 +25,9 @@ export default function robots(): MetadataRoute.Robots {
           '/profile',
           '/nutrition',
           '/exercises',
+          '/social',
           '/api/',
+          '/auth/',
         ],
       },
     ],

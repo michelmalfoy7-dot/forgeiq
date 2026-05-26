@@ -1,8 +1,22 @@
+import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { PricingClient } from '@/components/pricing/PricingClient'
 
 export const dynamic = 'force-dynamic'
+
+export const metadata: Metadata = {
+  title: 'Tarifs — ForgeIQ',
+  description: 'Découvre les plans ForgeIQ : gratuit pour débuter, Pro à $4.99/mois pour un coaching IA complet. Annule à tout moment.',
+  alternates: {
+    canonical: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://getforgeiq.com'}/pricing`,
+  },
+  openGraph: {
+    title: 'Tarifs ForgeIQ — Coach IA Fitness',
+    description: 'Plan gratuit, Pro mensuel ou annuel. Coaching IA complet, nutrition, programmes personnalisés.',
+    images: [{ url: '/og-image.png', width: 1200, height: 630 }],
+  },
+}
 
 export default async function PricingPage() {
   const supabase = await createClient()

@@ -1,13 +1,61 @@
+import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { WorkoutPost } from '@/components/social/WorkoutPost'
 import { FollowButton } from '@/components/social/FollowButton'
 import type { FeedPost } from '@/components/social/WorkoutPost'
+import { categorizeBig5 } from '@/lib/utils/big5'
 
 export const dynamic = 'force-dynamic'
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://getforgeiq.com'
+
 type PageProps = {
   params: Promise<{ username: string }>
+}
+
+// OG dynamique par profil — partageable sur les réseaux sociaux
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { username } = await params
+  const supabase = await createClient()
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('display_name, bio, avatar_url')
+    .eq('username', username.toLowerCase())
+    .eq('is_public', true)
+    .maybeSingle()
+
+  if (!profile) {
+    return { title: 'Profil introuvable | ForgeIQ' }
+  }
+
+  const name = profile.display_name ?? username
+  const title = `${name} (@${username}) | ForgeIQ`
+  const description = profile.bio
+    ? profile.bio
+    : `Découvre les entraînements et records de ${name} sur ForgeIQ.`
+  const image = profile.avatar_url ?? '/og-image.png'
+  const url = `${APP_URL}/u/${username}`
+
+  return {
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      title,
+      description,
+      url,
+      type: 'profile',
+      images: [{ url: image, width: 400, height: 400, alt: name }],
+    },
+    twitter: {
+      card: 'summary',
+      title,
+      description,
+      images: [image],
+    },
+  }
 }
 
 export default async function PublicProfilePage({ params }: PageProps) {
@@ -56,15 +104,22 @@ export default async function PublicProfilePage({ params }: PageProps) {
     0
   )
 
-  // Récupérer le meilleur PR
-  const { data: bestPR } = await supabase
+  // Récupérer TOUS les PRs top_set pour le Big 5
+  const { data: allPRs } = await supabase
     .from('personal_records')
-    .select('value, exercises_library(name_fr, name)')
+    .select('value, exercise_name, exercises_library(name_fr, name)')
     .eq('user_id', targetProfile.user_id)
     .eq('record_type', 'top_set')
     .order('value', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+
+  const big5 = categorizeBig5(
+    (allPRs ?? []).map(pr => ({
+      value: pr.value,
+      exercise_name: pr.exercise_name,
+      exercises_library: pr.exercises_library as unknown as { name: string; name_fr: string | null } | null,
+    }))
+  )
+  const big5Filled = big5.filter(b => b.value !== null)
 
   // Récupérer les séances partagées de cet utilisateur
   const { data: shares } = await supabase
@@ -138,10 +193,6 @@ export default async function PublicProfilePage({ params }: PageProps) {
   // Initiale pour l'avatar
   const avatarInitial = (targetProfile.display_name || targetProfile.username || '?')[0].toUpperCase()
 
-  const prExercise = bestPR
-    ? ((bestPR.exercises_library as unknown) as { name_fr: string | null; name: string } | null)
-    : null
-
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
       {/* Profil header */}
@@ -206,7 +257,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
       </div>
 
       {/* Stats performance */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <div className="fiq-card text-center">
           <p className="text-xs font-semibold mb-1" style={{ color: 'var(--fiq-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             Séances
@@ -225,20 +276,47 @@ export default async function PublicProfilePage({ params }: PageProps) {
               : `${Math.round(totalTonnage)}kg`}
           </p>
         </div>
-        <div className="fiq-card text-center">
-          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--fiq-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Meilleur PR
-          </p>
-          <p className="text-xl font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>
-            {bestPR ? `${bestPR.value}kg` : '—'}
-          </p>
-          {prExercise && (
-            <p className="text-[10px] mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
-              {prExercise.name_fr ?? prExercise.name}
-            </p>
-          )}
-        </div>
       </div>
+
+      {/* Big 5 — Records par mouvement fondamental */}
+      {big5Filled.length > 0 && (
+        <div className="fiq-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--fiq-border)' }}>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Records — Big 5</p>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                style={{ background: '#B4FF4A15', color: 'var(--fiq-accent)', border: '1px solid #B4FF4A30' }}>
+                {big5Filled.length}/5
+              </span>
+            </div>
+          </div>
+          <div className="divide-y" style={{ borderColor: 'var(--fiq-border)' }}>
+            {big5.map((cat) => (
+              <div key={cat.id} className="flex items-center gap-3 px-4 py-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-base flex-shrink-0"
+                  style={{ background: `${cat.color}18` }}>
+                  {cat.emoji}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-black uppercase" style={{ color: 'var(--fiq-muted)', letterSpacing: '0.06em' }}>
+                    {cat.label}
+                  </p>
+                  <p className="text-[11px] truncate mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                    {cat.exerciseName ?? cat.sublabel}
+                  </p>
+                </div>
+                {cat.value !== null ? (
+                  <p className="text-lg font-black fiq-data flex-shrink-0" style={{ color: cat.color }}>
+                    {cat.value}<span className="text-xs font-normal ml-0.5" style={{ color: 'var(--fiq-muted)' }}>kg</span>
+                  </p>
+                ) : (
+                  <p className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--fiq-muted)' }}>—</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Séances partagées */}
       {feed.length > 0 ? (

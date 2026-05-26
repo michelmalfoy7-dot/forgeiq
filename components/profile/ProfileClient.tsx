@@ -1,11 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+'use client'
+
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, LogOut, Trash2, Dumbbell, Trophy, Flame, BarChart2, ChevronRight, MessageCircle, Info, Crown, Users, Globe, Lock } from 'lucide-react'
+import { Loader2, LogOut, Trash2, Dumbbell, Flame, BarChart2, ChevronRight, MessageCircle, Info, Crown, Users, Globe, Lock, Camera, X } from 'lucide-react'
 import type { TDEEBreakdown } from '@/lib/utils/tdee'
+import type { Big5PR } from '@/lib/utils/big5'
 
 type Profile = {
   display_name: string | null
@@ -111,7 +114,7 @@ function NumberField({ label, value, onChange, min, max, unit }: {
 }
 
 export function ProfileClient({
-  profile, email, stats,
+  profile, email, stats, big5 = [],
   subscriptionStatus = 'free',
   subscriptionPlan = null,
   hasStripeCustomer = false,
@@ -119,11 +122,21 @@ export function ProfileClient({
   profile: Profile
   email: string
   stats: Stats
+  big5?: Big5PR[]
   subscriptionStatus?: string
   subscriptionPlan?: string | null
   hasStripeCustomer?: boolean
 }) {
   const router = useRouter()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Avatar — initialisé depuis le profil serveur
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(
+    (profile as unknown as { avatar_url?: string | null })?.avatar_url ?? null
+  )
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarError, setAvatarError] = useState<string | null>(null)
+
   const [goal, setGoal] = useState(profile?.goal ?? 'general')
   const [level, setLevel] = useState(profile?.level ?? 'beginner')
   const [equipment, setEquipment] = useState(profile?.equipment ?? 'full_gym')
@@ -196,6 +209,40 @@ export function ProfileClient({
 
   const isPro = subscriptionStatus === 'pro' || subscriptionStatus === 'lifetime'
   const isLifetime = subscriptionStatus === 'lifetime'
+
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setAvatarError(null)
+    setAvatarUploading(true)
+    try {
+      const form = new FormData()
+      form.append('avatar', file)
+      const res = await fetch('/api/profile/avatar', { method: 'POST', body: form })
+      const { data, error } = await res.json()
+      if (error) { setAvatarError(error); return }
+      setAvatarUrl(data.avatar_url)
+      router.refresh()
+    } catch {
+      setAvatarError('Erreur réseau')
+    } finally {
+      setAvatarUploading(false)
+      // Reset input pour permettre de re-sélectionner le même fichier
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function handleAvatarDelete() {
+    setAvatarError(null)
+    setAvatarUploading(true)
+    try {
+      await fetch('/api/profile/avatar', { method: 'DELETE' })
+      setAvatarUrl(null)
+      router.refresh()
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
 
   async function openBillingPortal() {
     setPortalLoading(true)
@@ -303,23 +350,78 @@ export function ProfileClient({
     <div className="space-y-5 pb-8">
       {/* Avatar + infos */}
       <div className="fiq-card flex items-center gap-4">
-        <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black flex-shrink-0"
-          style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
-          {(displayName || email)[0]?.toUpperCase()}
+        {/* Avatar cliquable */}
+        <div className="relative flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={avatarUploading}
+            className="relative w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center text-2xl font-black group"
+            style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+          >
+            {avatarUploading ? (
+              <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--bg)' }} />
+            ) : avatarUrl ? (
+              // eslint-disable-next-line @next/next-eslint/no-img-element
+              <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+            ) : (
+              <span>{(displayName || email)[0]?.toUpperCase()}</span>
+            )}
+            {/* Overlay caméra au hover */}
+            <div
+              className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ background: 'rgba(0,0,0,0.45)' }}
+            >
+              <Camera className="w-5 h-5 text-white" />
+            </div>
+          </button>
+
+          {/* Bouton supprimer (croix) si avatar présent */}
+          {avatarUrl && !avatarUploading && (
+            <button
+              type="button"
+              onClick={handleAvatarDelete}
+              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center"
+              style={{ background: 'var(--fiq-red)', border: '2px solid var(--bg)' }}
+            >
+              <X className="w-2.5 h-2.5 text-white" />
+            </button>
+          )}
+
+          {/* Input fichier caché */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={handleAvatarChange}
+          />
         </div>
-        <div>
-          <p className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>
+
+        <div className="flex-1 min-w-0">
+          <p className="font-black text-lg truncate" style={{ color: 'var(--fiq-text)' }}>
             {displayName || email.split('@')[0]}
           </p>
-          <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>{email}</p>
+          <p className="text-xs truncate" style={{ color: 'var(--fiq-muted)' }}>{email}</p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Membre depuis {memberSince}</p>
+          {avatarError && (
+            <p className="text-xs mt-1" style={{ color: 'var(--fiq-red)' }}>⚠ {avatarError}</p>
+          )}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="text-xs mt-1.5 font-semibold"
+            style={{ color: 'var(--fiq-muted)' }}
+          >
+            {avatarUrl ? 'Changer la photo' : '+ Ajouter une photo'}
+          </button>
         </div>
       </div>
 
       {/* Stats globales */}
       <div>
         <p className="font-bold mb-3" style={{ color: 'var(--fiq-text)' }}>Mes statistiques</p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <StatCard
             icon={<Dumbbell className="w-5 h-5" style={{ color: 'var(--fiq-accent)' }} />}
             label="Séances"
@@ -327,23 +429,77 @@ export function ProfileClient({
           />
           <StatCard
             icon={<BarChart2 className="w-5 h-5" style={{ color: 'var(--fiq-blue)' }} />}
-            label="Tonnage total"
-            value={stats.totalTonnageKg}
-            unit="kg"
-          />
-          <StatCard
-            icon={<Trophy className="w-5 h-5" style={{ color: 'var(--fiq-accent)' }} />}
-            label="Records (PRs)"
-            value={stats.prCount}
+            label="Tonnage"
+            value={stats.totalTonnageKg > 1000
+              ? `${(stats.totalTonnageKg / 1000).toFixed(1)}t`
+              : stats.totalTonnageKg}
+            unit={stats.totalTonnageKg > 1000 ? undefined : 'kg'}
           />
           <StatCard
             icon={<Flame className="w-5 h-5" style={{ color: 'var(--fiq-orange)' }} />}
             label="Streak"
             value={stats.streak}
-            unit="jours"
+            unit="j"
           />
         </div>
       </div>
+
+      {/* Big 5 — Records par mouvement fondamental */}
+      {big5.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>Mes records — Big 5</p>
+            <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+              style={{ background: '#B4FF4A15', color: 'var(--fiq-accent)', border: '1px solid #B4FF4A30' }}>
+              {big5.filter(b => b.value !== null).length}/5
+            </span>
+          </div>
+          <div className="fiq-card divide-y" style={{ borderColor: 'var(--fiq-border)', padding: 0, overflow: 'hidden' }}>
+            {big5.map((cat, i) => (
+              <div
+                key={cat.id}
+                className="flex items-center gap-3 px-4 py-3"
+                style={{ borderColor: 'var(--fiq-border)' }}
+              >
+                {/* Emoji + barre colorée */}
+                <div
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-base flex-shrink-0"
+                  style={{ background: `${cat.color}18` }}
+                >
+                  {cat.emoji}
+                </div>
+
+                {/* Label + exercice */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-black uppercase tracking-wide" style={{ color: 'var(--fiq-muted)', letterSpacing: '0.06em' }}>
+                    {cat.label}
+                  </p>
+                  <p className="text-[11px] truncate mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                    {cat.exerciseName ?? cat.sublabel}
+                  </p>
+                </div>
+
+                {/* Valeur PR */}
+                {cat.value !== null ? (
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-lg font-black fiq-data" style={{ color: cat.color }}>
+                      {cat.value}
+                      <span className="text-xs font-normal ml-0.5" style={{ color: 'var(--fiq-muted)' }}>kg</span>
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--fiq-muted)' }}>—</p>
+                )}
+              </div>
+            ))}
+          </div>
+          {big5.every(b => b.value === null) && (
+            <p className="text-xs mt-2 px-1" style={{ color: 'var(--fiq-muted)' }}>
+              Complète tes premières séances pour voir tes records apparaître ici.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Abonnement */}
       {isPro ? (
