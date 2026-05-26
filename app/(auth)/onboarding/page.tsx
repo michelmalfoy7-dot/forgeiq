@@ -282,6 +282,9 @@ export default function OnboardingPage() {
         return
       }
 
+      // Fire-and-forget : email de bienvenue (ne bloque pas la navigation)
+      fetch('/api/auth/welcome', { method: 'POST' }).catch(() => {})
+
       router.push('/dashboard')
     } catch (err) {
       console.error('Onboarding finish exception:', err)

@@ -8,7 +8,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { UpgradeBanner } from '@/components/dashboard/UpgradeBanner'
 import { CancelWorkoutButton } from '@/components/dashboard/CancelWorkoutButton'
 import { formatSleep } from '@/lib/formatSleep'
-import { Dumbbell, TrendingUp, ClipboardList, MessageCircle } from 'lucide-react'
+import { Dumbbell, TrendingUp, ClipboardList, MessageCircle, Utensils } from 'lucide-react'
 import { calcBMR, calcStepsCalories, calcTrainingCalories, goalAdjustment, calcMacrosFromCalories } from '@/lib/utils/tdee'
 
 export const dynamic = 'force-dynamic'
@@ -43,7 +43,7 @@ export default async function DashboardPage() {
     { data: todayFoodLogs },
   ] = await Promise.all([
     supabase.from('profiles')
-      .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, height_cm, age, gender, macro_mode, custom_protein_g, custom_calories, steps_goal, target_weight_kg')
+      .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, height_cm, age, gender, macro_mode, custom_protein_g, custom_calories, steps_goal, target_weight_kg, avatar_url')
       .eq('id', user.id).maybeSingle(),
 
     supabase.from('daily_logs').select('*')
@@ -198,6 +198,14 @@ export default async function DashboardPage() {
     ? { min: profile.custom_protein_g, max: profile.custom_protein_g }
     : { min: autoMacros.protein_g, max: autoMacros.protein_g }
 
+  // Cible calorique effective (custom ou auto)
+  const calTarget = profile?.macro_mode === 'custom' && profile?.custom_calories
+    ? profile.custom_calories
+    : targetCaloriesDash
+  const calConsumed = hasFoodLogs ? Math.round(foodLogTotals.calories) : 0
+  const calRemaining = calTarget - calConsumed
+  const calPct = Math.min(100, Math.round((calConsumed / Math.max(1, calTarget)) * 100))
+
   // Alertes statiques
   const alerts: { type: 'red' | 'yellow' | 'green' | 'blue'; message: string; sub: string }[] = []
 
@@ -258,9 +266,12 @@ export default async function DashboardPage() {
             </div>
           )}
         </div>
-        <Link href="/profile" className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-black"
-          style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
-          {prenom[0]?.toUpperCase()}
+        <Link href="/profile" className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-sm font-black flex-shrink-0"
+          style={profile?.avatar_url ? {} : { background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
+          {profile?.avatar_url
+            ? <img src={profile.avatar_url} alt={prenom} className="w-full h-full object-cover" />
+            : prenom[0]?.toUpperCase()
+          }
         </Link>
       </div>
 
@@ -309,6 +320,72 @@ export default async function DashboardPage() {
           accent={!!todayLog?.steps && todayLog.steps >= stepsTarget}
         />
       </div>
+
+      {/* Widget Nutrition rapide */}
+      <Link href="/nutrition" className="fiq-card block space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Utensils className="w-4 h-4" style={{ color: 'var(--fiq-orange)' }} />
+            <p className="font-bold text-sm" style={{ color: 'var(--fiq-text)' }}>Nutrition</p>
+          </div>
+          <span className="text-xs font-semibold" style={{ color: 'var(--fiq-muted)' }}>Voir tout →</span>
+        </div>
+
+        {hasFoodLogs ? (
+          <>
+            {/* Calories */}
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="text-2xl font-black fiq-data" style={{ color: calRemaining < 0 ? 'var(--fiq-orange)' : 'var(--fiq-accent)' }}>
+                  {Math.abs(calRemaining).toLocaleString('fr-FR')}
+                  <span className="text-sm font-normal ml-1" style={{ color: 'var(--fiq-muted)' }}>
+                    kcal {calRemaining < 0 ? 'dépassé' : 'restantes'}
+                  </span>
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                  {calConsumed.toLocaleString('fr-FR')} / {calTarget.toLocaleString('fr-FR')} kcal
+                </p>
+              </div>
+              <span className="text-sm font-black" style={{ color: calPct >= 100 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+                {calPct}%
+              </span>
+            </div>
+
+            {/* Barre calories */}
+            <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--fiq-faint)' }}>
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${calPct}%`,
+                  background: calPct >= 100 ? 'var(--fiq-orange)' : calPct >= 80 ? 'var(--fiq-accent)' : 'var(--fiq-blue)',
+                }}
+              />
+            </div>
+
+            {/* Mini macros */}
+            <div className="flex gap-3">
+              {[
+                { label: 'P', value: Math.round(foodLogTotals.protein_g), color: 'var(--fiq-accent)' },
+                { label: 'G', value: Math.round(foodLogTotals.carbs_g), color: '#A855F7' },
+                { label: 'L', value: Math.round(foodLogTotals.fat_g), color: 'var(--fiq-orange)' },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="flex items-center gap-1">
+                  <span className="text-xs font-black" style={{ color }}>{label}</span>
+                  <span className="text-xs font-semibold fiq-data" style={{ color: 'var(--fiq-muted)' }}>{value}g</span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center justify-between">
+            <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>Aucun repas enregistré</p>
+            <span className="text-xs font-black px-3 py-1.5 rounded-lg"
+              style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
+              + Ajouter
+            </span>
+          </div>
+        )}
+      </Link>
 
       {/* Card séance proposée — 4 cas */}
       <div className="fiq-card space-y-4">
