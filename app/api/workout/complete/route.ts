@@ -92,33 +92,41 @@ export async function POST(request: Request) {
     const upserts: {
       user_id: string; exercise_id: string; exercise_name: string
       record_type: string; value: number; unit: string
-      achieved_date: string; workout_id: string
+      reps?: number; achieved_date: string; workout_id: string
     }[] = []
 
     for (const [exerciseId, exSets] of Object.entries(exerciseGroups)) {
       const existing = prMap.get(exerciseId) ?? {}
       const exerciseName = exSets[0].exercise_name
 
-      // Top set (poids le plus lourd soulevé sur cette séance)
-      const topSet = exSets.reduce((best, s) =>
-        s.weight_kg * s.reps > best.weight_kg * best.reps ? s : best
+      // PR = charge la plus lourde soulevée (à égalité → plus de reps gagne)
+      const heaviestSet = exSets.reduce((best, s) =>
+        s.weight_kg > best.weight_kg
+          ? s
+          : s.weight_kg === best.weight_kg && s.reps > best.reps
+          ? s
+          : best
       )
-      const topSetValue = topSet.weight_kg
-      if (!existing['top_set'] || topSetValue > existing['top_set']) {
-        upserts.push({ user_id: user.id, exercise_id: exerciseId, exercise_name: exerciseName, record_type: 'top_set', value: topSetValue, unit: 'kg', achieved_date: today, workout_id })
+      const prWeight = heaviestSet.weight_kg
+      const prReps = heaviestSet.reps
+
+      if (!existing['top_set'] || prWeight > existing['top_set']) {
+        upserts.push({
+          user_id: user.id, exercise_id: exerciseId, exercise_name: exerciseName,
+          record_type: 'top_set', value: prWeight, unit: 'kg',
+          reps: prReps, achieved_date: today, workout_id,
+        })
         newPRs.push(exerciseName)
       }
 
-      // 1RM estimé (formule Epley)
-      const estimatedRM = Math.round((topSet.weight_kg * (1 + topSet.reps / 30)) * 10) / 10
+      // 1RM estimé (formule Epley) basé sur le set le plus lourd
+      const estimatedRM = Math.round((heaviestSet.weight_kg * (1 + heaviestSet.reps / 30)) * 10) / 10
       if (!existing['1rm_estimated'] || estimatedRM > existing['1rm_estimated']) {
-        upserts.push({ user_id: user.id, exercise_id: exerciseId, exercise_name: exerciseName, record_type: '1rm_estimated', value: estimatedRM, unit: 'kg', achieved_date: today, workout_id })
-      }
-
-      // Max weight absolu (charge la plus lourde, peu importe les reps)
-      const maxWeightSet = exSets.reduce((best, s) => s.weight_kg > best.weight_kg ? s : best)
-      if (!existing['max_weight'] || maxWeightSet.weight_kg > existing['max_weight']) {
-        upserts.push({ user_id: user.id, exercise_id: exerciseId, exercise_name: exerciseName, record_type: 'max_weight', value: maxWeightSet.weight_kg, unit: 'kg', achieved_date: today, workout_id })
+        upserts.push({
+          user_id: user.id, exercise_id: exerciseId, exercise_name: exerciseName,
+          record_type: '1rm_estimated', value: estimatedRM, unit: 'kg',
+          achieved_date: today, workout_id,
+        })
       }
     }
 

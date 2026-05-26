@@ -17,6 +17,7 @@ type PR = {
   record_type: string
   value: number
   unit: string
+  reps?: number | null
   achieved_date: string | null
 }
 type Tab = 'weight' | 'tonnage' | 'prs'
@@ -366,7 +367,7 @@ export function ProgressCharts({
           <div className="mb-4">
             <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>Records personnels</p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
-              Meilleur top set enregistré par exercice
+              Charge maximale soulevée par exercice
             </p>
           </div>
 
@@ -411,10 +412,17 @@ export function ProgressCharts({
                         )}
                       </div>
                     </div>
-                    <p className="text-base font-black fiq-data flex-shrink-0" style={{ color: 'var(--fiq-accent)' }}>
-                      {pr.value}
-                      <span className="text-xs font-normal ml-1" style={{ color: 'var(--fiq-muted)' }}>{pr.unit}</span>
-                    </p>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-base font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
+                        {pr.value}
+                        <span className="text-xs font-normal ml-1" style={{ color: 'var(--fiq-muted)' }}>{pr.unit}</span>
+                      </p>
+                      {pr.reps && (
+                        <p className="text-xs font-semibold" style={{ color: 'var(--fiq-muted)' }}>
+                          × {pr.reps} reps
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )
               })}

@@ -35,7 +35,7 @@ export default async function ProgressPage() {
       .order('session_date', { ascending: true }),
 
     supabase.from('personal_records')
-      .select('exercise_name, record_type, value, unit, achieved_date')
+      .select('exercise_name, record_type, value, unit, reps, achieved_date')
       .eq('user_id', user.id)
       .eq('record_type', 'top_set')
       .order('value', { ascending: false }),
