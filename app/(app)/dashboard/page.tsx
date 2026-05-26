@@ -101,7 +101,7 @@ export default async function DashboardPage() {
       .order('session_date', { ascending: false }),
 
     supabase.from('daily_logs')
-      .select('log_date, sleep_deep_min, protein_g, fatigue_score, steps')
+      .select('log_date, sleep_deep_min, protein_g, fatigue_score, steps, weight_kg')
       .eq('user_id', user.id)
       .gte('log_date', thirtyDaysAgo)
       .order('log_date', { ascending: false }),
@@ -278,6 +278,15 @@ export default async function DashboardPage() {
   // Fusionner alertes (statiques d'abord, puis IA si pas de doublon)
   const allAlerts = [...staticAlerts, ...aiAlerts].slice(0, 4)
 
+  // Indicateur fiabilité EWMA — basé sur le nb de jours avec poids dans les 30 derniers jours
+  const weightDaysCount = (weekLogs ?? []).filter(l => (l as { weight_kg?: number | null }).weight_kg != null).length
+  const ewmaReliability: { label: string; color: string } =
+    weightDaysCount < 7
+      ? { label: `⚠️ ${weightDaysCount}/7j`, color: 'var(--fiq-muted)' }
+      : weightDaysCount < 14
+      ? { label: '📊 En calibration', color: 'var(--fiq-yellow)' }
+      : { label: '✅ Fiable', color: 'var(--fiq-accent)' }
+
   // Calcul du streak (jours consécutifs de check-in)
   const checkInDates = (weekLogs ?? []).map((l) => l.log_date)
   const streak = calcStreak(checkInDates)
@@ -331,7 +340,9 @@ export default async function DashboardPage() {
           label="Poids lissé"
           value={todayLog?.weight_trend ? `${todayLog.weight_trend}` : '—'}
           unit={todayLog?.weight_trend ? 'kg' : ''}
-          sub={todayLog?.weight_kg ? `Brut : ${todayLog.weight_kg}kg` : 'Non renseigné'}
+          sub={todayLog?.weight_kg
+            ? `Brut : ${todayLog.weight_kg}kg · ${ewmaReliability.label}`
+            : ewmaReliability.label}
           accent={!!todayLog?.weight_trend}
           trend={todayLog?.weight_trend && todayLog?.weight_kg
             ? todayLog.weight_kg > todayLog.weight_trend ? 'up' : todayLog.weight_kg < todayLog.weight_trend ? 'down' : 'flat'

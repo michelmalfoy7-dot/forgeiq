@@ -523,6 +523,24 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const recipeIngSearchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // S3-2 : Repositionner la modale quand le clavier virtuel apparaît
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const onResize = () => {
+      // Décalage = hauteur fenêtre − hauteur visible (= hauteur clavier)
+      const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+      setKeyboardOffset(offset)
+    }
+    vv.addEventListener('resize', onResize)
+    vv.addEventListener('scroll', onResize)
+    return () => {
+      vv.removeEventListener('resize', onResize)
+      vv.removeEventListener('scroll', onResize)
+    }
+  }, [])
+
   // Reset savedFav + restaure préférence unité quand on change d'aliment
   useEffect(() => {
     setSavedFav(false)
@@ -1015,7 +1033,10 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
           border: '1px solid var(--fiq-border)',
           maxHeight: 'calc(92dvh - 4rem - env(safe-area-inset-bottom))',
           overflowY: 'auto',
-          marginBottom: 'calc(4rem + env(safe-area-inset-bottom))',
+          // keyboardOffset pousse la modale au-dessus du clavier virtuel iOS/Android
+          marginBottom: keyboardOffset > 0
+            ? `${keyboardOffset}px`
+            : 'calc(4rem + env(safe-area-inset-bottom))',
           paddingBottom: '24px',
         }}
         onClick={e => e.stopPropagation()}
