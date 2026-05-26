@@ -11,6 +11,7 @@ type DailyCtx = {
   weight_trend: number | null
   sleep_deep_min: number | null
   protein_g: number | null
+  fatigue_score: number | null
 }
 
 // Ratios protéines selon objectif (g/kg poids de corps)
@@ -31,12 +32,17 @@ function calcProteinTarget(goal?: string, weightKg?: number | null): number {
 function getQuickSuggestions(ctx: DailyCtx | null, proteinTarget: number): string[] {
   if (!ctx) return ['Quelle séance demain ?', 'Analyse ma semaine', 'Mon prochain PR', 'Besoin d\'un refeed ?']
   const s: string[] = []
+  // Suggestions contextuelles selon données du jour (P5)
   if (ctx.sleep_deep_min !== null && ctx.sleep_deep_min < 60) s.push('Séance adaptée aujourd\'hui ?')
+  if (ctx.fatigue_score !== null && ctx.fatigue_score >= 8) s.push('Je suis épuisé — que faire ?')
   if (ctx.protein_g !== null && ctx.protein_g < proteinTarget - 20) s.push('Comment atteindre mes protéines ?')
-  if (s.length < 4) s.push('Quelle séance demain ?')
-  if (s.length < 4) s.push('Analyse ma semaine')
-  if (s.length < 4) s.push('Mon prochain PR')
-  if (s.length < 4) s.push('Besoin d\'un refeed ?')
+  if (ctx.sleep_deep_min !== null && ctx.sleep_deep_min > 90 && ctx.fatigue_score !== null && ctx.fatigue_score <= 3) s.push('Repousser mes limites aujourd\'hui ?')
+  // Compléter jusqu'à 4 suggestions génériques
+  const fallbacks = ['Quelle séance demain ?', 'Analyse ma semaine', 'Mon prochain PR', 'Besoin d\'un refeed ?', 'Optimise ma nutrition', 'Conseils récupération']
+  for (const f of fallbacks) {
+    if (s.length >= 4) break
+    if (!s.includes(f)) s.push(f)
+  }
   return s.slice(0, 4)
 }
 
@@ -232,7 +238,7 @@ export default function CoachPage() {
           .order('created_at', { ascending: true })
           .limit(40),
         supabase.from('daily_logs')
-          .select('weight_trend, sleep_deep_min, protein_g')
+          .select('weight_trend, sleep_deep_min, protein_g, fatigue_score')
           .eq('user_id', user.id)
           .eq('log_date', today)
           .single(),
