@@ -58,11 +58,15 @@ export async function POST(request: Request) {
 
     if (wErr) return NextResponse.json({ data: null, error: wErr.message }, { status: 400 })
 
-    // Insérer toutes les séries
+    // Insérer toutes les séries — is_bilateral_dumbbell est dans exercises_library, pas dans workout_sets
     if (sets.length > 0) {
       const { error: sErr } = await supabase
         .from('workout_sets')
-        .insert(sets.map((s: SetInput) => ({ ...s, workout_id })))
+        .insert(sets.map((s: SetInput) => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { is_bilateral_dumbbell: _b, ...setData } = s
+          return { ...setData, workout_id }
+        }))
 
       if (sErr) return NextResponse.json({ data: null, error: sErr.message }, { status: 400 })
     }

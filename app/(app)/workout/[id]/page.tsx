@@ -68,6 +68,7 @@ export default function WorkoutSessionPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
   const [equipmentFilter, setEquipmentFilter] = useState<string>('all')
+  const [muscleFilter, setMuscleFilter] = useState<string>('all')
   const [restTimer, setRestTimer] = useState<number | null>(null)
   const [restDuration, setRestDuration] = useState(90)
   const [completing, setCompleting] = useState(false)
@@ -409,18 +410,51 @@ export default function WorkoutSessionPage() {
     { value: 'dumbbell', label: 'Haltères' },
     { value: 'cable', label: 'Câble' },
     { value: 'machine', label: 'Machine' },
-    { value: 'smith', label: 'Smith' },
     { value: 'bodyweight', label: 'Corps' },
-    { value: 'kettlebell', label: 'Kettlebell' },
   ]
 
-  const filteredExercises = exercises.filter((e) => {
-    const matchQuery = searchQuery.length < 2 ||
-      e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (e.name_fr ?? '').toLowerCase().includes(searchQuery.toLowerCase())
-    const matchEquip = equipmentFilter === 'all' || e.equipment === equipmentFilter
-    return matchQuery && matchEquip
-  })
+  const MUSCLE_FILTERS = [
+    { value: 'all', label: 'Tous' },
+    { value: 'chest', label: 'Poitrine' },
+    { value: 'back', label: 'Dos', keys: ['lats', 'mid_back', 'upper_back', 'lower_back'] },
+    { value: 'shoulders', label: 'Épaules', keys: ['front_delt', 'side_delt', 'rear_delt'] },
+    { value: 'biceps', label: 'Biceps' },
+    { value: 'triceps', label: 'Triceps' },
+    { value: 'legs', label: 'Jambes', keys: ['quads', 'hamstrings', 'glutes', 'calves'] },
+    { value: 'core', label: 'Abdos', keys: ['abs', 'core', 'obliques'] },
+  ]
+
+  // Exercices récemment utilisés (pour les remonter dans les résultats)
+  const recentExerciseIds = new Set(groups.map(g => g.exercise_id))
+
+  const filteredExercises = exercises
+    .filter((e) => {
+      // Filtre texte — correspondance exacte d'abord, partielle ensuite
+      const q = searchQuery.toLowerCase()
+      const matchQuery = searchQuery.length < 2 ||
+        (e.name_fr ?? '').toLowerCase().includes(q) ||
+        e.name.toLowerCase().includes(q)
+      // Filtre équipement
+      const matchEquip = equipmentFilter === 'all' || e.equipment === equipmentFilter
+      // Filtre groupe musculaire
+      const mf = MUSCLE_FILTERS.find(f => f.value === muscleFilter)
+      const muscleKeys = mf?.keys ?? (muscleFilter === 'all' ? null : [muscleFilter])
+      const matchMuscle = !muscleKeys || (e.muscle_primary ?? []).some(m => muscleKeys.includes(m))
+      return matchQuery && matchEquip && matchMuscle
+    })
+    .sort((a, b) => {
+      if (searchQuery.length < 2) {
+        // Sans recherche : exercices déjà dans la séance en bas
+        const aRecent = recentExerciseIds.has(a.id) ? 1 : 0
+        const bRecent = recentExerciseIds.has(b.id) ? 1 : 0
+        return aRecent - bRecent
+      }
+      const q = searchQuery.toLowerCase()
+      // Correspondance exacte nom_fr en premier
+      const aExact = (a.name_fr ?? '').toLowerCase().startsWith(q) ? 0 : 1
+      const bExact = (b.name_fr ?? '').toLowerCase().startsWith(q) ? 0 : 1
+      return aExact - bExact
+    })
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
@@ -480,7 +514,7 @@ export default function WorkoutSessionPage() {
 
   // ── Vue principale ─────────────────────────────────────────
   return (
-    <div className="max-w-lg mx-auto" style={{ paddingBottom: '7rem' }}>
+    <div className="max-w-lg mx-auto" style={{ paddingBottom: 'calc(8rem + env(safe-area-inset-bottom))' }}>
 
       {/* Toast de restauration */}
       {restoredFromStorage && (
@@ -658,13 +692,13 @@ export default function WorkoutSessionPage() {
           <div
             className="fixed inset-0 z-40"
             style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
-            onClick={() => { setShowSearch(false); setSearchQuery('') }}
+            onClick={() => { setShowSearch(false); setSearchQuery(''); setMuscleFilter('all'); setEquipmentFilter('all') }}
           />
           {/* Sheet */}
           <div
             className="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-3xl"
             style={{
-              maxHeight: 'calc(88dvh - 4rem - env(safe-area-inset-bottom))',
+              maxHeight: 'calc(92dvh - env(safe-area-inset-bottom))',
               background: 'var(--surface)',
               borderTop: '1px solid var(--fiq-border)',
             }}
@@ -678,7 +712,7 @@ export default function WorkoutSessionPage() {
             <div className="px-4 pb-3 space-y-3" style={{ borderBottom: '1px solid var(--fiq-border)' }}>
               <div className="flex items-center justify-between">
                 <h2 className="font-bold" style={{ color: 'var(--fiq-text)' }}>Choisir un exercice</h2>
-                <button onClick={() => { setShowSearch(false); setSearchQuery('') }}>
+                <button onClick={() => { setShowSearch(false); setSearchQuery(''); setMuscleFilter('all'); setEquipmentFilter('all') }}>
                   <X className="w-5 h-5" style={{ color: 'var(--fiq-muted)' }} />
                 </button>
               </div>
@@ -704,21 +738,43 @@ export default function WorkoutSessionPage() {
                   }}
                 />
               </div>
+              {/* Filtres groupe musculaire */}
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+                {MUSCLE_FILTERS.map((f) => (
+                  <button
+                    key={f.value}
+                    onClick={() => setMuscleFilter(f.value)}
+                    style={{
+                      flexShrink: 0,
+                      padding: '4px 10px',
+                      borderRadius: 20,
+                      border: muscleFilter === f.value ? 'none' : '1px solid var(--fiq-border)',
+                      background: muscleFilter === f.value ? 'var(--fiq-accent)' : 'var(--bg)',
+                      color: muscleFilter === f.value ? 'var(--bg)' : 'var(--fiq-muted)',
+                      fontSize: 11,
+                      fontWeight: muscleFilter === f.value ? 800 : 500,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
               {/* Filtres équipement */}
-              <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
                 {EQUIPMENT_FILTERS.map((f) => (
                   <button
                     key={f.value}
                     onClick={() => setEquipmentFilter(f.value)}
                     style={{
                       flexShrink: 0,
-                      padding: '5px 12px',
+                      padding: '4px 10px',
                       borderRadius: 20,
                       border: equipmentFilter === f.value ? 'none' : '1px solid var(--fiq-border)',
-                      background: equipmentFilter === f.value ? 'var(--fiq-accent)' : 'var(--bg)',
-                      color: equipmentFilter === f.value ? 'var(--bg)' : 'var(--fiq-muted)',
-                      fontSize: 12,
-                      fontWeight: equipmentFilter === f.value ? 800 : 500,
+                      background: equipmentFilter === f.value ? '#3D8BFF' : 'var(--bg)',
+                      color: equipmentFilter === f.value ? 'white' : 'var(--fiq-muted)',
+                      fontSize: 11,
+                      fontWeight: equipmentFilter === f.value ? 700 : 500,
                       cursor: 'pointer',
                     }}
                   >
@@ -729,31 +785,48 @@ export default function WorkoutSessionPage() {
             </div>
 
             {/* Liste */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ paddingBottom: '1rem' }}>
+            <div className="flex-1 overflow-y-auto px-4 pt-3 space-y-1.5"
+              style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}>
               {filteredExercises.length === 0 && (
                 <div className="text-center py-8">
                   <Dumbbell className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--fiq-muted)' }} />
                   <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>Aucun exercice trouvé</p>
                 </div>
               )}
-              {filteredExercises.slice(0, 60).map((ex) => (
-                <button
-                  key={ex.id}
-                  onClick={() => addExercise(ex)}
-                  className="w-full fiq-card flex items-start gap-3 text-left"
-                >
-                  <div className="flex-1">
-                    <p className="font-semibold text-sm" style={{ color: 'var(--fiq-text)' }}>{ex.name_fr ?? ex.name}</p>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
-                      {ex.muscle_primary?.slice(0, 2).join(', ')} · {ex.equipment}
-                      {ex.is_bilateral_dumbbell && (
-                        <span style={{ color: 'var(--fiq-accent)', marginLeft: 4 }}>× 2</span>
-                      )}
-                    </p>
-                  </div>
-                  <Plus className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--fiq-accent)' }} />
-                </button>
-              ))}
+              {filteredExercises.slice(0, 80).map((ex) => {
+                const alreadyAdded = recentExerciseIds.has(ex.id)
+                const equipIcons: Record<string, string> = {
+                  barbell: '🏋️', dumbbell: '💪', cable: '🔗',
+                  machine: '⚙️', bodyweight: '🤸', kettlebell: '🫙', smith: '📐',
+                }
+                return (
+                  <button
+                    key={ex.id}
+                    onClick={() => addExercise(ex)}
+                    className="w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-xl"
+                    style={{
+                      background: alreadyAdded ? 'var(--fiq-faint)' : 'transparent',
+                      border: `1px solid ${alreadyAdded ? 'var(--fiq-accent)44' : 'var(--fiq-border)'}`,
+                    }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm truncate" style={{ color: 'var(--fiq-text)' }}>
+                        {ex.name_fr ?? ex.name}
+                        {alreadyAdded && <span className="ml-1.5 text-xs" style={{ color: 'var(--fiq-accent)' }}>✓</span>}
+                      </p>
+                      <p className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--fiq-muted)' }}>
+                        <span>{equipIcons[ex.equipment] ?? '🏋️'} {ex.equipment}</span>
+                        <span style={{ opacity: 0.4 }}>·</span>
+                        <span>{(ex.muscle_primary ?? []).slice(0, 2).join(', ')}</span>
+                        {ex.is_bilateral_dumbbell && (
+                          <span style={{ color: 'var(--fiq-accent)' }}>· ×2</span>
+                        )}
+                      </p>
+                    </div>
+                    <Plus className="w-4 h-4 flex-shrink-0" style={{ color: alreadyAdded ? 'var(--fiq-accent)' : 'var(--fiq-muted)' }} />
+                  </button>
+                )
+              })}
             </div>
           </div>
         </>
