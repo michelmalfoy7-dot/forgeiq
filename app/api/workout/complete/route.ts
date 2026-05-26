@@ -130,9 +130,22 @@ export async function POST(request: Request) {
       }
     }
 
-    // Upsert batch — 1 requête au lieu de 2N
+    // Upsert batch — d'abord sans reps (toujours compatible)
     if (upserts.length > 0) {
-      await supabase.from('personal_records').upsert(upserts, { onConflict: 'user_id,exercise_id,record_type' })
+      const upsertsWithoutReps = upserts.map(({ reps: _r, ...u }) => u)
+      await supabase.from('personal_records').upsert(upsertsWithoutReps, { onConflict: 'user_id,exercise_id,record_type' })
+
+      // Ensuite essayer d'ajouter reps (échoue silencieusement si colonne absente)
+      const topSetUpserts = upserts.filter(u => u.record_type === 'top_set' && u.reps != null)
+      for (const u of topSetUpserts) {
+        try {
+          await supabase.from('personal_records')
+            .update({ reps: u.reps } as Record<string, unknown>)
+            .eq('user_id', u.user_id)
+            .eq('exercise_id', u.exercise_id)
+            .eq('record_type', 'top_set')
+        } catch { /* colonne reps pas encore migrée — silencieux */ }
+      }
     }
 
     return NextResponse.json({
