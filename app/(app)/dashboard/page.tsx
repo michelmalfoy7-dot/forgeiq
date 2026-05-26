@@ -17,10 +17,30 @@ export const dynamic = 'force-dynamic'
 
 const SESSIONS_TARGET = 4
 
+// Cache module-level — unstable_cache DOIT être défini hors du composant (règle Next.js 15+)
+// Les arguments (userId, today, logs, goal, level) servent de clé de cache unique par utilisateur/jour
+const getCachedAIAlerts = unstable_cache(
+  async (
+    _userId: string,
+    _today: string,
+    logs: LogForAI[],
+    goal: string,
+    level: string
+  ): Promise<Alert[]> => {
+    return Promise.race([
+      generateAIAlerts(logs, { goal, level }),
+      new Promise<Alert[]>(resolve => setTimeout(() => resolve([]), 4000)),
+    ])
+  },
+  ['ai-alerts'],
+  { revalidate: 4 * 3600 }
+)
+
 type Alert = { type: 'red' | 'yellow' | 'green' | 'blue'; message: string; sub: string }
+type LogForAI = { log_date: string; sleep_deep_min: number | null; protein_g: number | null; fatigue_score: number | null; steps: number | null }
 
 async function generateAIAlerts(
-  logs: { log_date: string; sleep_deep_min: number | null; protein_g: number | null; fatigue_score: number | null; steps: number | null }[],
+  logs: LogForAI[],
   profile: { goal: string; level: string }
 ): Promise<Alert[]> {
   if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') return []
@@ -258,28 +278,33 @@ export default async function DashboardPage() {
     staticAlerts.push({ type: 'blue', message: '📋 Bilan du jour non renseigné', sub: 'Complète ton check-in pour des recommandations personnalisées.' })
   }
 
-  // Alertes IA — cache 4h par user + date pour ne pas appeler Haiku à chaque load
-  const getCachedAIAlerts = unstable_cache(
-    (logs: typeof weekLogs, goal: string, level: string) =>
-      Promise.race([
-        generateAIAlerts(logs ?? [], { goal, level }),
-        new Promise<Alert[]>(resolve => setTimeout(() => resolve([]), 4000)),
-      ]),
-    [`ai-alerts-${user.id}-${today}`],
-    { revalidate: 4 * 3600 } // 4 heures
-  )
+  // Alertes IA — cache 4h par user + date (fonction définie au niveau module)
+  const logsForAI: LogForAI[] = (weekLogs ?? []).map(l => ({
+    log_date: l.log_date,
+    sleep_deep_min: l.sleep_deep_min,
+    protein_g: l.protein_g,
+    fatigue_score: l.fatigue_score,
+    steps: l.steps,
+  }))
 
-  const aiAlerts = await getCachedAIAlerts(
-    weekLogs,
-    profile?.goal ?? 'force',
-    profile?.level ?? 'intermédiaire',
-  )
+  let aiAlerts: Alert[] = []
+  try {
+    aiAlerts = await getCachedAIAlerts(
+      user.id,
+      today,
+      logsForAI,
+      profile?.goal ?? 'force',
+      profile?.level ?? 'intermédiaire',
+    )
+  } catch {
+    aiAlerts = []
+  }
 
   // Fusionner alertes (statiques d'abord, puis IA si pas de doublon)
   const allAlerts = [...staticAlerts, ...aiAlerts].slice(0, 4)
 
   // Indicateur fiabilité EWMA — basé sur le nb de jours avec poids dans les 30 derniers jours
-  const weightDaysCount = (weekLogs ?? []).filter(l => (l as { weight_kg?: number | null }).weight_kg != null).length
+  const weightDaysCount = (weekLogs ?? []).filter(l => l.weight_kg != null).length
   const ewmaReliability: { label: string; color: string } =
     weightDaysCount < 7
       ? { label: `⚠️ ${weightDaysCount}/7j`, color: 'var(--fiq-muted)' }
