@@ -516,7 +516,12 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
   const [recipeIngSelected, setRecipeIngSelected] = useState<FoodResult | null>(null)
   const [recipeIngQty, setRecipeIngQty] = useState('100')
   const [savingRecipe, setSavingRecipe] = useState(false)
-  // Unités naturelles
+  // Unités naturelles ingrédients recette
+  const [recipeIngUnitMode, setRecipeIngUnitMode] = useState<'g' | 'unit'>('g')
+  const [recipeIngUnitCount, setRecipeIngUnitCount] = useState(1)
+  // Erreur ajout recette au journal
+  const [recipeLogError, setRecipeLogError] = useState<string | null>(null)
+  // Unités naturelles aliment recherche
   const [unitMode, setUnitMode] = useState<'g' | 'unit'>('g')
   const [unitCount, setUnitCount] = useState(1)
 
@@ -879,6 +884,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
   async function logRecipe() {
     if (!selectedRecipe) return
     setAdding(true)
+    setRecipeLogError(null)
     try {
       // Logger la recette comme UN seul aliment en utilisant les macros par portion
       // quantity_g = recipePortions * 100 (astuce: 100 = 1 portion)
@@ -898,8 +904,8 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
         carbs_per_100g: selectedRecipe.carbs_per_serving ?? null,
         fat_per_100g: selectedRecipe.fat_per_serving ?? null,
         fiber_per_100g: selectedRecipe.fiber_per_serving ?? null,
-        source: 'recipe',
-        ai_note: portionLabel,
+        source: 'search', // 'recipe' cause parfois un CHECK constraint — on garde le badge via ai_note
+        ai_note: `🍽️ Recette · ${portionLabel}`,
       }
 
       const res = await fetch('/api/nutrition/log', {
@@ -909,11 +915,14 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
       })
       const { data, error } = await res.json()
       if (data) {
-        onAdded(data)
+        // Forcer le source 'recipe' pour l'affichage du badge orange dans le journal
+        onAdded({ ...data, source: 'recipe', ai_note: portionLabel })
         onClose()
       } else {
-        console.error('Erreur ajout recette:', error)
+        setRecipeLogError(error ?? 'Erreur lors de l\'ajout. Réessaie.')
       }
+    } catch {
+      setRecipeLogError('Erreur réseau. Vérifie ta connexion et réessaie.')
     } finally {
       setAdding(false)
     }
@@ -939,10 +948,17 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
 
   function addIngredient() {
     if (!recipeIngSelected) return
+    const ingName = recipeIngSelected.name_fr ?? recipeIngSelected.name
+    const serving = getServingInfo(ingName)
+    // En mode unité, convertir le nombre d'unités en grammes
+    const finalQtyG = recipeIngUnitMode === 'unit' && serving
+      ? Math.round(recipeIngUnitCount * serving.weightG)
+      : Math.round(parseFloat(recipeIngQty) || 100)
+
     setRecipeIngredients(prev => [...prev, {
-      food_name: recipeIngSelected.name_fr ?? recipeIngSelected.name,
+      food_name: ingName,
       food_id: recipeIngSelected.id,
-      quantity_g: parseFloat(recipeIngQty) || 100,
+      quantity_g: finalQtyG,
       calories_per_100g: recipeIngSelected.calories,
       protein_per_100g: recipeIngSelected.protein_g,
       carbs_per_100g: recipeIngSelected.carbs_g,
@@ -954,6 +970,8 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
     setRecipeIngSearch('')
     setRecipeIngResults([])
     setRecipeIngQty('100')
+    setRecipeIngUnitMode('g')
+    setRecipeIngUnitCount(1)
   }
 
   async function saveRecipe() {
@@ -1031,7 +1049,10 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
         style={{
           background: 'var(--fiq-card)',
           border: '1px solid var(--fiq-border)',
-          maxHeight: 'calc(92dvh - 4rem - env(safe-area-inset-bottom))',
+          // Quand le clavier est ouvert, réduire la hauteur max pour que le contenu reste visible
+          maxHeight: keyboardOffset > 0
+            ? `calc(100dvh - ${keyboardOffset}px - env(safe-area-inset-bottom))`
+            : 'calc(92dvh - 4rem - env(safe-area-inset-bottom))',
           overflowY: 'auto',
           // keyboardOffset pousse la modale au-dessus du clavier virtuel iOS/Android
           marginBottom: keyboardOffset > 0
@@ -1357,6 +1378,14 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
               </div>
             </div>
 
+            {/* Message d'erreur visible si l'ajout échoue */}
+            {recipeLogError && (
+              <div className="rounded-xl px-3 py-2.5 text-sm"
+                style={{ background: '#EF444418', border: '1px solid #EF444433', color: '#EF4444' }}>
+                ⚠ {recipeLogError}
+              </div>
+            )}
+
             <button
               onClick={logRecipe}
               disabled={adding}
@@ -1436,7 +1465,14 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
                           {ing.food_name}
                         </p>
                         <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
-                          {ing.quantity_g}g
+                          {(() => {
+                            const srv = getServingInfo(ing.food_name)
+                            if (srv && ing.quantity_g % srv.weightG === 0 && ing.quantity_g >= srv.weightG) {
+                              const units = ing.quantity_g / srv.weightG
+                              return `${units} ${srv.unit}${units > 1 ? 's' : ''} (${ing.quantity_g}g)`
+                            }
+                            return `${ing.quantity_g}g`
+                          })()}
                           {ing.calories_per_100g ? ` · ${Math.round(ing.calories_per_100g * ing.quantity_g / 100)} kcal` : ''}
                         </p>
                       </div>
@@ -1453,41 +1489,112 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
 
               {/* Ajouter un ingrédient */}
               {recipeIngSelected ? (
-                /* Étape quantité */
-                <div className="space-y-2 p-3 rounded-xl"
+                /* Étape quantité — supporte les unités naturelles (oeufs, bananes…) */
+                <div className="space-y-3 p-3 rounded-xl"
                   style={{ background: 'var(--fiq-faint)', border: '1px solid #B4FF4A44' }}>
                   <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>
                     {recipeIngSelected.name_fr ?? recipeIngSelected.name}
                   </p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      autoFocus
-                      type="number"
-                      value={recipeIngQty}
-                      onChange={e => setRecipeIngQty(e.target.value)}
-                      placeholder="Quantité"
-                      className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none"
-                      style={{ background: 'var(--surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
-                      min="1"
-                      onKeyDown={e => { if (e.key === 'Enter') addIngredient() }}
-                    />
-                    <span className="text-sm font-semibold" style={{ color: 'var(--fiq-muted)' }}>g</span>
-                  </div>
-                  <div className="flex gap-2">
+                  {(() => {
+                    const ingName = recipeIngSelected.name_fr ?? recipeIngSelected.name
+                    const serving = getServingInfo(ingName)
+                    if (serving && recipeIngUnitMode === 'unit') {
+                      // Mode unité naturelle : stepper sans clavier
+                      return (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-3 py-1">
+                            <button
+                              onClick={() => {
+                                const n = Math.max(0.5, Math.round((recipeIngUnitCount - 0.5) * 10) / 10)
+                                setRecipeIngUnitCount(n)
+                                setRecipeIngQty(String(Math.round(n * serving.weightG)))
+                              }}
+                              className="w-11 h-11 rounded-xl flex items-center justify-center text-xl font-black"
+                              style={{ background: 'var(--surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+                            >−</button>
+                            <div className="flex-1 text-center">
+                              <p className="text-3xl font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>
+                                {recipeIngUnitCount}
+                              </p>
+                              <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+                                {serving.unit}{recipeIngUnitCount > 1 ? 's' : ''} · ≈{Math.round(recipeIngUnitCount * serving.weightG)}g
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => {
+                                const n = Math.round((recipeIngUnitCount + 0.5) * 10) / 10
+                                setRecipeIngUnitCount(n)
+                                setRecipeIngQty(String(Math.round(n * serving.weightG)))
+                              }}
+                              className="w-11 h-11 rounded-xl flex items-center justify-center text-xl font-black"
+                              style={{ background: 'var(--surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+                            >+</button>
+                          </div>
+                          <button
+                            onClick={() => setRecipeIngUnitMode('g')}
+                            className="w-full text-center text-xs"
+                            style={{ color: 'var(--fiq-muted)' }}
+                          >
+                            Saisir en grammes →
+                          </button>
+                        </div>
+                      )
+                    }
+                    // Mode grammes (défaut ou basculé manuellement)
+                    return (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            value={recipeIngQty}
+                            onChange={e => setRecipeIngQty(e.target.value)}
+                            placeholder="Quantité"
+                            className="flex-1 px-3 py-3 rounded-xl text-sm outline-none text-center font-black"
+                            style={{ background: 'var(--surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)', fontSize: 20 }}
+                            min="1"
+                            onKeyDown={e => { if (e.key === 'Enter') addIngredient() }}
+                          />
+                          <span className="text-sm font-semibold" style={{ color: 'var(--fiq-muted)' }}>g</span>
+                        </div>
+                        {serving && (
+                          <button
+                            onClick={() => {
+                              setRecipeIngUnitMode('unit')
+                              setRecipeIngUnitCount(1)
+                              setRecipeIngQty(String(serving.weightG))
+                            }}
+                            className="w-full text-center text-xs"
+                            style={{ color: 'var(--fiq-accent)' }}
+                          >
+                            ← Saisir en {serving.unit}s
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })()}
+                  <div className="flex gap-2 pt-1">
                     <button
-                      onClick={() => { setRecipeIngSelected(null); setRecipeIngSearch(''); setRecipeIngResults([]) }}
-                      className="flex-1 py-2 rounded-xl text-xs font-semibold"
+                      onClick={() => {
+                        setRecipeIngSelected(null)
+                        setRecipeIngSearch('')
+                        setRecipeIngResults([])
+                        setRecipeIngUnitMode('g')
+                        setRecipeIngUnitCount(1)
+                        setRecipeIngQty('100')
+                      }}
+                      className="flex-1 py-3 rounded-xl text-sm font-semibold"
                       style={{ background: 'transparent', color: 'var(--fiq-muted)', border: '1px solid var(--fiq-border)' }}
                     >
                       Annuler
                     </button>
                     <button
                       onClick={addIngredient}
-                      disabled={!recipeIngQty || parseFloat(recipeIngQty) <= 0}
-                      className="flex-1 py-2 rounded-xl text-xs font-black"
+                      disabled={recipeIngUnitMode === 'g' ? (!recipeIngQty || parseFloat(recipeIngQty) <= 0) : recipeIngUnitCount <= 0}
+                      className="flex-1 py-3 rounded-xl text-sm font-black"
                       style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
                     >
-                      Ajouter
+                      ✓ Ajouter
                     </button>
                   </div>
                 </div>
@@ -1512,7 +1619,21 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
                       {recipeIngResults.slice(0, 6).map((f, i) => (
                         <button
                           key={i}
-                          onClick={() => { setRecipeIngSelected(f); setRecipeIngQty('100') }}
+                          onClick={() => {
+                            const name = f.name_fr ?? f.name
+                            const serving = getServingInfo(name)
+                            setRecipeIngSelected(f)
+                            if (serving) {
+                              // Unité naturelle : démarrer à 1 unité (ex: 1 oeuf = 60g)
+                              setRecipeIngUnitMode('unit')
+                              setRecipeIngUnitCount(1)
+                              setRecipeIngQty(String(serving.weightG))
+                            } else {
+                              setRecipeIngUnitMode('g')
+                              setRecipeIngUnitCount(1)
+                              setRecipeIngQty('100')
+                            }
+                          }}
                           className="w-full text-left px-3 py-2 rounded-xl"
                           style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
                         >
