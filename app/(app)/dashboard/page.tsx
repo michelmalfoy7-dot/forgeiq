@@ -16,15 +16,25 @@ export const dynamic = 'force-dynamic'
 const SESSIONS_TARGET = 4
 
 export default async function DashboardPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  let supabase
+  try {
+    supabase = await createClient()
+  } catch (e) {
+    console.error('[Dashboard] createClient failed:', e)
+    throw new Error(`Supabase client init failed: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError) console.error('[Dashboard] getUser error:', authError)
   if (!user) redirect('/login')
 
   const today = new Date().toISOString().split('T')[0]
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]
 
+  console.log('[Dashboard] Loading data for user:', user.id)
+
   const [
-    { data: profile },
+    { data: profile, error: profileError },
     { data: todayLog },
     { data: lastWorkout },
     { data: weekWorkouts },
@@ -34,7 +44,7 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     supabase.from('profiles')
       .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, height_cm, age, gender, macro_mode, custom_protein_g, custom_calories, steps_goal, target_weight_kg')
-      .eq('id', user.id).single(),
+      .eq('id', user.id).maybeSingle(),
 
     supabase.from('daily_logs').select('*')
       .eq('user_id', user.id).eq('log_date', today).maybeSingle(),
@@ -67,6 +77,8 @@ export default async function DashboardPage() {
       .eq('user_id', user.id)
       .eq('log_date', today),
   ])
+
+  if (profileError) console.error('[Dashboard] profileError:', profileError.code, profileError.message)
 
   // Si profil absent → créer et rediriger vers l'onboarding
   if (!profile) {
