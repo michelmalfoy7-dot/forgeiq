@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ProfileClient } from '@/components/profile/ProfileClient'
+import { Users } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -53,7 +54,7 @@ export default async function ProfilePage() {
       </div>
 
       {/* Raccourcis rapides */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
+      <div className="grid grid-cols-2 gap-3 mb-3">
         <Link
           href="/exercises"
           className="rounded-2xl p-4 flex flex-col gap-2"
@@ -77,6 +78,25 @@ export default async function ProfilePage() {
           </div>
         </Link>
       </div>
+
+      {/* Accès Communauté */}
+      <Link
+        href="/social"
+        className="flex items-center gap-4 p-4 rounded-2xl mb-6 transition-all"
+        style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}
+      >
+        <div
+          className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: '#B4FF4A18' }}
+        >
+          <Users className="w-5 h-5" style={{ color: 'var(--fiq-accent)' }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Communauté</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Feed · Profil public · Suivre des athlètes</p>
+        </div>
+        <span style={{ color: 'var(--fiq-muted)', fontSize: 18 }}>›</span>
+      </Link>
 
       <ProfileClient
         profile={profile}

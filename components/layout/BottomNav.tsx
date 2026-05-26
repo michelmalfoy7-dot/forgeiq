@@ -2,14 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Dumbbell, Utensils, Users, User } from 'lucide-react'
+import { LayoutDashboard, Dumbbell, Utensils, MessageCircle, User } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 
 const NAV_ITEMS = [
   { href: '/dashboard', icon: LayoutDashboard, label: "Aujourd'hui" },
   { href: '/workout',   icon: Dumbbell,        label: 'Séance' },
   { href: '/nutrition', icon: Utensils,         label: 'Nutrition' },
-  { href: '/social',    icon: Users,            label: 'Social' },
+  { href: '/coach',     icon: MessageCircle,    label: 'Coach' },
   { href: '/profile',   icon: User,             label: 'Profil' },
 ]
 
