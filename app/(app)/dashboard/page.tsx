@@ -132,7 +132,10 @@ export default async function DashboardPage() {
       .from('programs').select('name, structure').eq('id', profile.current_program_id).single()
 
     if (program) {
-      const days: string[] = program.structure?.days ?? []
+      // Support ancien format (string[]) et nouveau format ({name, exercises}[])
+      const rawDays: (string | { name: string; exercises?: unknown[] })[] = program.structure?.days ?? []
+      const days: string[] = rawDays.map(d => (typeof d === 'string' ? d : d.name))
+
       const { data: lastProgramWorkout } = await supabase
         .from('workouts').select('session_name')
         .eq('user_id', user.id).eq('program_id', profile.current_program_id)
