@@ -26,6 +26,7 @@ type Profile = {
   steps_goal: number | null
   target_weight_kg: number | null
   created_at: string
+  include_warmup_in_tonnage?: boolean | null
 } | null
 
 type Stats = {
@@ -135,6 +136,7 @@ export function ProfileClient({
 
   const [stepsGoal, setStepsGoal] = useState(String(profile?.steps_goal ?? 8000))
   const [targetWeightKg, setTargetWeightKg] = useState(String(profile?.target_weight_kg ?? ''))
+  const [includeWarmupInTonnage, setIncludeWarmupInTonnage] = useState(profile?.include_warmup_in_tonnage ?? false)
 
   const [macroMode, setMacroMode] = useState<'auto' | 'custom'>(profile?.macro_mode === 'custom' ? 'custom' : 'auto')
 
@@ -197,6 +199,7 @@ export function ProfileClient({
           custom_fat_g: macroMode === 'custom' && customFat ? Number(customFat) : null,
           steps_goal: Number(stepsGoal) || 8000,
           target_weight_kg: targetWeightKg ? Number(targetWeightKg) : null,
+          include_warmup_in_tonnage: includeWarmupInTonnage,
         }),
       })
       if (res.ok) {
@@ -431,6 +434,30 @@ export function ProfileClient({
               />
             </div>
           </div>
+          {/* Toggle séries échauffement dans le tonnage */}
+          <div className="flex items-center justify-between py-2">
+            <div className="flex-1 pr-4">
+              <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>Séries échauffement dans le tonnage</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Inclure les séries W dans le volume total calculé</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIncludeWarmupInTonnage(v => !v)}
+              className="relative flex-shrink-0 w-12 h-6 rounded-full transition-colors"
+              style={{
+                background: includeWarmupInTonnage ? 'var(--fiq-accent)' : 'var(--fiq-border)',
+              }}
+            >
+              <span
+                className="absolute top-1 w-4 h-4 rounded-full transition-transform"
+                style={{
+                  left: includeWarmupInTonnage ? '28px' : '4px',
+                  background: includeWarmupInTonnage ? 'var(--bg)' : 'var(--fiq-muted)',
+                }}
+              />
+            </button>
+          </div>
+
           {/* Aperçu poids cible */}
           {targetWeightKg && weightKg && Number(targetWeightKg) !== Number(weightKg) && (
             <div className="mt-2 px-3 py-2 rounded-xl flex items-center gap-2"

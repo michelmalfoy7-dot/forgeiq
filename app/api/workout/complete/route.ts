@@ -21,10 +21,20 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
 
+    // Lire la préférence utilisateur (inclure échauffement dans le tonnage)
+    const { data: profilePref } = await supabase
+      .from('profiles')
+      .select('include_warmup_in_tonnage')
+      .eq('id', user.id)
+      .single()
+    const includeWarmup = profilePref?.include_warmup_in_tonnage ?? false
+
     // Calculer les métriques de la séance
     const workingSets = (sets as SetInput[]).filter((s) => !s.is_warmup)
+    const warmupSets = (sets as SetInput[]).filter((s) => s.is_warmup)
+    const setsForTonnage = includeWarmup ? [...workingSets, ...warmupSets] : workingSets
     // Tonnage × 2 pour les exercices bilatéraux aux haltères (ex: développé haltères = 2 haltères)
-    const totalTonnage = workingSets.reduce((acc, s) =>
+    const totalTonnage = setsForTonnage.reduce((acc, s) =>
       acc + s.weight_kg * s.reps * (s.is_bilateral_dumbbell ? 2 : 1), 0)
     const totalSets = workingSets.length
     const totalReps = workingSets.reduce((acc, s) => acc + s.reps, 0)
