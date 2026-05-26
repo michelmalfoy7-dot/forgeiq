@@ -24,6 +24,7 @@ type Exercise = {
   id: string
   name: string
   name_fr: string
+  slug?: string
   muscle_primary: string[]
   equipment: string
   is_bilateral_dumbbell?: boolean
@@ -141,7 +142,7 @@ export default function WorkoutSessionPage() {
       const { data: { user } } = await supabase.auth.getUser()
 
       const [{ data: exos }, { data: workout }] = await Promise.all([
-        supabase.from('exercises_library').select('id,name,name_fr,muscle_primary,equipment,is_bilateral_dumbbell').order('name_fr'),
+        supabase.from('exercises_library').select('id,name,name_fr,slug,muscle_primary,equipment,is_bilateral_dumbbell').order('name_fr'),
         supabase.from('workouts').select('session_name').eq('id', workoutId).single(),
       ])
 
@@ -171,12 +172,14 @@ export default function WorkoutSessionPage() {
       if (stored && user) {
         sessionStorage.removeItem(`workout-exercises-${workoutId}`)
         try {
-          const suggested: { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[] = JSON.parse(stored)
+          const suggested: { name: string; slug?: string; sets: number; reps: string; weight_kg: number | null; note: string }[] = JSON.parse(stored)
 
           const matches = suggested
             .map((s) => ({
               s,
+              // Priorité au slug (fiable même avec corruption UTF-8 dans name_fr)
               match: library.find((e) =>
+                (s.slug && e.slug && e.slug === s.slug) ||
                 (e.name_fr ?? '').toLowerCase() === s.name.toLowerCase() ||
                 e.name.toLowerCase() === s.name.toLowerCase()
               ),

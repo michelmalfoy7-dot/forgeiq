@@ -110,12 +110,13 @@ export async function GET() {
       'Perte de poids rapide': 'Préserve la masse musculaire en déficit',
     }
     let adaptationReason = adaptationDefaults[adjustmentReason] ?? adjustmentReason ?? 'Séance adaptée à tes données du jour'
-    let aiExercises: { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[] = []
+    let aiExercises: { name: string; slug?: string; sets: number; reps: string; weight_kg: number | null; note: string }[] = []
 
     // Pré-charger les exercices du programme comme base
     if (programExercises.length > 0) {
       aiExercises = programExercises.map(ex => ({
         name: ex.name_fr,
+        slug: ex.slug, // Slug pour matching robuste (insensible à la corruption UTF-8)
         sets: ex.sets,
         reps: ex.reps,
         weight_kg: null, // Sera rempli par les PRs dans le logger
