@@ -80,6 +80,9 @@ function buildSystemPrompt(ctx: {
   customProtein: number | null
   customCarbs: number | null
   customFat: number | null
+  caloriesConsumed: number | null
+  carbsG: number | null
+  fatG: number | null
 }) {
   const isCustomMacros = ctx.macroMode === 'custom' && (ctx.customProtein || ctx.customCalories)
   const PROTEIN_TARGET = isCustomMacros && ctx.customProtein
@@ -126,9 +129,16 @@ function buildSystemPrompt(ctx: {
 - Sommeil profond : ${ctx.sleepDeepMin ?? 'non renseigné'}min
 - Sommeil total : ${ctx.sleepTotalMin ? Math.round(ctx.sleepTotalMin / 60) + 'h' : 'non renseigné'}
 - Fatigue (1-10) : ${ctx.fatigueScore ?? 'non renseigné'}
-- Protéines : ${ctx.proteinG ?? 'non renseigné'}g / objectif ${PROTEIN_TARGET}g
 - Pas : ${ctx.steps ?? 'non renseigné'}
 - Tension systolique : ${ctx.sysBp ?? 'non renseigné'}
+
+## Nutrition du jour (journal alimentaire)
+- Calories consommées : ${ctx.caloriesConsumed != null ? ctx.caloriesConsumed + ' kcal' : 'non renseigné'}
+- Calories cible : ${isCustomMacros && ctx.customCalories ? ctx.customCalories + ' kcal' : 'auto (calculé selon profil)'}
+${ctx.caloriesConsumed != null && (isCustomMacros ? ctx.customCalories : null) ? `- Solde calorique : ${ctx.caloriesConsumed - (ctx.customCalories ?? 0) > 0 ? '+' : ''}${ctx.caloriesConsumed - (ctx.customCalories ?? 0)} kcal` : ''}
+- Protéines : ${ctx.proteinG ?? 'non renseigné'}g / objectif ${PROTEIN_TARGET}g
+- Glucides : ${ctx.carbsG != null ? ctx.carbsG + 'g' : 'non renseigné'}
+- Lipides : ${ctx.fatG != null ? ctx.fatG + 'g' : 'non renseigné'}
 
 ## 7 dernières séances
 ${workoutSummary}
@@ -236,9 +246,10 @@ export async function POST(req: NextRequest) {
       { data: todayLog },
       { data: recentWorkouts },
       { data: topPRs },
+      { data: todayFoodLogs },
     ] = await Promise.all([
       supabase.from('profiles')
-        .select('display_name, goal, level, weight_kg, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g')
+        .select('display_name, goal, level, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g')
         .eq('id', user.id).single(),
       supabase.from('daily_logs')
         .select('weight_kg, weight_trend, sleep_deep_min, sleep_total_min, fatigue_score, protein_g, steps, sys_bp')
@@ -252,6 +263,10 @@ export async function POST(req: NextRequest) {
         .select('exercise_name, value, unit')
         .eq('user_id', user.id).eq('record_type', 'top_set')
         .order('value', { ascending: false }).limit(10),
+      // Macros réelles du jour (food_logs) — pour le bilan calorique coach
+      supabase.from('food_logs')
+        .select('calories, protein_g, carbs_g, fat_g')
+        .eq('user_id', user.id).eq('log_date', today),
     ])
 
     // Poids lissé le plus récent (fallback si pas de check-in aujourd'hui)
@@ -278,17 +293,28 @@ export async function POST(req: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(HISTORY_LIMIT)
 
+    // Totaux nutrition du jour depuis food_logs (plus précis que protein_g du check-in)
+    const foodTotals = (todayFoodLogs ?? []).reduce(
+      (acc, l) => ({
+        calories:  acc.calories  + (l.calories  ?? 0),
+        protein_g: acc.protein_g + (l.protein_g ?? 0),
+        carbs_g:   acc.carbs_g   + (l.carbs_g   ?? 0),
+        fat_g:     acc.fat_g     + (l.fat_g     ?? 0),
+      }),
+      { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+    )
+    const hasFoodLogs = (todayFoodLogs ?? []).length > 0
+
     const systemPrompt = buildSystemPrompt({
       displayName: profile?.display_name ?? 'Athlète',
       goal: profile?.goal ?? 'general',
       level: profile?.level ?? 'non renseigné',
-      // Poids le plus récent disponible (log du jour ou dernier log)
       weightKg: recentWeightKg,
       weightTrend: recentWeightTrend,
       sleepDeepMin: todayLog?.sleep_deep_min ?? null,
       sleepTotalMin: todayLog?.sleep_total_min ?? null,
       fatigueScore: todayLog?.fatigue_score ?? null,
-      proteinG: todayLog?.protein_g ?? null,
+      proteinG: hasFoodLogs ? Math.round(foodTotals.protein_g) : (todayLog?.protein_g ?? null),
       steps: todayLog?.steps ?? null,
       sysBp: todayLog?.sys_bp ?? null,
       recentWorkouts: recentWorkouts ?? [],
@@ -298,6 +324,10 @@ export async function POST(req: NextRequest) {
       customProtein: profile?.custom_protein_g ?? null,
       customCarbs: profile?.custom_carbs_g ?? null,
       customFat: profile?.custom_fat_g ?? null,
+      // Bilan calorique du jour (food_logs)
+      caloriesConsumed: hasFoodLogs ? Math.round(foodTotals.calories) : null,
+      carbsG: hasFoodLogs ? Math.round(foodTotals.carbs_g) : null,
+      fatG: hasFoodLogs ? Math.round(foodTotals.fat_g) : null,
     })
 
     // Construire l'historique pour Claude (ordre chronologique, fenêtre glissante)

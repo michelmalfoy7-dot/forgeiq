@@ -79,6 +79,7 @@ export default function WorkoutSessionPage() {
   const [elapsed, setElapsed] = useState(0)
   const [showQuitModal, setShowQuitModal] = useState(false)
   const [restoredFromStorage, setRestoredFromStorage] = useState(false)
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
   // États partage post-séance
   const [shareCaption, setShareCaption] = useState('')
   const [sharing, setSharing] = useState(false)
@@ -86,14 +87,44 @@ export default function WorkoutSessionPage() {
   const [shareDismissed, setShareDismissed] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const restRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Timestamp de début séance — résistant au background
+  const workoutStartRef = useRef<number>(Date.now())
+  // Timestamp de fin du repos (Date.now() + durée)
+  const restEndRef = useRef<number | null>(null)
   const lastPayloadRef = useRef<unknown>(null)
   // Track if initial load is done before trying to restore
   const loadedRef = useRef(false)
 
-  // Chrono séance
+  // ── Demande permission notifications au montage ───────────
   useEffect(() => {
-    timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000)
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().then(p => setNotifPermission(p))
+    } else if ('Notification' in window) {
+      setNotifPermission(Notification.permission)
+    }
+  }, [])
+
+  // ── Chrono séance — timestamp-based (résistant au background) ─
+  useEffect(() => {
+    // Restaurer le timestamp de démarrage depuis localStorage si disponible
+    const stored = localStorage.getItem(`forgeiq_start_${workoutId}`)
+    workoutStartRef.current = stored ? parseInt(stored, 10) : Date.now()
+    if (!stored) localStorage.setItem(`forgeiq_start_${workoutId}`, String(workoutStartRef.current))
+
+    // Calculer elapsed depuis le timestamp réel (pas de compteur)
+    const tick = () => setElapsed(Math.floor((Date.now() - workoutStartRef.current) / 1000))
+    tick() // mise à jour immédiate
+    timerRef.current = setInterval(tick, 1000)
+
+    // Recalculer quand l'app revient au premier plan (visibilité)
+    const onVisible = () => { if (document.visibilityState === 'visible') tick() }
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ── Auto-save localStorage à chaque modification ──────────
@@ -249,25 +280,82 @@ export default function WorkoutSessionPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workoutId])
 
-  // Chrono repos
+  // ── Timer repos — timestamp-based + notification ──────────
+  const restVisibilityRef = useRef<(() => void) | null>(null)
+
+  function playGoSound() {
+    try {
+      const ctx = new AudioContext()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.frequency.setValueAtTime(440, ctx.currentTime)
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.18)
+      gain.gain.setValueAtTime(0.25, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35)
+      osc.start(ctx.currentTime)
+      osc.stop(ctx.currentTime + 0.35)
+    } catch { /* AudioContext indisponible */ }
+  }
+
   function startRest(seconds = restDuration) {
+    // Nettoyer le timer précédent
     if (restRef.current) clearInterval(restRef.current)
+    if (restVisibilityRef.current) document.removeEventListener('visibilitychange', restVisibilityRef.current)
+
     setRestDuration(seconds)
-    setRestTimer(seconds)
-    restRef.current = setInterval(() => {
-      setRestTimer((t) => {
-        if (t === null || t <= 1) { if (restRef.current) clearInterval(restRef.current); return null }
-        return t - 1
-      })
-    }, 1000)
+    restEndRef.current = Date.now() + seconds * 1000
+
+    const tick = () => {
+      if (restEndRef.current === null) return
+      const remaining = Math.max(0, Math.round((restEndRef.current - Date.now()) / 1000))
+      if (remaining <= 0) {
+        if (restRef.current) clearInterval(restRef.current)
+        restEndRef.current = null
+        setRestTimer(null)
+        // ── Signaler la fin du repos ───────────────────────
+        playGoSound()
+        if ('vibrate' in navigator) navigator.vibrate([300, 100, 300])
+        if ('Notification' in window && Notification.permission === 'granted'
+            && document.visibilityState !== 'visible') {
+          try {
+            new Notification('ForgeIQ ⚡', {
+              body: 'Repos terminé — GO ! 💪',
+              icon: '/icons/icon-192.png',
+              tag: 'rest-timer',
+            })
+          } catch { /* ignore */ }
+        }
+      } else {
+        setRestTimer(remaining)
+      }
+    }
+
+    tick()
+    restRef.current = setInterval(tick, 500)
+
+    // Visibilitychange — recalcule quand l'app revient au premier plan
+    const onVisible = () => { if (document.visibilityState === 'visible') tick() }
+    document.addEventListener('visibilitychange', onVisible)
+    restVisibilityRef.current = onVisible
   }
 
   function stopRest() {
     if (restRef.current) clearInterval(restRef.current)
+    if (restVisibilityRef.current) {
+      document.removeEventListener('visibilitychange', restVisibilityRef.current)
+      restVisibilityRef.current = null
+    }
+    restEndRef.current = null
     setRestTimer(null)
   }
 
-  useEffect(() => () => { if (restRef.current) clearInterval(restRef.current) }, [])
+  useEffect(() => () => {
+    if (restRef.current) clearInterval(restRef.current)
+    if (restVisibilityRef.current) document.removeEventListener('visibilitychange', restVisibilityRef.current)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function addExercise(ex: Exercise) {
     const supabase = createClient()
@@ -434,11 +522,13 @@ export default function WorkoutSessionPage() {
 
   const filteredExercises = exercises
     .filter((e) => {
-      // Filtre texte — correspondance exacte d'abord, partielle ensuite
-      const q = searchQuery.toLowerCase()
-      const matchQuery = searchQuery.length < 2 ||
-        (e.name_fr ?? '').toLowerCase().includes(q) ||
-        e.name.toLowerCase().includes(q)
+      // Filtre texte — trim + normalisation accents
+      const rawQ = searchQuery.trim()
+      const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      const q = normalize(rawQ)
+      const matchQuery = rawQ.length < 1 ||
+        normalize(e.name_fr ?? '').includes(q) ||
+        normalize(e.name).includes(q)
       // Filtre équipement
       const matchEquip = equipmentFilter === 'all' || e.equipment === equipmentFilter
       // Filtre groupe musculaire
@@ -448,16 +538,18 @@ export default function WorkoutSessionPage() {
       return matchQuery && matchEquip && matchMuscle
     })
     .sort((a, b) => {
-      if (searchQuery.length < 2) {
+      const rawQ = searchQuery.trim()
+      if (rawQ.length < 1) {
         // Sans recherche : exercices déjà dans la séance en bas
         const aRecent = recentExerciseIds.has(a.id) ? 1 : 0
         const bRecent = recentExerciseIds.has(b.id) ? 1 : 0
         return aRecent - bRecent
       }
-      const q = searchQuery.toLowerCase()
+      const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      const q = normalize(rawQ)
       // Correspondance exacte nom_fr en premier
-      const aExact = (a.name_fr ?? '').toLowerCase().startsWith(q) ? 0 : 1
-      const bExact = (b.name_fr ?? '').toLowerCase().startsWith(q) ? 0 : 1
+      const aExact = normalize(a.name_fr ?? '').startsWith(q) ? 0 : 1
+      const bExact = normalize(b.name_fr ?? '').startsWith(q) ? 0 : 1
       return aExact - bExact
     })
 
@@ -754,11 +846,13 @@ export default function WorkoutSessionPage() {
           }}
         >
           <div className="flex items-center gap-2">
-            <Timer className="w-4 h-4" style={{ color: 'var(--fiq-blue)' }} />
-            <span className="font-black text-xl fiq-data" style={{ color: 'var(--fiq-blue)' }}>
+            <Timer className="w-4 h-4" style={{ color: restTimer <= 10 ? 'var(--fiq-orange)' : 'var(--fiq-blue)' }} />
+            <span className="font-black text-xl fiq-data" style={{ color: restTimer <= 10 ? 'var(--fiq-orange)' : 'var(--fiq-blue)' }}>
               {formatTime(restTimer)}
             </span>
-            <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>repos</span>
+            <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+              {restTimer <= 10 ? '🔥 Go bientôt' : 'repos'}
+            </span>
           </div>
           <div className="flex items-center gap-1.5">
             {[60, 90, 120, 180].map((d) => (

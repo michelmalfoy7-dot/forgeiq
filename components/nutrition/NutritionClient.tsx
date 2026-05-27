@@ -471,11 +471,13 @@ function saveStoredUnitMode(foodName: string, mode: 'g' | 'unit') {
 
 type ModalMode = 'choose' | 'search' | 'scan' | 'photo' | 'confirm' | 'photo-confirm' | 'favorites' | 'recipes' | 'create-recipe' | 'recipe-confirm'
 
-function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }: {
+function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', targets, consumedToday }: {
   onClose: () => void
   onAdded: (log: FoodLog) => void
   today: string
   initialMealType?: string
+  targets?: Targets
+  consumedToday?: { calories: number; protein_g: number; carbs_g: number; fat_g: number }
 }) {
   const [mode, setMode] = useState<ModalMode>('choose')
   // Recherche aliment
@@ -575,21 +577,22 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
 
   // ── Recherche texte ──────────────────────────────────────────
 
-  const handleSearch = useCallback(async (q: string) => {
-    setSearchQuery(q)
+  const handleSearch = useCallback(async (raw: string) => {
+    setSearchQuery(raw)
+    const q = raw.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
     if (searchTimeout.current) clearTimeout(searchTimeout.current)
-    if (q.length < 2) { setSearchResults([]); return }
+    if (q.length < 1) { setSearchResults([]); return }
 
     searchTimeout.current = setTimeout(async () => {
       setSearchLoading(true)
       try {
-        const res = await fetch(`/api/nutrition/search?q=${encodeURIComponent(q)}`)
+        const res = await fetch(`/api/nutrition/search?q=${encodeURIComponent(raw.trim())}`)
         const { data } = await res.json()
         setSearchResults(data ?? [])
       } finally {
         setSearchLoading(false)
       }
-    }, 400)
+    }, 300)
   }, [])
 
   // ── Barcode ──────────────────────────────────────────────────
@@ -930,10 +933,11 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
 
   // ── Création recette ─────────────────────────────────────────
 
-  function handleRecipeIngSearch(q: string) {
-    setRecipeIngSearch(q)
+  function handleRecipeIngSearch(raw: string) {
+    setRecipeIngSearch(raw)
+    const q = raw.trim()
     if (recipeIngSearchTimeout.current) clearTimeout(recipeIngSearchTimeout.current)
-    if (q.length < 2) { setRecipeIngResults([]); return }
+    if (q.length < 1) { setRecipeIngResults([]); return }
     recipeIngSearchTimeout.current = setTimeout(async () => {
       setRecipeIngSearching(true)
       try {
@@ -943,7 +947,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
       } finally {
         setRecipeIngSearching(false)
       }
-    }, 400)
+    }, 300)
   }
 
   function addIngredient() {
@@ -1910,6 +1914,73 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
             <div>
               {(() => {
                 const serving = getServingInfo(selectedFood.name_fr ?? selectedFood.name)
+                // ── Live macro preview (calculé à chaque render depuis quantity) ──
+                const qty = parseFloat(quantity) || 0
+                const ratio = qty / 100
+                const liveCal  = selectedFood.calories  != null ? Math.round(selectedFood.calories  * ratio) : null
+                const liveProt = selectedFood.protein_g != null ? Math.round(selectedFood.protein_g * ratio) : null
+                const liveCarb = selectedFood.carbs_g   != null ? Math.round(selectedFood.carbs_g   * ratio) : null
+                const liveFat  = selectedFood.fat_g     != null ? Math.round(selectedFood.fat_g     * ratio) : null
+                const MacroPreview = qty > 0 && (liveCal != null || liveProt != null) ? (
+                  <div className="mt-2.5 rounded-xl p-3 space-y-2"
+                    style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+                    {/* Valeurs instantanées */}
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="text-[10px] font-bold" style={{ color: 'var(--fiq-muted)' }}>⚡ Pour {qty}g</span>
+                      {liveCal   != null && <span className="text-xs font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>{liveCal} kcal</span>}
+                      {liveProt  != null && <span className="text-xs fiq-data" style={{ color: 'var(--fiq-blue)' }}>P {liveProt}g</span>}
+                      {liveCarb  != null && <span className="text-xs fiq-data" style={{ color: '#A855F7' }}>G {liveCarb}g</span>}
+                      {liveFat   != null && <span className="text-xs fiq-data" style={{ color: 'var(--fiq-orange)' }}>L {liveFat}g</span>}
+                    </div>
+                    {/* Impact sur objectif protéines — la macro la plus critique */}
+                    {targets && liveProt != null && (
+                      (() => {
+                        const newProt = (consumedToday?.protein_g ?? 0) + liveProt
+                        const pct = Math.min(100, Math.round((newProt / targets.protein_g) * 100))
+                        const over = newProt > targets.protein_g
+                        return (
+                          <div>
+                            <div className="flex justify-between mb-1">
+                              <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+                                Protéines après : {newProt}g / {targets.protein_g}g
+                              </span>
+                              <span className="text-[10px] font-bold" style={{ color: over ? 'var(--fiq-orange)' : 'var(--fiq-accent)' }}>
+                                {pct}%
+                              </span>
+                            </div>
+                            <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'var(--surface)' }}>
+                              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: over ? 'var(--fiq-orange)' : 'var(--fiq-accent)', transition: 'width 0.15s ease' }} />
+                            </div>
+                          </div>
+                        )
+                      })()
+                    )}
+                    {/* Impact calories */}
+                    {targets && liveCal != null && (
+                      (() => {
+                        const newCal = (consumedToday?.calories ?? 0) + liveCal
+                        const pct = Math.min(100, Math.round((newCal / targets.calories) * 100))
+                        const over = newCal > targets.calories
+                        return (
+                          <div>
+                            <div className="flex justify-between mb-1">
+                              <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+                                Calories après : {newCal} / {targets.calories} kcal
+                              </span>
+                              <span className="text-[10px] font-bold" style={{ color: over ? 'var(--fiq-red)' : 'var(--fiq-muted)' }}>
+                                {over ? `+${newCal - targets.calories} dépassé` : `${targets.calories - newCal} restantes`}
+                              </span>
+                            </div>
+                            <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'var(--surface)' }}>
+                              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: over ? 'var(--fiq-red)' : 'var(--fiq-blue)', transition: 'width 0.15s ease' }} />
+                            </div>
+                          </div>
+                        )
+                      })()
+                    )}
+                  </div>
+                ) : null
+
                 if (!serving) {
                   return (
                     <>
@@ -1922,6 +1993,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
                         style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
                         min="1" max="2000"
                       />
+                      {MacroPreview}
                     </>
                   )
                 }
@@ -2013,6 +2085,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast' }
                           style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
                           min="1" max="2000"
                         />
+                        {MacroPreview}
                       </>
                     )}
                   </>
@@ -2357,6 +2430,13 @@ export function NutritionClient({ initialLogs, targets, today }: Props) {
           onAdded={handleAdded}
           today={today}
           initialMealType={modalMeal}
+          targets={targets}
+          consumedToday={{
+            calories:  totals.calories,
+            protein_g: totals.protein_g,
+            carbs_g:   totals.carbs_g,
+            fat_g:     totals.fat_g,
+          }}
         />
       )}
     </div>

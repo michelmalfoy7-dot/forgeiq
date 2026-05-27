@@ -102,17 +102,22 @@ export function calcStepsCalories(avgStepsPerDay: number): number {
 
 /**
  * Calories entraînement par JOUR (lissé sur la semaine)
- * Séance légère <8 000kg tonnage → 300 kcal
- * Séance moyenne 8 000–12 000kg    → 400 kcal
- * Séance lourde >12 000kg          → 500 kcal
+ * Paliers basés sur le tonnage moyen par séance :
+ *  < 5 000 kg   → 250 kcal  (séance très légère)
+ *  5–8 000 kg   → 350 kcal  (séance modérée)
+ *  8–12 000 kg  → 450 kcal  (séance standard)
+ *  12–18 000 kg → 550 kcal  (séance lourde)
+ *  > 18 000 kg  → 650 kcal  (séance très volumineuse — ex: 36k kg)
  */
 export function calcTrainingCalories(
   avgTonnagePerSession: number,
   sessionsPerWeek: number
 ): number {
   const kcalPerSession =
-    avgTonnagePerSession > 12000 ? 500 :
-    avgTonnagePerSession > 8000  ? 400 : 300
+    avgTonnagePerSession > 18000 ? 650 :
+    avgTonnagePerSession > 12000 ? 550 :
+    avgTonnagePerSession > 8000  ? 450 :
+    avgTonnagePerSession > 5000  ? 350 : 250
   return Math.round((kcalPerSession * sessionsPerWeek) / 7)
 }
 
