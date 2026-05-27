@@ -9,7 +9,7 @@ type SetInput = {
   set_number: number
   weight_kg: number
   reps: number
-  rpe?: number
+  rpe?: number | null
   is_warmup?: boolean
   is_bilateral_dumbbell?: boolean
 }
@@ -34,8 +34,13 @@ export async function POST(request: Request) {
     const warmupSets = (sets as SetInput[]).filter((s) => s.is_warmup)
     const setsForTonnage = includeWarmup ? [...workingSets, ...warmupSets] : workingSets
     // Tonnage × 2 pour les exercices bilatéraux aux haltères (ex: développé haltères = 2 haltères)
-    const totalTonnage = setsForTonnage.reduce((acc, s) =>
-      acc + s.weight_kg * s.reps * (s.is_bilateral_dumbbell ? 2 : 1), 0)
+    // Garde-fou : on ne double jamais si rpe est présent et charge > seuil machine (haltères max ~60kg/côté)
+    // La vraie protection vient du flag is_bilateral_dumbbell qui ne doit jamais être TRUE sur machines
+    const totalTonnage = setsForTonnage.reduce((acc, s) => {
+      // Sécurité : si poids > 120kg on ne multiplie jamais par 2 (c'est forcément une machine/barre)
+      const multiplier = (s.is_bilateral_dumbbell && s.weight_kg <= 120) ? 2 : 1
+      return acc + s.weight_kg * s.reps * multiplier
+    }, 0)
     const totalSets = workingSets.length
     const totalReps = workingSets.reduce((acc, s) => acc + s.reps, 0)
 

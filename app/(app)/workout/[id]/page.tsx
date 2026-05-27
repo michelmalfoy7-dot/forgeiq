@@ -331,7 +331,7 @@ export default function WorkoutSessionPage() {
       updated[groupIdx] = {
         ...updated[groupIdx],
         sets: updated[groupIdx].sets.map((s) =>
-          s.id === setId ? { ...s, [key]: key === 'weight_kg' || key === 'reps' || key === 'rpe' ? (value === '' ? '' : Number(value)) : value } : s
+          s.id === setId ? { ...s, [key]: key === 'weight_kg' || key === 'rpe' ? (value === '' ? '' : parseFloat(value as string)) : key === 'reps' ? (value === '' ? '' : parseInt(value as string, 10)) : value } : s
         ),
       }
       return updated
@@ -362,7 +362,7 @@ export default function WorkoutSessionPage() {
         set_number: s.set_number,
         weight_kg: Number(s.weight_kg) || 0,
         reps: Number(s.reps) || 0,
-        rpe: Number(s.rpe) || null,
+        rpe: s.rpe !== '' && s.rpe !== null ? parseFloat(String(s.rpe)) : null,
         is_warmup: s.is_warmup,
         is_bilateral_dumbbell: g.is_bilateral_dumbbell ?? false,
       }))),
@@ -1107,7 +1107,7 @@ function ExerciseCard({
               className="text-center text-sm h-9"
               style={{ background: 'var(--surface)', borderColor: 'var(--fiq-border)', color: 'var(--fiq-text)' }}
             />
-            <Input type="number" min={1} max={10} placeholder="—" value={s.rpe}
+            <Input type="number" min={1} max={10} step={0.5} inputMode="decimal" placeholder="—" value={s.rpe}
               onChange={(e) => onUpdateSet(s.id, 'rpe', e.target.value)}
               className="text-center text-sm h-9"
               style={{ background: 'var(--surface)', borderColor: 'var(--fiq-border)', color: 'var(--fiq-text)' }}
