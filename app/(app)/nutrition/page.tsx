@@ -32,10 +32,10 @@ export default async function NutritionPage() {
       .eq('user_id', user.id)
       .eq('log_date', today)
       .maybeSingle(),
-    // Séance complétée aujourd'hui pour le TDEE dynamique
+    // Séance complétée aujourd'hui — tonnage + séries + nom pour TDEE précis
     supabase
       .from('workouts')
-      .select('total_tonnage_kg')
+      .select('total_tonnage_kg, total_sets, session_name')
       .eq('user_id', user.id)
       .eq('session_date', today)
       .not('completed_at', 'is', null)
@@ -45,6 +45,7 @@ export default async function NutritionPage() {
   ])
 
   // Source unique de vérité : calcDailyTarget avec données réelles du jour
+  // Utilise tonnage + séries + nom séance pour estimer les calories avec précision
   const dailyTarget = calcDailyTarget({
     weight_kg:         profile?.weight_kg,
     height_cm:         profile?.height_cm,
@@ -57,8 +58,10 @@ export default async function NutritionPage() {
     custom_protein_g:  profile?.custom_protein_g,
     custom_carbs_g:    profile?.custom_carbs_g,
     custom_fat_g:      profile?.custom_fat_g,
-    todaySteps:            todayLog?.steps ?? null,
-    todayWorkoutTonnage:   todayWorkout?.total_tonnage_kg ?? null,
+    todaySteps:          todayLog?.steps                  ?? null,
+    todayWorkoutTonnage: todayWorkout?.total_tonnage_kg   ?? null,
+    todayWorkoutSets:    todayWorkout?.total_sets          ?? null,
+    todayWorkoutName:    todayWorkout?.session_name        ?? null,
   })
 
   const targets = {

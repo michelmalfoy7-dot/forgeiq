@@ -89,10 +89,12 @@ function buildSystemPrompt(ctx: {
     bmr: number
     stepsKcal: number
     workoutKcal: number
+    workoutMuscleGroup: string | null
     tdee: number
     adjustment: number
     targetCalories: number
     todayWorkoutTonnage: number | null
+    todayWorkoutSets: number | null
     usedFallback: boolean
   }
 }) {
@@ -146,12 +148,13 @@ function buildSystemPrompt(ctx: {
 
 ## TDEE dynamique du jour (calculé selon activité réelle)
 ${ctx.tdeeBreakdown.usedFallback
-  ? `- Méthode : multiplicateur (pas de données d'activité aujourd'hui)`
+  ? `- Méthode : multiplicateur (aucune donnée d'activité renseignée aujourd'hui)
+- TDEE estimé : ${ctx.tdeeBreakdown.tdee} kcal`
   : `- BMR de base : ${ctx.tdeeBreakdown.bmr} kcal
 - Pas (${ctx.steps ?? 0} pas) : +${ctx.tdeeBreakdown.stepsKcal} kcal${ctx.tdeeBreakdown.workoutKcal > 0 ? `
-- Séance (${ctx.tdeeBreakdown.todayWorkoutTonnage?.toLocaleString('fr-FR') ?? 0} kg soulevés) : +${ctx.tdeeBreakdown.workoutKcal} kcal` : ''}
+- Séance ${ctx.tdeeBreakdown.workoutMuscleGroup ? `[${ctx.tdeeBreakdown.workoutMuscleGroup}]` : ''} (${ctx.tdeeBreakdown.todayWorkoutTonnage?.toLocaleString('fr-FR') ?? 0} kg · ${ctx.tdeeBreakdown.todayWorkoutSets ?? '?'} séries) : +${ctx.tdeeBreakdown.workoutKcal} kcal` : ''}
 - TDEE du jour : ${ctx.tdeeBreakdown.tdee} kcal`}
-- Ajustement objectif : ${ctx.tdeeBreakdown.adjustment > 0 ? '+' : ''}${ctx.tdeeBreakdown.adjustment} kcal
+- Ajustement objectif (FIXE) : ${ctx.tdeeBreakdown.adjustment > 0 ? '+' : ''}${ctx.tdeeBreakdown.adjustment} kcal
 - **Cible calorique du jour : ${ctx.tdeeBreakdown.targetCalories} kcal**
 
 ## Nutrition du jour (journal alimentaire)
@@ -340,8 +343,10 @@ export async function POST(req: NextRequest) {
       custom_protein_g:  profile?.custom_protein_g,
       custom_carbs_g:    profile?.custom_carbs_g,
       custom_fat_g:      profile?.custom_fat_g,
-      todaySteps:            todayLog?.steps ?? null,
-      todayWorkoutTonnage:   todayWorkoutInRecent?.total_tonnage_kg ?? null,
+      todaySteps:          todayLog?.steps                              ?? null,
+      todayWorkoutTonnage: todayWorkoutInRecent?.total_tonnage_kg       ?? null,
+      todayWorkoutSets:    todayWorkoutInRecent?.total_sets             ?? null,
+      todayWorkoutName:    todayWorkoutInRecent?.session_name           ?? null,
     })
 
     const systemPrompt = buildSystemPrompt({
@@ -370,10 +375,12 @@ export async function POST(req: NextRequest) {
         bmr:                  coachDailyTarget.bmr,
         stepsKcal:            coachDailyTarget.stepsKcal,
         workoutKcal:          coachDailyTarget.workoutKcal,
+        workoutMuscleGroup:   coachDailyTarget.workoutMuscleGroup,
         tdee:                 coachDailyTarget.tdee,
         adjustment:           coachDailyTarget.adjustment,
         targetCalories:       coachDailyTarget.targetCalories,
         todayWorkoutTonnage:  coachDailyTarget.todayWorkoutTonnage,
+        todayWorkoutSets:     todayWorkoutInRecent?.total_sets ?? null,
         usedFallback:         coachDailyTarget.usedFallback,
       },
     })

@@ -217,8 +217,8 @@ export function buildTDEEBreakdown(params: {
 // ── Paliers calories séance (activité du JOUR, pas hebdo lissé) ──────────────
 
 /**
- * Calories brûlées pour UNE séance selon son tonnage réel.
- * Plus fin que calcTrainingCalories qui lisse sur la semaine.
+ * Calories brûlées pour UNE séance selon son tonnage réel — paliers bruts.
+ * Utilisé comme signal secondaire (proxy intensité/volume global).
  * Barème : <5k=250, 5-8k=350, 8-12k=450, 12-18k=550, 18-25k=600, >25k=650
  */
 export function calcWorkoutKcalFromTonnage(tonnageKg: number | null | undefined): number {
@@ -231,25 +231,116 @@ export function calcWorkoutKcalFromTonnage(tonnageKg: number | null | undefined)
   return 250
 }
 
+// ── Classification groupe musculaire ─────────────────────────────────────────
+
+/**
+ * Catégories de groupes musculaires pour l'estimation calorique par série.
+ * Un push day avec peu de tonnage brûle quand même ses calories :
+ * le tonnage seul ne suffit pas — il faut connaître les muscles sollicités.
+ */
+export type MuscleGroupCategory =
+  | 'legs'       // quadriceps, ischio, fessiers — grands muscles + EPOC élevé
+  | 'back'       // dorsaux, trapèzes, rhomboïdes — muscles larges
+  | 'full_body'  // mouvements poly-articulaires multiples
+  | 'push'       // pectoraux, épaules, triceps — muscles moyens
+  | 'arms'       // biceps, triceps — isolation, petits muscles
+  | 'core'       // abdominaux, gainage — faible demande métabolique
+  | 'general'    // séance non identifiée — estimation conservatrice
+
+/**
+ * Classifie la séance selon le groupe musculaire principal.
+ * Utilisé pour corriger l'estimation calorique selon la taille musculaire.
+ */
+export function getSessionMuscleGroup(sessionName: string | null | undefined): MuscleGroupCategory {
+  const lower = (sessionName ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // supprime les accents pour la correspondance
+
+  if (/jambe|leg\b|squat|cuisse|glute|fesse|quad|ischio|hamstring|presse.*(cuisse|jambe)|(cuisse|jambe).*presse/i.test(lower)) return 'legs'
+  if (/\bdos\b|pull|traction|tirage|rowing|deadlift|soule/i.test(lower)) return 'back'
+  if (/full.?body|corps.?entier|circuit|total.?body|complet/i.test(lower)) return 'full_body'
+  if (/push|poitrine|chest|\bpec|epaule|shoulder|developpe|ohp|\bdip/i.test(lower)) return 'push'
+  if (/bras|bicep|tricep|curl|\barm\b/i.test(lower)) return 'arms'
+  if (/core|abdos|\babs\b|gainage|planche/i.test(lower)) return 'core'
+  return 'general'
+}
+
+/**
+ * Calories brûlées par série (travail + repos inclus), pour une personne de 75-85 kg.
+ * Valeurs adaptées du Compendium d'Ainsworth 2011 et de la calorimétrie indirecte
+ * sur la résistance musculaire (Brentano & Kruel 2011, Scott 2006).
+ *
+ * Jambes  23 kcal/série : squat 120 kg × 8 reps + 3 min repos ≈ 12 kcal actif + 11 kcal repos
+ * Push    17 kcal/série : bench 80 kg × 10 reps + 2.5 min repos ≈ 8 kcal + 9 kcal
+ * Bras    12 kcal/série : curl 20 kg × 12 reps + 90 s repos ≈ 5 kcal + 7 kcal
+ */
+const KCAL_PER_SET: Record<MuscleGroupCategory, number> = {
+  legs:      23,  // grands muscles, EPOC post-séance significatif
+  full_body: 21,  // haute demande métabolique multi-articulaire
+  back:      19,  // larges muscles dorsaux — rowing, soulevé de terre
+  push:      17,  // développé couché, OHP, dips — muscles moyens
+  arms:      12,  // isolation biceps / triceps — petits muscles
+  core:       9,  // gainage, abdos — faible intensité mécanique
+  general:   17,  // séance inconnue — même que push, estimation sûre
+}
+
+/**
+ * Calcule les calories d'UNE séance musculaire (activité du jour).
+ *
+ * Signal primaire (60 %) : séries × kcal/série selon le groupe musculaire.
+ *   → Équitable entre Push/Pull/Jambes : un push à 8k kg reçoit ses ~380 kcal
+ *     même si son tonnage est inférieur à un day jambes.
+ *
+ * Signal secondaire (40 %) : paliers tonnage comme proxy d'intensité globale.
+ *   → Corrige les séances très lourdes (peu de séries, gros tonnage unitaire).
+ *
+ * Fallback : tonnage seul si total_sets non renseigné.
+ *
+ * Exemples :
+ *   Push  20 séries 8k kg  → 20×17×0.6 + 450×0.4 = 204+180 = 384 kcal
+ *   Dos   20 séries 15k kg → 20×19×0.6 + 550×0.4 = 228+220 = 448 kcal
+ *   Jambes 25 séries 36k kg → 25×23×0.6 + 650×0.4 = 345+260 = 605 kcal
+ */
+export function calcWorkoutKcal(
+  tonnageKg:  number | null | undefined,
+  totalSets:  number | null | undefined,
+  sessionName?: string | null,
+): number {
+  if (!tonnageKg || tonnageKg <= 0) return 0
+
+  const fromTonnage = calcWorkoutKcalFromTonnage(tonnageKg)
+
+  if (totalSets && totalSets > 0) {
+    const group    = getSessionMuscleGroup(sessionName)
+    const fromSets = Math.round(totalSets * KCAL_PER_SET[group])
+    // Blend : 60 % séries (fidèle au type de séance) + 40 % tonnage (intensité)
+    return Math.round(fromSets * 0.6 + fromTonnage * 0.4)
+  }
+
+  return fromTonnage
+}
+
 // ── Cible calorique journalière dynamique ─────────────────────────────────────
 
 export type DailyTarget = {
   bmr: number
-  stepsKcal: number             // calories steps du JOUR
-  workoutKcal: number           // calories séance du JOUR (0 si repos)
-  tdee: number                  // BMR + steps + workout
-  adjustment: number            // surplus/déficit objectif
-  targetCalories: number        // cible effective (plancher 1 200)
+  stepsKcal: number               // calories steps du JOUR
+  workoutKcal: number             // calories séance du JOUR (0 si repos)
+  workoutMuscleGroup: MuscleGroupCategory | null  // groupe musculaire identifié
+  tdee: number                    // BMR + steps + workout
+  adjustment: number              // surplus/déficit objectif
+  targetCalories: number          // cible effective (plancher 1 200)
   macros: TDEEMacros
   todaySteps: number | null
   todayWorkoutTonnage: number | null
-  usedFallback: boolean         // pas de données → multiplicateur
-  isCustom: boolean             // macros manuelles actives
+  usedFallback: boolean           // pas de données → multiplicateur
+  isCustom: boolean               // macros manuelles actives
 }
 
 /**
  * Source unique de vérité pour la cible calorique du jour.
- * Utilise les données RÉELLES du jour (steps + tonnage séance).
+ * Utilise les données RÉELLES du jour (steps + tonnage + séries + nom séance).
  * Fallback BMR × multiplicateur si aucune donnée d'activité disponible.
  *
  * Appelé depuis : dashboard, nutrition/page, api/coach
@@ -266,19 +357,25 @@ export function calcDailyTarget(params: {
   custom_protein_g?:  number | null
   custom_carbs_g?:    number | null
   custom_fat_g?:      number | null
-  todaySteps?:              number | null
-  todayWorkoutTonnage?:     number | null
+  todaySteps?:             number | null
+  todayWorkoutTonnage?:    number | null
+  todayWorkoutSets?:       number | null  // nombre de séries → précision groupe musculaire
+  todayWorkoutName?:       string | null  // nom séance → classification Push/Pull/Legs
 }): DailyTarget {
   const w = (params.weight_kg && params.weight_kg > 30 && params.weight_kg < 250)
     ? params.weight_kg : 75
 
   const bmr = calcBMR(w, params.height_cm ?? 175, params.age ?? 30, params.gender ?? 'male')
 
-  const steps   = params.todaySteps   ?? null
-  const tonnage = params.todayWorkoutTonnage ?? null
+  const steps   = params.todaySteps            ?? null
+  const tonnage = params.todayWorkoutTonnage   ?? null
+  const sets    = params.todayWorkoutSets      ?? null
+  const name    = params.todayWorkoutName      ?? null
 
-  const stepsKcal   = steps   ? Math.round(steps * 0.04) : 0
-  const workoutKcal = calcWorkoutKcalFromTonnage(tonnage)
+  const stepsKcal   = steps ? Math.round(steps * 0.04) : 0
+  // calcWorkoutKcal intègre groupe musculaire + séries (60%) + tonnage (40%)
+  const workoutKcal = calcWorkoutKcal(tonnage, sets, name)
+  const workoutMuscleGroup: MuscleGroupCategory | null = tonnage ? getSessionMuscleGroup(name) : null
 
   const hasActivity = steps !== null || tonnage !== null
   let tdee: number
@@ -315,7 +412,8 @@ export function calcDailyTarget(params: {
   }
 
   return {
-    bmr, stepsKcal, workoutKcal, tdee, adjustment, targetCalories, macros,
+    bmr, stepsKcal, workoutKcal, workoutMuscleGroup,
+    tdee, adjustment, targetCalories, macros,
     todaySteps: steps, todayWorkoutTonnage: tonnage, usedFallback, isCustom,
   }
 }
