@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { calcDailyTarget } from '@/lib/utils/tdee'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,6 +84,17 @@ function buildSystemPrompt(ctx: {
   caloriesConsumed: number | null
   carbsG: number | null
   fatG: number | null
+  // TDEE dynamique du jour
+  tdeeBreakdown: {
+    bmr: number
+    stepsKcal: number
+    workoutKcal: number
+    tdee: number
+    adjustment: number
+    targetCalories: number
+    todayWorkoutTonnage: number | null
+    usedFallback: boolean
+  }
 }) {
   const isCustomMacros = ctx.macroMode === 'custom' && (ctx.customProtein || ctx.customCalories)
   const PROTEIN_TARGET = isCustomMacros && ctx.customProtein
@@ -132,10 +144,19 @@ function buildSystemPrompt(ctx: {
 - Pas : ${ctx.steps ?? 'non renseigné'}
 - Tension systolique : ${ctx.sysBp ?? 'non renseigné'}
 
+## TDEE dynamique du jour (calculé selon activité réelle)
+${ctx.tdeeBreakdown.usedFallback
+  ? `- Méthode : multiplicateur (pas de données d'activité aujourd'hui)`
+  : `- BMR de base : ${ctx.tdeeBreakdown.bmr} kcal
+- Pas (${ctx.steps ?? 0} pas) : +${ctx.tdeeBreakdown.stepsKcal} kcal${ctx.tdeeBreakdown.workoutKcal > 0 ? `
+- Séance (${ctx.tdeeBreakdown.todayWorkoutTonnage?.toLocaleString('fr-FR') ?? 0} kg soulevés) : +${ctx.tdeeBreakdown.workoutKcal} kcal` : ''}
+- TDEE du jour : ${ctx.tdeeBreakdown.tdee} kcal`}
+- Ajustement objectif : ${ctx.tdeeBreakdown.adjustment > 0 ? '+' : ''}${ctx.tdeeBreakdown.adjustment} kcal
+- **Cible calorique du jour : ${ctx.tdeeBreakdown.targetCalories} kcal**
+
 ## Nutrition du jour (journal alimentaire)
 - Calories consommées : ${ctx.caloriesConsumed != null ? ctx.caloriesConsumed + ' kcal' : 'non renseigné'}
-- Calories cible : ${isCustomMacros && ctx.customCalories ? ctx.customCalories + ' kcal' : 'auto (calculé selon profil)'}
-${ctx.caloriesConsumed != null && (isCustomMacros ? ctx.customCalories : null) ? `- Solde calorique : ${ctx.caloriesConsumed - (ctx.customCalories ?? 0) > 0 ? '+' : ''}${ctx.caloriesConsumed - (ctx.customCalories ?? 0)} kcal` : ''}
+- Calories restantes : ${ctx.caloriesConsumed != null ? Math.round(ctx.tdeeBreakdown.targetCalories - ctx.caloriesConsumed) + ' kcal' : 'non renseigné'}
 - Protéines : ${ctx.proteinG ?? 'non renseigné'}g / objectif ${PROTEIN_TARGET}g
 - Glucides : ${ctx.carbsG != null ? ctx.carbsG + 'g' : 'non renseigné'}
 - Lipides : ${ctx.fatG != null ? ctx.fatG + 'g' : 'non renseigné'}
@@ -305,6 +326,24 @@ export async function POST(req: NextRequest) {
     )
     const hasFoodLogs = (todayFoodLogs ?? []).length > 0
 
+    // TDEE dynamique du jour — même source de vérité que dashboard/nutrition
+    const todayWorkoutInRecent = (recentWorkouts ?? []).find(w => w.session_date === today)
+    const coachDailyTarget = calcDailyTarget({
+      weight_kg:         profile?.weight_kg,
+      height_cm:         profile?.height_cm,
+      age:               profile?.age,
+      gender:            profile?.gender,
+      goal:              profile?.goal ?? 'general',
+      sessions_per_week: profile?.sessions_per_week,
+      macro_mode:        profile?.macro_mode,
+      custom_calories:   profile?.custom_calories,
+      custom_protein_g:  profile?.custom_protein_g,
+      custom_carbs_g:    profile?.custom_carbs_g,
+      custom_fat_g:      profile?.custom_fat_g,
+      todaySteps:            todayLog?.steps ?? null,
+      todayWorkoutTonnage:   todayWorkoutInRecent?.total_tonnage_kg ?? null,
+    })
+
     const systemPrompt = buildSystemPrompt({
       displayName: profile?.display_name ?? 'Athlète',
       goal: profile?.goal ?? 'general',
@@ -324,10 +363,19 @@ export async function POST(req: NextRequest) {
       customProtein: profile?.custom_protein_g ?? null,
       customCarbs: profile?.custom_carbs_g ?? null,
       customFat: profile?.custom_fat_g ?? null,
-      // Bilan calorique du jour (food_logs)
       caloriesConsumed: hasFoodLogs ? Math.round(foodTotals.calories) : null,
       carbsG: hasFoodLogs ? Math.round(foodTotals.carbs_g) : null,
       fatG: hasFoodLogs ? Math.round(foodTotals.fat_g) : null,
+      tdeeBreakdown: {
+        bmr:                  coachDailyTarget.bmr,
+        stepsKcal:            coachDailyTarget.stepsKcal,
+        workoutKcal:          coachDailyTarget.workoutKcal,
+        tdee:                 coachDailyTarget.tdee,
+        adjustment:           coachDailyTarget.adjustment,
+        targetCalories:       coachDailyTarget.targetCalories,
+        todayWorkoutTonnage:  coachDailyTarget.todayWorkoutTonnage,
+        usedFallback:         coachDailyTarget.usedFallback,
+      },
     })
 
     // Construire l'historique pour Claude (ordre chronologique, fenêtre glissante)

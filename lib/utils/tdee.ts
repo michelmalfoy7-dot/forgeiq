@@ -214,6 +214,112 @@ export function buildTDEEBreakdown(params: {
   }
 }
 
+// ── Paliers calories séance (activité du JOUR, pas hebdo lissé) ──────────────
+
+/**
+ * Calories brûlées pour UNE séance selon son tonnage réel.
+ * Plus fin que calcTrainingCalories qui lisse sur la semaine.
+ * Barème : <5k=250, 5-8k=350, 8-12k=450, 12-18k=550, 18-25k=600, >25k=650
+ */
+export function calcWorkoutKcalFromTonnage(tonnageKg: number | null | undefined): number {
+  if (!tonnageKg || tonnageKg <= 0) return 0
+  if (tonnageKg > 25000) return 650
+  if (tonnageKg > 18000) return 600
+  if (tonnageKg > 12000) return 550
+  if (tonnageKg > 8000)  return 450
+  if (tonnageKg > 5000)  return 350
+  return 250
+}
+
+// ── Cible calorique journalière dynamique ─────────────────────────────────────
+
+export type DailyTarget = {
+  bmr: number
+  stepsKcal: number             // calories steps du JOUR
+  workoutKcal: number           // calories séance du JOUR (0 si repos)
+  tdee: number                  // BMR + steps + workout
+  adjustment: number            // surplus/déficit objectif
+  targetCalories: number        // cible effective (plancher 1 200)
+  macros: TDEEMacros
+  todaySteps: number | null
+  todayWorkoutTonnage: number | null
+  usedFallback: boolean         // pas de données → multiplicateur
+  isCustom: boolean             // macros manuelles actives
+}
+
+/**
+ * Source unique de vérité pour la cible calorique du jour.
+ * Utilise les données RÉELLES du jour (steps + tonnage séance).
+ * Fallback BMR × multiplicateur si aucune donnée d'activité disponible.
+ *
+ * Appelé depuis : dashboard, nutrition/page, api/coach
+ */
+export function calcDailyTarget(params: {
+  weight_kg?:         number | null
+  height_cm?:         number | null
+  age?:               number | null
+  gender?:            string | null
+  goal?:              string | null
+  sessions_per_week?: number | null
+  macro_mode?:        string | null
+  custom_calories?:   number | null
+  custom_protein_g?:  number | null
+  custom_carbs_g?:    number | null
+  custom_fat_g?:      number | null
+  todaySteps?:              number | null
+  todayWorkoutTonnage?:     number | null
+}): DailyTarget {
+  const w = (params.weight_kg && params.weight_kg > 30 && params.weight_kg < 250)
+    ? params.weight_kg : 75
+
+  const bmr = calcBMR(w, params.height_cm ?? 175, params.age ?? 30, params.gender ?? 'male')
+
+  const steps   = params.todaySteps   ?? null
+  const tonnage = params.todayWorkoutTonnage ?? null
+
+  const stepsKcal   = steps   ? Math.round(steps * 0.04) : 0
+  const workoutKcal = calcWorkoutKcalFromTonnage(tonnage)
+
+  const hasActivity = steps !== null || tonnage !== null
+  let tdee: number
+  let usedFallback = false
+
+  if (hasActivity) {
+    tdee = bmr + stepsKcal + workoutKcal
+  } else {
+    const sessions = params.sessions_per_week ?? 3
+    const mult = sessions >= 5 ? 1.725 : sessions >= 3 ? 1.55 : 1.375
+    tdee = Math.round(bmr * mult)
+    usedFallback = true
+  }
+
+  const adjustment = goalAdjustment(params.goal ?? 'general')
+  const isCustom = params.macro_mode === 'custom' &&
+    !!(params.custom_protein_g || params.custom_calories)
+
+  let targetCalories: number
+  let macros: TDEEMacros
+
+  if (isCustom) {
+    targetCalories = params.custom_calories ?? Math.max(1200, tdee + adjustment)
+    const base = calcMacrosFromCalories(targetCalories, w)
+    macros = {
+      calories:  targetCalories,
+      protein_g: params.custom_protein_g ?? base.protein_g,
+      carbs_g:   params.custom_carbs_g   ?? base.carbs_g,
+      fat_g:     params.custom_fat_g     ?? base.fat_g,
+    }
+  } else {
+    targetCalories = Math.max(1200, tdee + adjustment)
+    macros = calcMacrosFromCalories(targetCalories, w)
+  }
+
+  return {
+    bmr, stepsKcal, workoutKcal, tdee, adjustment, targetCalories, macros,
+    todaySteps: steps, todayWorkoutTonnage: tonnage, usedFallback, isCustom,
+  }
+}
+
 /**
  * Calcul simplifié côté client (sans données réelles steps/tonnage)
  * Utilisé comme fallback quand l'API TDEE n'a pas encore répondu.

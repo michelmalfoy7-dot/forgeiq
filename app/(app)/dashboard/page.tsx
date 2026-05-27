@@ -9,7 +9,7 @@ import { UpgradeBanner } from '@/components/dashboard/UpgradeBanner'
 import { CancelWorkoutButton } from '@/components/dashboard/CancelWorkoutButton'
 import { formatSleep } from '@/lib/formatSleep'
 import { Dumbbell, TrendingUp, ClipboardList, MessageCircle, Utensils } from 'lucide-react'
-import { calcBMR, calcStepsCalories, calcTrainingCalories, goalAdjustment, calcMacrosFromCalories } from '@/lib/utils/tdee'
+import { calcDailyTarget } from '@/lib/utils/tdee'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,7 +43,7 @@ export default async function DashboardPage() {
     { data: todayFoodLogs },
   ] = await Promise.all([
     supabase.from('profiles')
-      .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, height_cm, age, gender, macro_mode, custom_protein_g, custom_calories, steps_goal, target_weight_kg, avatar_url')
+      .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, height_cm, age, gender, macro_mode, custom_protein_g, custom_calories, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, avatar_url')
       .eq('id', user.id).maybeSingle(),
 
     supabase.from('daily_logs').select('*')
@@ -174,37 +174,29 @@ export default async function DashboardPage() {
     }
   }
 
-  // TDEE Mifflin-St Jeor + NEAT
-  const w = profile?.weight_kg ?? 75
-  const logsWithSteps = (weekLogs ?? []).filter(l => l.steps != null)
-  const hasLogsWithSteps = logsWithSteps.length >= 3
-  const avgSteps7d = hasLogsWithSteps
-    ? Math.round(logsWithSteps.reduce((a, l) => a + (l.steps ?? 0), 0) / logsWithSteps.length)
-    : 0
+  // ── Cible calorique dynamique du jour — source unique via calcDailyTarget ──
+  // Utilise les données RÉELLES : steps du check-in + tonnage séance d'aujourd'hui
+  const dailyTarget = calcDailyTarget({
+    weight_kg:         profile?.weight_kg,
+    height_cm:         profile?.height_cm,
+    age:               profile?.age,
+    gender:            profile?.gender,
+    goal:              profile?.goal,
+    sessions_per_week: profile?.sessions_per_week,
+    macro_mode:        profile?.macro_mode,
+    custom_calories:   profile?.custom_calories,
+    custom_protein_g:  profile?.custom_protein_g,
+    custom_carbs_g:    profile?.custom_carbs_g,
+    custom_fat_g:      profile?.custom_fat_g,
+    todaySteps:            todayLog?.steps ?? null,
+    todayWorkoutTonnage:   latestTodayWorkout?.total_tonnage_kg ?? null,
+  })
 
-  const bmr = calcBMR(w, profile?.height_cm ?? 175, profile?.age ?? 30, profile?.gender ?? 'male')
-  const stepsKcal = hasLogsWithSteps ? calcStepsCalories(avgSteps7d) : 0
-  const trainKcal = calcTrainingCalories(0, profile?.sessions_per_week ?? 3)
-  const sessionsPerWeek = profile?.sessions_per_week ?? 3
-  const multiplier = sessionsPerWeek >= 5 ? 1.725 : sessionsPerWeek >= 3 ? 1.55 : 1.375
-  const tdeeCalc = hasLogsWithSteps
-    ? bmr + stepsKcal + trainKcal
-    : Math.round(bmr * multiplier)
-
-  const targetCaloriesDash = Math.max(1200, tdeeCalc + goalAdjustment(profile?.goal ?? 'general'))
-  const autoMacros = calcMacrosFromCalories(targetCaloriesDash, w)
-
-  const proteinTarget = profile?.macro_mode === 'custom' && profile?.custom_protein_g
-    ? { min: profile.custom_protein_g, max: profile.custom_protein_g }
-    : { min: autoMacros.protein_g, max: autoMacros.protein_g }
-
-  // Cible calorique effective (custom ou auto)
-  const calTarget = profile?.macro_mode === 'custom' && profile?.custom_calories
-    ? profile.custom_calories
-    : targetCaloriesDash
-  const calConsumed = hasFoodLogs ? Math.round(foodLogTotals.calories) : 0
-  const calRemaining = calTarget - calConsumed
-  const calPct = Math.min(100, Math.round((calConsumed / Math.max(1, calTarget)) * 100))
+  const proteinTarget = { min: dailyTarget.macros.protein_g, max: dailyTarget.macros.protein_g }
+  const calTarget     = dailyTarget.targetCalories
+  const calConsumed   = hasFoodLogs ? Math.round(foodLogTotals.calories) : 0
+  const calRemaining  = calTarget - calConsumed
+  const calPct        = Math.min(100, Math.round((calConsumed / Math.max(1, calTarget)) * 100))
 
   // Alertes statiques
   const alerts: { type: 'red' | 'yellow' | 'green' | 'blue'; message: string; sub: string }[] = []
@@ -223,6 +215,21 @@ export default async function DashboardPage() {
       alerts.push({ type: 'red', message: '🫀 Tension systolique élevée', sub: `${sysBP} mmHg — consulte un médecin si ça persiste.` })
   } else {
     alerts.push({ type: 'blue', message: '📋 Bilan du jour non renseigné', sub: 'Complète ton check-in pour des recommandations personnalisées.' })
+  }
+
+  // Alerte déficit trop agressif après séance lourde (> 25 000 kg)
+  if (hasFoodLogs &&
+      (dailyTarget.todayWorkoutTonnage ?? 0) > 25000 &&
+      calRemaining < 500) {
+    const toEat = Math.max(300, Math.round((800 - calRemaining) / 100) * 100)
+    const tonnageLabel = dailyTarget.todayWorkoutTonnage
+      ? `${(dailyTarget.todayWorkoutTonnage / 1000).toFixed(1)}t`
+      : ''
+    alerts.push({
+      type: 'yellow',
+      message: '⚡ Déficit trop agressif post-séance lourde',
+      sub: `Tu as soulevé ${tonnageLabel} aujourd'hui (+${dailyTarget.workoutKcal} kcal dépensées). Mange encore ~${toEat} kcal ce soir pour préserver ta masse musculaire.`,
+    })
   }
 
   // Indicateur fiabilité EWMA
@@ -361,6 +368,21 @@ export default async function DashboardPage() {
                 }}
               />
             </div>
+
+            {/* Explication cible ajustée — argument de différenciation ForgeIQ */}
+            {!dailyTarget.isCustom && !dailyTarget.usedFallback && (
+              <p className="text-[10px] leading-relaxed" style={{ color: 'var(--fiq-muted)' }}>
+                📊 Base {dailyTarget.bmr}
+                {dailyTarget.stepsKcal > 0 && ` + Pas +${dailyTarget.stepsKcal}`}
+                {dailyTarget.workoutKcal > 0 && ` + Séance +${dailyTarget.workoutKcal}`}
+                {dailyTarget.adjustment !== 0 && (
+                  dailyTarget.adjustment > 0
+                    ? ` + Surplus +${dailyTarget.adjustment}`
+                    : ` − Déficit ${Math.abs(dailyTarget.adjustment)}`
+                )}
+                {` = ${dailyTarget.targetCalories} kcal`}
+              </p>
+            )}
 
             {/* Mini macros */}
             <div className="flex gap-3">
