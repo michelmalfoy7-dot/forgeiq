@@ -180,8 +180,14 @@ export default function WorkoutSessionPage() {
 
       const [{ data: exos }, { data: workout }] = await Promise.all([
         supabase.from('exercises_library').select('id,name,name_fr,slug,muscle_primary,equipment,is_bilateral_dumbbell').order('name_fr'),
-        supabase.from('workouts').select('session_name').eq('id', workoutId).single(),
+        supabase.from('workouts').select('session_name, completed_at').eq('id', workoutId).single(),
       ])
+
+      // Séance déjà terminée en base → rediriger immédiatement (évite le retour via back button)
+      if (workout?.completed_at) {
+        router.replace('/dashboard')
+        return
+      }
 
       const library: Exercise[] = (exos ?? []) as Exercise[]
       setExercises(library)
@@ -476,11 +482,17 @@ export default function WorkoutSessionPage() {
 
       const { data } = json
       if (data) {
-        // Nettoyer localStorage après succès
-        try { localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
+        // Nettoyer TOUT le localStorage lié à cette séance
+        try {
+          localStorage.removeItem(STORAGE_KEY)
+          localStorage.removeItem(`forgeiq_start_${workoutId}`)
+          // Déclencher l'event storage pour que BottomNav retire le badge immédiatement
+          window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }))
+        } catch { /* ignore */ }
         setSummary({ tonnage: data.totalTonnage ?? 0, sets: data.totalSets ?? 0, newPRs: data.newPRs ?? [] })
         setCompleted(true)
         if (timerRef.current) clearInterval(timerRef.current)
+        stopRest()
       } else {
         setCompleteError('Réponse inattendue du serveur. Réessaie.')
       }
@@ -698,8 +710,14 @@ export default function WorkoutSessionPage() {
           <Button
             className="w-full font-black py-5"
             onClick={() => {
-              router.refresh()
-              router.push('/dashboard')
+              // Nettoyage défensif final (au cas où le cleanup post-completion aurait échoué)
+              try {
+                localStorage.removeItem(STORAGE_KEY)
+                localStorage.removeItem(`forgeiq_start_${workoutId}`)
+                window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }))
+              } catch { /* ignore */ }
+              // replace() : le bouton "retour" du navigateur ne reviendra jamais sur /workout/[id]
+              router.replace('/dashboard')
             }}
             style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
           >
