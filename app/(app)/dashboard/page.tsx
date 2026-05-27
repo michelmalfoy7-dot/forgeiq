@@ -369,19 +369,50 @@ export default async function DashboardPage() {
               />
             </div>
 
-            {/* Explication cible ajustée — argument de différenciation ForgeIQ */}
-            {!dailyTarget.isCustom && !dailyTarget.usedFallback && (
-              <p className="text-[10px] leading-relaxed" style={{ color: 'var(--fiq-muted)' }}>
-                📊 Base {dailyTarget.bmr}
-                {dailyTarget.stepsKcal > 0 && ` + Pas +${dailyTarget.stepsKcal}`}
-                {dailyTarget.workoutKcal > 0 && ` + Séance +${dailyTarget.workoutKcal}`}
-                {dailyTarget.adjustment !== 0 && (
-                  dailyTarget.adjustment > 0
-                    ? ` + Surplus +${dailyTarget.adjustment}`
-                    : ` − Déficit ${Math.abs(dailyTarget.adjustment)}`
+            {/* Dépenses variables vs déficit fixe — argument clé ForgeIQ */}
+            {!dailyTarget.isCustom && (
+              <div className="space-y-0.5 pt-0.5">
+                {!dailyTarget.usedFallback ? (
+                  <>
+                    {/* Ligne 1 : TDEE réel du jour (variable selon activité) */}
+                    <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+                      {'📊 '}
+                      {dailyTarget.bmr.toLocaleString('fr-FR')} BMR
+                      {dailyTarget.stepsKcal > 0 && ` + ${dailyTarget.stepsKcal} (pas)`}
+                      {dailyTarget.workoutKcal > 0 && ` + ${dailyTarget.workoutKcal} (séance)`}
+                      {' = '}
+                      <span className="font-semibold">{dailyTarget.tdee.toLocaleString('fr-FR')} kcal brûlées</span>
+                    </p>
+                    {/* Ligne 2 : ajustement FIXE — déficit/surplus constant quoi qu'il arrive */}
+                    {dailyTarget.adjustment !== 0 ? (
+                      <p className="text-[10px] font-semibold" style={{ color: dailyTarget.adjustment > 0 ? 'var(--fiq-blue)' : 'var(--fiq-orange)' }}>
+                        {dailyTarget.adjustment > 0 ? '📈 Surplus' : '📉 Déficit'}{' '}
+                        {dailyTarget.adjustment > 0
+                          ? `+${dailyTarget.adjustment}`
+                          : `−${Math.abs(dailyTarget.adjustment)}`
+                        }{' kcal fixe → Cible : '}
+                        <span className="font-black">{dailyTarget.targetCalories.toLocaleString('fr-FR')} kcal</span>
+                      </p>
+                    ) : (
+                      <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+                        {'🎯 Maintien · Cible : '}<span className="font-semibold">{dailyTarget.targetCalories.toLocaleString('fr-FR')} kcal</span>
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  /* Fallback : aucune activité renseignée aujourd'hui */
+                  <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+                    {'📊 Estimé (check-in manquant) : '}
+                    <span className="font-semibold">{dailyTarget.tdee.toLocaleString('fr-FR')} kcal</span>
+                    {dailyTarget.adjustment !== 0 && (
+                      <span style={{ color: dailyTarget.adjustment > 0 ? 'var(--fiq-blue)' : 'var(--fiq-orange)' }}>
+                        {dailyTarget.adjustment > 0 ? ` +${dailyTarget.adjustment}` : ` −${Math.abs(dailyTarget.adjustment)}`}
+                      </span>
+                    )}
+                    {' → '}<span className="font-semibold">{dailyTarget.targetCalories.toLocaleString('fr-FR')} kcal</span>
+                  </p>
                 )}
-                {` = ${dailyTarget.targetCalories} kcal`}
-              </p>
+              </div>
             )}
 
             {/* Mini macros */}
