@@ -12,6 +12,10 @@ type DailyCtx = {
   sleep_deep_min: number | null
   protein_g: number | null
   fatigue_score: number | null
+  calories_consumed: number | null   // kcal du jour (food_logs)
+  last_session_name: string | null   // dernière séance
+  last_tonnage: number | null        // tonnage dernière séance (kg)
+  last_session_date: string | null   // date dernière séance
 }
 
 // Ratios protéines selon objectif (g/kg poids de corps)
@@ -231,7 +235,7 @@ export default function CoachPage() {
       startOfMonth.setDate(1)
       startOfMonth.setHours(0, 0, 0, 0)
 
-      const [{ data: history }, { data: log }, { data: profile }] = await Promise.all([
+      const [{ data: history }, { data: log }, { data: profile }, { data: foodLogs }, { data: lastWorkout }] = await Promise.all([
         supabase.from('coach_messages')
           .select('role, content, created_at')
           .eq('user_id', user.id)
@@ -241,17 +245,47 @@ export default function CoachPage() {
           .select('weight_trend, sleep_deep_min, protein_g, fatigue_score')
           .eq('user_id', user.id)
           .eq('log_date', today)
-          .single(),
+          .maybeSingle(),
         supabase.from('profiles')
           .select('goal, weight_kg, subscription_status, subscription_plan, is_admin')
           .eq('id', user.id)
           .single(),
+        // Calories consommées aujourd'hui (food_logs)
+        supabase.from('food_logs')
+          .select('calories')
+          .eq('user_id', user.id)
+          .eq('log_date', today),
+        // Dernière séance terminée
+        supabase.from('workouts')
+          .select('session_name, session_date, total_tonnage_kg')
+          .eq('user_id', user.id)
+          .not('completed_at', 'is', null)
+          .order('session_date', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ])
 
       if (history?.length) {
         setMessages(history.map(h => ({ role: h.role as 'user' | 'assistant', content: h.content })))
       }
-      if (log) setDailyCtx(log)
+
+      // Construire le contexte enrichi
+      const caloriesConsumed = foodLogs?.length
+        ? Math.round(foodLogs.reduce((s, r) => s + (r.calories ?? 0), 0))
+        : null
+
+      if (log || caloriesConsumed !== null || lastWorkout) {
+        setDailyCtx({
+          weight_trend: log?.weight_trend ?? null,
+          sleep_deep_min: log?.sleep_deep_min ?? null,
+          protein_g: log?.protein_g ?? null,
+          fatigue_score: log?.fatigue_score ?? null,
+          calories_consumed: caloriesConsumed,
+          last_session_name: lastWorkout?.session_name ?? null,
+          last_tonnage: lastWorkout?.total_tonnage_kg ?? null,
+          last_session_date: lastWorkout?.session_date ?? null,
+        })
+      }
       if (profile) setProteinTarget(calcProteinTarget(profile.goal, profile.weight_kg))
 
       // Déterminer tier et limite
@@ -364,29 +398,40 @@ export default function CoachPage() {
       const decoder = new TextDecoder()
       let full = ''
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const chunk = decoder.decode(value, { stream: true })
-        full += chunk
-        setMessages(prev => {
-          const updated = [...prev]
-          updated[updated.length - 1] = { role: 'assistant', content: full, streaming: true }
-          return updated
-        })
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          const chunk = decoder.decode(value, { stream: true })
+          full += chunk
+          setMessages(prev => {
+            const updated = [...prev]
+            updated[updated.length - 1] = { role: 'assistant', content: full, streaming: true }
+            return updated
+          })
+        }
+      } catch (streamErr) {
+        console.error('[coach] Stream error:', streamErr)
+        full = ''
       }
+
+      // Si le stream s'est fermé sans contenu → afficher l'erreur au lieu d'une bulle vide
+      const finalContent = full.trim()
+        ? full
+        : '⚠️ Je n\'ai pas pu générer de réponse. Réessaie dans quelques secondes.'
 
       setMessages(prev => {
         const updated = [...prev]
-        updated[updated.length - 1] = { role: 'assistant', content: full, streaming: false }
+        updated[updated.length - 1] = { role: 'assistant', content: finalContent, streaming: false }
         return updated
       })
-    } catch {
+    } catch (err) {
+      console.error('[coach] Fetch error:', err)
       setMessages(prev => {
         const updated = [...prev]
         updated[updated.length - 1] = {
           role: 'assistant',
-          content: 'Une erreur est survenue. Vérifie ta connexion et réessaie.',
+          content: '⚠️ Erreur de connexion. Vérifie ta connexion et réessaie.',
           streaming: false,
         }
         return updated
@@ -429,25 +474,43 @@ export default function CoachPage() {
         )}
       </div>
 
-      {/* Context bar — données biométriques du jour */}
+      {/* Context bar — données biométriques + séance + nutrition */}
       {dailyCtx && (
         <div
           className="mx-4 mb-3 flex items-center gap-3 px-3 py-2 rounded-xl text-xs flex-shrink-0 overflow-x-auto"
-          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
+          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', scrollbarWidth: 'none' }}
         >
-          {dailyCtx.weight_trend && (
-            <span className="whitespace-nowrap" style={{ color: 'var(--fiq-muted)' }}>
-              <span style={{ color: 'var(--fiq-accent)', fontWeight: 800 }}>{dailyCtx.weight_trend}kg</span> lissé
+          {/* Poids lissé */}
+          {dailyCtx.weight_trend != null && (
+            <span className="whitespace-nowrap flex-shrink-0" style={{ color: 'var(--fiq-muted)' }}>
+              ⚖️ <span style={{ color: 'var(--fiq-accent)', fontWeight: 800 }}>{dailyCtx.weight_trend}kg</span>
             </span>
           )}
+          {/* Sommeil profond */}
           {dailyCtx.sleep_deep_min !== null && (
-            <span className="whitespace-nowrap" style={{ color: dailyCtx.sleep_deep_min < 60 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
-              {dailyCtx.sleep_deep_min}min sommeil profond
+            <span className="whitespace-nowrap flex-shrink-0" style={{ color: dailyCtx.sleep_deep_min < 60 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+              😴 {dailyCtx.sleep_deep_min}min
             </span>
           )}
+          {/* Calories consommées */}
+          {dailyCtx.calories_consumed !== null && (
+            <span className="whitespace-nowrap flex-shrink-0" style={{ color: 'var(--fiq-muted)' }}>
+              🍽️ <span style={{ color: 'var(--fiq-text)', fontWeight: 700 }}>{dailyCtx.calories_consumed}</span> kcal
+            </span>
+          )}
+          {/* Protéines */}
           {dailyCtx.protein_g !== null && (
-            <span className="whitespace-nowrap" style={{ color: dailyCtx.protein_g < proteinTarget - 20 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
-              {dailyCtx.protein_g}g / {proteinTarget}g prot.
+            <span className="whitespace-nowrap flex-shrink-0" style={{ color: dailyCtx.protein_g < proteinTarget - 20 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+              🥩 {dailyCtx.protein_g}g/{proteinTarget}g
+            </span>
+          )}
+          {/* Dernière séance + tonnage */}
+          {dailyCtx.last_session_name && (
+            <span className="whitespace-nowrap flex-shrink-0" style={{ color: 'var(--fiq-muted)' }}>
+              🏋️ <span style={{ color: 'var(--fiq-text)', fontWeight: 700 }}>{dailyCtx.last_session_name}</span>
+              {dailyCtx.last_tonnage != null && (
+                <span> · {Math.round(dailyCtx.last_tonnage / 1000 * 10) / 10}t</span>
+              )}
             </span>
           )}
         </div>
@@ -577,11 +640,23 @@ export default function CoachPage() {
           </button>
         </div>
 
-        {/* Compteur + CTA upgrade */}
-        {isFree && coachCount > 0 && !limitReached && (
-          <p className="text-xs mt-2 text-right" style={{ color: remaining <= 1 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
-            {remaining} essai{remaining > 1 ? 's' : ''} gratuit{remaining > 1 ? 's' : ''} restant{remaining > 1 ? 's' : ''}
-          </p>
+        {/* Compteur quota free — visible dès le début (pas seulement après 1 message) */}
+        {isFree && !limitReached && !historyLoading && (
+          <div className="mt-2 flex items-center justify-between">
+            <div className="flex gap-1">
+              {[0, 1, 2].map(i => (
+                <div
+                  key={i}
+                  className="w-2 h-2 rounded-full"
+                  style={{ background: i < coachCount ? 'var(--fiq-muted)' : 'var(--fiq-accent)', opacity: i < coachCount ? 0.3 : 1 }}
+                />
+              ))}
+            </div>
+            <p className="text-xs" style={{ color: remaining <= 1 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+              {remaining} essai{remaining !== 1 ? 's' : ''} gratuit{remaining !== 1 ? 's' : ''} restant{remaining !== 1 ? 's' : ''}
+              {' '}· <Link href="/pricing" style={{ color: 'var(--fiq-accent)', fontWeight: 700 }}>Pro →</Link>
+            </p>
+          </div>
         )}
 
         {/* Mur d'upgrade free — CTA visible dans la zone de saisie */}

@@ -35,7 +35,9 @@ const CATEGORIES: (Big5Category & { patterns: RegExp[] })[] = [
     color: 'var(--fiq-accent)',
     patterns: [
       /squat/i,
-      /leg press/i, /presse.?jambe/i, /presse à jambe/i, /leg.?press/i,
+      /leg press/i, /leg.?press/i,
+      /presse.{0,10}(cuisse|jambe)/i,   // "Presse à Cuisses", "Presse à Jambes"
+      /cuisses/i,                         // "Cuisses" seul
       /hack squat/i,
       /goblet/i,
       /fente/i, /lunge/i, /bulgarian/i, /split squat/i,

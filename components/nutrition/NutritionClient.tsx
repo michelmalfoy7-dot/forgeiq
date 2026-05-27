@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Plus, Camera, ScanLine, Search, Trash2, ChevronDown, ChevronUp, Loader2, X, Check, Keyboard, Star, ChefHat, Minus, ArrowLeft } from 'lucide-react'
+import { Plus, Camera, ScanLine, Search, Trash2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, X, Check, Keyboard, Star, ChefHat, Minus, ArrowLeft } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -2252,10 +2252,59 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
 
 // ── Composant principal ───────────────────────────────────────
 
+// ── Formatage date pour la navigation ────────────────────────
+
+function formatViewDate(dateStr: string, todayStr: string): string {
+  if (dateStr === todayStr) return "Aujourd'hui"
+  // Midi local pour éviter les décalages DST
+  const d = new Date(dateStr + 'T12:00:00')
+  const t = new Date(todayStr + 'T12:00:00')
+  const diffDays = Math.round((t.getTime() - d.getTime()) / 86400000)
+  if (diffDays === 1) return 'Hier'
+  return new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }).format(d)
+}
+
+function addDays(dateStr: string, n: number): string {
+  const d = new Date(dateStr + 'T12:00:00')
+  d.setDate(d.getDate() + n)
+  return d.toISOString().split('T')[0]
+}
+
 export function NutritionClient({ initialLogs, targets, today }: Props) {
   const [logs, setLogs] = useState<FoodLog[]>(initialLogs)
+  const [viewDate, setViewDate] = useState(today)       // date affichée (peut être ≠ today)
+  const [dateLoading, setDateLoading] = useState(false)
   const [modalMeal, setModalMeal] = useState<string | null>(null)
   const [expandedMeals, setExpandedMeals] = useState<Set<string>>(new Set(['breakfast', 'lunch', 'dinner', 'snack']))
+
+  // Limite de navigation : 30 jours en arrière
+  const minDate = addDays(today, -30)
+  const isToday = viewDate === today
+  const canGoBack = viewDate > minDate
+
+  async function navigateToDate(date: string) {
+    setDateLoading(true)
+    setViewDate(date)
+    try {
+      const res = await fetch(`/api/nutrition/log?date=${date}`)
+      const { data } = await res.json()
+      setLogs(data?.logs ?? [])
+    } catch {
+      setLogs([])
+    } finally {
+      setDateLoading(false)
+    }
+  }
+
+  function goToPrevDay() {
+    if (!canGoBack) return
+    navigateToDate(addDays(viewDate, -1))
+  }
+
+  function goToNextDay() {
+    if (isToday) return
+    navigateToDate(addDays(viewDate, 1))
+  }
 
   const totals = logs.reduce(
     (acc, l) => ({
@@ -2295,7 +2344,7 @@ export function NutritionClient({ initialLogs, targets, today }: Props) {
   return (
     <div className="p-4 pb-24">
       {/* Header */}
-      <div className="pt-4 mb-5 flex items-start justify-between">
+      <div className="pt-4 mb-4 flex items-start justify-between">
         <div>
           <p className="fiq-label">Alimentation</p>
           <h1 className="text-2xl fiq-display mt-1" style={{ color: 'var(--fiq-text)' }}>Nutrition</h1>
@@ -2310,11 +2359,65 @@ export function NutritionClient({ initialLogs, targets, today }: Props) {
         </button>
       </div>
 
+      {/* Navigation date — ← Hier | Aujourd'hui | → */}
+      <div
+        className="flex items-center justify-between mb-4 px-1 py-2 rounded-2xl"
+        style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
+      >
+        <button
+          onClick={goToPrevDay}
+          disabled={!canGoBack || dateLoading}
+          className="p-2 rounded-xl transition-all flex-shrink-0"
+          style={{
+            color: canGoBack && !dateLoading ? 'var(--fiq-text)' : 'var(--fiq-border)',
+            opacity: canGoBack && !dateLoading ? 1 : 0.4,
+          }}
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+
+        <div className="flex flex-col items-center gap-0.5 flex-1">
+          {dateLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--fiq-muted)' }} />
+          ) : (
+            <p className="font-black text-sm" style={{ color: isToday ? 'var(--fiq-accent)' : 'var(--fiq-text)' }}>
+              {formatViewDate(viewDate, today)}
+            </p>
+          )}
+          {!isToday && !dateLoading && (
+            <button
+              onClick={() => navigateToDate(today)}
+              className="text-[10px] font-semibold"
+              style={{ color: 'var(--fiq-accent)' }}
+            >
+              → Retour aujourd&apos;hui
+            </button>
+          )}
+          {isToday && (
+            <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+              {new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long' }).format(new Date(today + 'T12:00:00'))}
+            </p>
+          )}
+        </div>
+
+        <button
+          onClick={goToNextDay}
+          disabled={isToday || dateLoading}
+          className="p-2 rounded-xl transition-all flex-shrink-0"
+          style={{
+            color: !isToday && !dateLoading ? 'var(--fiq-text)' : 'var(--fiq-border)',
+            opacity: !isToday && !dateLoading ? 1 : 0.4,
+          }}
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+      </div>
+
       {/* Résumé calories */}
       <div className="fiq-card mb-4 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <p className="fiq-label">Calories du jour</p>
+            <p className="fiq-label">{isToday ? 'Calories du jour' : `Calories · ${formatViewDate(viewDate, today)}`}</p>
             <p className="text-3xl fiq-display mt-0.5" style={{ color: 'var(--fiq-text)' }}>
               {Math.round(totals.calories)}
               <span className="text-base font-normal ml-1" style={{ color: 'var(--fiq-muted)' }}>
@@ -2396,10 +2499,16 @@ export function NutritionClient({ initialLogs, targets, today }: Props) {
                 <div className="mt-2">
                   {entries.length === 0 ? (
                     <p className="text-xs py-3 text-center" style={{ color: 'var(--fiq-muted)' }}>
-                      Aucun aliment —{' '}
-                      <button onClick={() => setModalMeal(meal)} style={{ color: 'var(--fiq-accent)' }}>
-                        Ajouter
-                      </button>
+                      {dateLoading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin inline" />
+                      ) : (
+                        <>
+                          Aucun aliment enregistré —{' '}
+                          <button onClick={() => setModalMeal(meal)} style={{ color: 'var(--fiq-accent)' }}>
+                            {isToday ? 'Ajouter' : 'Ajouter quand même'}
+                          </button>
+                        </>
+                      )}
                     </p>
                   ) : (
                     <>
@@ -2412,7 +2521,7 @@ export function NutritionClient({ initialLogs, targets, today }: Props) {
                         style={{ color: 'var(--fiq-accent)', background: 'var(--fiq-faint)', border: '1px dashed var(--fiq-border)' }}
                       >
                         <Plus className="w-3 h-3" />
-                        Ajouter un aliment
+                        {isToday ? 'Ajouter un aliment' : 'Ajouter un oubli'}
                       </button>
                     </>
                   )}
@@ -2428,7 +2537,7 @@ export function NutritionClient({ initialLogs, targets, today }: Props) {
         <AddFoodModal
           onClose={() => setModalMeal(null)}
           onAdded={handleAdded}
-          today={today}
+          today={viewDate}
           initialMealType={modalMeal}
           targets={targets}
           consumedToday={{

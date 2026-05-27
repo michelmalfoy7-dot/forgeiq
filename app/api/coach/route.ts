@@ -331,11 +331,17 @@ export async function POST(req: NextRequest) {
     })
 
     // Construire l'historique pour Claude (ordre chronologique, fenêtre glissante)
+    // Strip leading assistant messages — Anthropic API requires conversations to start with 'user'
+    const historyOrdered = [...(history ?? [])].reverse().map(m => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }))
+    // Find first user message index (skip orphan assistant messages at the top)
+    const firstUserIdx = historyOrdered.findIndex(m => m.role === 'user')
+    const cleanHistory = firstUserIdx >= 0 ? historyOrdered.slice(firstUserIdx) : []
+
     const messages: Anthropic.MessageParam[] = [
-      ...([...(history ?? [])].reverse().map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      }))),
+      ...cleanHistory,
       { role: 'user', content: userMessage },
     ]
 
