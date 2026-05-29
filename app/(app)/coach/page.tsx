@@ -310,19 +310,18 @@ export default function CoachPage() {
         setCoachLimit(9999)
         setCoachCount(0)
       } else if (inTrial) {
-        // Essai gratuit : 3 messages/semaine pendant 30 jours
-        const startOfWeek = new Date()
-        const dow = startOfWeek.getUTCDay() === 0 ? 6 : startOfWeek.getUTCDay() - 1
-        startOfWeek.setUTCDate(startOfWeek.getUTCDate() - dow)
-        startOfWeek.setUTCHours(0, 0, 0, 0)
-        setCoachLimit(3)
-        const { count: weekly } = await supabase
+        // Essai gratuit : 10 messages/mois calendaire pendant 30 jours
+        const startOfMonth = new Date()
+        startOfMonth.setUTCDate(1)
+        startOfMonth.setUTCHours(0, 0, 0, 0)
+        setCoachLimit(10)
+        const { count: monthly } = await supabase
           .from('coach_messages')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', user.id)
           .eq('role', 'user')
-          .gte('created_at', startOfWeek.toISOString())
-        setCoachCount(weekly ?? 0)
+          .gte('created_at', startOfMonth.toISOString())
+        setCoachCount(monthly ?? 0)
       } else if (free) {
         // Essai terminé → bloqué
         setCoachLimit(0)
@@ -640,7 +639,7 @@ export default function CoachPage() {
             placeholder={
               !isFree ? 'Pose ta question au coach...'
               : !isInTrial ? '🔒 Essai terminé — Passe en Pro...'
-              : limitReached ? '🔒 Quota semaine atteint — reviens lundi ou passe en Pro...'
+              : limitReached ? '🔒 Limite du mois atteinte — reviens le 1er ou passe en Pro...'
               : 'Pose ta question au coach...'
             }
             disabled={loading || (isFree && (!isInTrial || limitReached))}
@@ -670,28 +669,18 @@ export default function CoachPage() {
         </div>
 
         {/* Compteur quota free — visible dès le début (pas seulement après 1 message) */}
-        {/* Bannière essai gratuit — 3/semaine pendant 30j */}
+        {/* Bannière essai gratuit — 10/mois pendant 30j */}
         {isFree && isInTrial && !historyLoading && (
-          <div className="mt-2 flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              {/* Dots hebdomadaires */}
-              {[0, 1, 2].map(i => (
-                <div key={i} className="w-2 h-2 rounded-full transition-all"
-                  style={{
-                    background: i < coachCount ? 'var(--fiq-muted)' : 'var(--fiq-accent)',
-                    opacity: i < coachCount ? 0.35 : 1,
-                  }} />
-              ))}
-              <p className="text-xs" style={{ color: limitReached ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
-                {limitReached
-                  ? 'Quota semaine atteint · reviens lundi'
-                  : `${3 - coachCount} message${3 - coachCount > 1 ? 's' : ''} restant${3 - coachCount > 1 ? 's' : ''} cette semaine`}
-              </p>
-            </div>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <p className="text-xs" style={{ color: limitReached ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+              🎁{' '}
+              {limitReached
+                ? <>Limite atteinte · <Link href="/pricing" style={{ color: 'var(--fiq-accent)', fontWeight: 700 }}>Pro →</Link></>
+                : <><span className="font-black" style={{ color: 'var(--fiq-accent)' }}>{coachCount}/{10}</span> ce mois · essai gratuit</>}
+            </p>
             <p className="text-xs" style={{ color: (trialDaysLeft ?? 30) <= 5 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
-              {(trialDaysLeft ?? 0) > 0
-                ? <>essai J+{30 - (trialDaysLeft ?? 0)} · <Link href="/pricing" style={{ color: 'var(--fiq-accent)', fontWeight: 700 }}>Pro →</Link></>
-                : <Link href="/pricing" style={{ color: 'var(--fiq-accent)', fontWeight: 700 }}>Passer en Pro →</Link>}
+              {(trialDaysLeft ?? 0) > 0 && `${trialDaysLeft}j restant${(trialDaysLeft ?? 0) > 1 ? 's' : ''} · `}
+              <Link href="/pricing" style={{ color: 'var(--fiq-accent)', fontWeight: 700 }}>Pro →</Link>
             </p>
           </div>
         )}

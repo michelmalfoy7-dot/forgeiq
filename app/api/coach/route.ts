@@ -14,7 +14,7 @@ const MODEL_COACH = 'claude-haiku-4-5'
 // Limites selon le plan
 const LIMITS = {
   free_trial_days:   30,  // Durée max de l'essai gratuit (jours depuis inscription)
-  free_weekly:        3,  // Messages/semaine pendant l'essai — ~0,6¢/user sur tout l'essai
+  free_monthly:      10,  // Messages/mois pendant l'essai — ~1,5¢/user sur tout l'essai
   monthly:           60,  // Pro mensuel — usage confortable
   annual:      Infinity,  // Pro annuel — illimité
   lifetime:    Infinity,  // Accès à vie — illimité
@@ -218,20 +218,19 @@ export async function POST(req: NextRequest) {
       msgLimit = Infinity
 
     } else if (isInTrial) {
-      // Début de semaine = lundi 00:00:00 UTC
-      const startOfWeek = new Date()
-      const dow = startOfWeek.getUTCDay() === 0 ? 6 : startOfWeek.getUTCDay() - 1 // 0=lun, 6=dim
-      startOfWeek.setUTCDate(startOfWeek.getUTCDate() - dow)
-      startOfWeek.setUTCHours(0, 0, 0, 0)
+      // Essai gratuit : 10 messages/mois calendaire
+      const startOfMonth = new Date()
+      startOfMonth.setUTCDate(1)
+      startOfMonth.setUTCHours(0, 0, 0, 0)
 
-      const { count: weekly } = await supabase
+      const { count: monthly } = await supabase
         .from('coach_messages')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
         .eq('role', 'user')
-        .gte('created_at', startOfWeek.toISOString())
-      msgCount = weekly ?? 0
-      msgLimit = LIMITS.free_weekly
+        .gte('created_at', startOfMonth.toISOString())
+      msgCount = monthly ?? 0
+      msgLimit = LIMITS.free_monthly
 
     } else if (status === 'lifetime' || (status === 'pro' && plan === 'annual')) {
       msgLimit = Infinity
@@ -253,7 +252,7 @@ export async function POST(req: NextRequest) {
 
     if (msgLimit !== Infinity && msgCount >= msgLimit) {
       const errMsg = isInTrial
-        ? `Tu as utilisé tes ${LIMITS.free_weekly} messages gratuits cette semaine. Reviens lundi ou passe en Pro.`
+        ? `Tu as utilisé tes ${LIMITS.free_monthly} messages gratuits ce mois-ci. Reviens le 1er ou passe en Pro.`
         : `Limite de ${msgLimit} messages atteinte ce mois-ci.`
       return NextResponse.json({
         data: null,
@@ -491,7 +490,7 @@ export async function POST(req: NextRequest) {
         // Période d'essai : 3/semaine pendant 30j
         'X-Coach-Trial-Days-Left': String(isInTrial ? trialDaysLeft : 0),
         'X-Coach-In-Trial': String(isInTrial),
-        'X-Coach-Weekly-Limit': String(isInTrial),
+        'X-Coach-Monthly-Trial': String(isInTrial),
       },
     })
   } catch {
