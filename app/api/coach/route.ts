@@ -7,45 +7,21 @@ export const dynamic = 'force-dynamic'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-// Modèles — Sonnet pour réponses complexes, Haiku pour questions simples
-const MODEL_SONNET = 'claude-sonnet-4-20250514'
-const MODEL_HAIKU  = 'claude-haiku-3-5-20241022'
+// Haiku uniquement — le contexte préchargé (profil + séances + macros) suffit
+// pour des réponses qualitatives en coaching fitness. ~10x moins cher que Sonnet.
+const MODEL_COACH = 'claude-haiku-4-5'
 
-// Limites selon le plan — alignées avec la page /pricing
+// Limites selon le plan
 const LIMITS = {
-  free_trial_days: 30, // Gratuit — 30 jours d'essai complet post-inscription
-  monthly:  60,        // Pro mensuel — usage confortable
-  annual:   Infinity,  // Pro annuel — illimité
-  lifetime: Infinity,  // Accès à vie — illimité
+  free_trial_days:   30,  // Durée max de l'essai gratuit (jours depuis inscription)
+  free_weekly:        3,  // Messages/semaine pendant l'essai — ~0,6¢/user sur tout l'essai
+  monthly:           60,  // Pro mensuel — usage confortable
+  annual:      Infinity,  // Pro annuel — illimité
+  lifetime:    Infinity,  // Accès à vie — illimité
 }
+
 // Nombre de messages d'historique injectés dans le contexte
-const HISTORY_LIMIT = 6  // 6 au lieu de 8 : économise ~200 tokens/appel sans perte de contexte
-
-// Seuil de protection pour les plans illimités (après N messages/mois → Haiku)
-const HAIKU_THRESHOLD_UNLIMITED = 120
-
-/**
- * Choisit le modèle selon la complexité du message et le volume d'usage.
- * - Questions simples/courtes → Haiku (~10x moins cher)
- * - Questions complexes ou utilisateur léger → Sonnet (qualité maximale)
- * - Utilisateurs très actifs sur plan illimité → Haiku (protection coût)
- */
-function pickModel(message: string, monthlyCount: number, isUnlimited: boolean): string {
-  // Protection coût : heavy users sur plans illimités → Haiku
-  if (isUnlimited && monthlyCount >= HAIKU_THRESHOLD_UNLIMITED) return MODEL_HAIKU
-
-  // Détection requête complexe : termes techniques ou message long
-  const words = message.trim().split(/\s+/).length
-  const complexTerms = [
-    'programme', 'périodis', 'plan', 'séance', 'exercice', 'explique',
-    'compare', 'analyse', 'volume', 'intensité', 'progression', 'deload',
-    'blessure', 'douleur', 'alimentation', 'macros', 'calories', 'régime',
-    'technique', 'musculation', 'cardio', 'récupération', 'sommeil',
-  ]
-  const isComplex = words > 20 || complexTerms.some(t => message.toLowerCase().includes(t))
-
-  return isComplex ? MODEL_SONNET : MODEL_HAIKU
-}
+const HISTORY_LIMIT = 6
 
 // Ratios protéines selon objectif (g/kg de poids de corps) — sources ISSN/ACSM
 const PROTEIN_RATIO: Record<string, { min: number; max: number }> = {
@@ -213,13 +189,13 @@ export async function POST(req: NextRequest) {
     const isAdmin = subProfile?.is_admin ?? false
     const isFree = !isAdmin && status !== 'pro' && status !== 'lifetime'
 
-    // Résolution du tier de limite + essai gratuit 30 jours
+    // ── Calcul âge du compte ──────────────────────────────────────────────────
     const accountCreatedAt = new Date(user.created_at ?? Date.now())
     const accountAgeDays = (Date.now() - accountCreatedAt.getTime()) / (1000 * 60 * 60 * 24)
     const trialDaysLeft = Math.max(0, Math.ceil(LIMITS.free_trial_days - accountAgeDays))
     const isInTrial = isFree && accountAgeDays < LIMITS.free_trial_days
 
-    // Bloquer les utilisateurs free hors essai AVANT d'interroger les compteurs
+    // ── Bloquer free hors essai (> 30 jours) ─────────────────────────────────
     if (isFree && !isInTrial) {
       return NextResponse.json({
         data: null,
@@ -230,12 +206,41 @@ export async function POST(req: NextRequest) {
       }, { status: 429 })
     }
 
-    // Comptage usage mensuel (Pro mensuel seulement — trial + illimités = pas de comptage)
+    // ── Comptage messages selon le plan ───────────────────────────────────────
+    // Free trial : 3/semaine (lundi 00:00 → dimanche 23:59)
+    // Pro mensuel : 60/mois
+    // Illimitié (annuel, lifetime, admin) : pas de comptage
+
     let msgCount = 0
-    if (!isAdmin && !isInTrial && status === 'pro') {
+    let msgLimit: number
+
+    if (isAdmin) {
+      msgLimit = Infinity
+
+    } else if (isInTrial) {
+      // Début de semaine = lundi 00:00:00 UTC
+      const startOfWeek = new Date()
+      const dow = startOfWeek.getUTCDay() === 0 ? 6 : startOfWeek.getUTCDay() - 1 // 0=lun, 6=dim
+      startOfWeek.setUTCDate(startOfWeek.getUTCDate() - dow)
+      startOfWeek.setUTCHours(0, 0, 0, 0)
+
+      const { count: weekly } = await supabase
+        .from('coach_messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('role', 'user')
+        .gte('created_at', startOfWeek.toISOString())
+      msgCount = weekly ?? 0
+      msgLimit = LIMITS.free_weekly
+
+    } else if (status === 'lifetime' || (status === 'pro' && plan === 'annual')) {
+      msgLimit = Infinity
+
+    } else {
+      // Pro mensuel
       const startOfMonth = new Date()
-      startOfMonth.setDate(1)
-      startOfMonth.setHours(0, 0, 0, 0)
+      startOfMonth.setUTCDate(1)
+      startOfMonth.setUTCHours(0, 0, 0, 0)
       const { count: monthly } = await supabase
         .from('coach_messages')
         .select('*', { count: 'exact', head: true })
@@ -243,23 +248,21 @@ export async function POST(req: NextRequest) {
         .eq('role', 'user')
         .gte('created_at', startOfMonth.toISOString())
       msgCount = monthly ?? 0
+      msgLimit = LIMITS.monthly
     }
 
-    const msgLimit = isAdmin ? Infinity
-      : isInTrial ? Infinity
-      : status === 'lifetime' ? Infinity
-      : status === 'pro' && plan === 'annual' ? Infinity
-      : status === 'pro' ? LIMITS.monthly
-      : 0  // fallback (ne devrait pas arriver — free sans trial = bloqué au-dessus)
-
     if (msgLimit !== Infinity && msgCount >= msgLimit) {
+      const errMsg = isInTrial
+        ? `Tu as utilisé tes ${LIMITS.free_weekly} messages gratuits cette semaine. Reviens lundi ou passe en Pro.`
+        : `Limite de ${msgLimit} messages atteinte ce mois-ci.`
       return NextResponse.json({
         data: null,
-        error: `Limite de ${msgLimit} messages atteinte ce mois-ci.`,
+        error: errMsg,
         limitReached: true,
         count: msgCount,
         limit: msgLimit,
-        isFree: false,
+        isFree,
+        weeklyLimit: isInTrial,
       }, { status: 429 })
     }
 
@@ -417,9 +420,7 @@ export async function POST(req: NextRequest) {
       content: userMessage,
     })
 
-    // Choisir le modèle selon complexité + usage mensuel
-    const isUnlimited = msgLimit === Infinity
-    const selectedModel = pickModel(userMessage, msgCount, isUnlimited)
+    // Haiku pour tous — contexte préchargé = qualité optimale pour le coaching fitness
 
     // Stream Claude avec prompt caching sur le system prompt
     // Le system prompt (~700 tokens) est mis en cache 5min → économise ~70% des tokens input
@@ -432,7 +433,7 @@ export async function POST(req: NextRequest) {
         try {
           const claudeStream = anthropic.messages.stream(
             {
-              model: selectedModel,
+              model: MODEL_COACH,
               max_tokens: 600,  // 800 → 600 : suffisant pour 3 paragraphes, -25% sur output tokens
               system: [
                 {
@@ -487,11 +488,10 @@ export async function POST(req: NextRequest) {
         'X-Coach-Limit': String(msgLimit === Infinity ? 9999 : msgLimit),
         'X-Coach-Is-Free': String(isFree),
         'X-Coach-Is-Admin': String(isAdmin),
-        // Période d'essai gratuit
+        // Période d'essai : 3/semaine pendant 30j
         'X-Coach-Trial-Days-Left': String(isInTrial ? trialDaysLeft : 0),
         'X-Coach-In-Trial': String(isInTrial),
-        // Modèle utilisé (debug / monitoring)
-        'X-Coach-Model': selectedModel === MODEL_HAIKU ? 'haiku' : 'sonnet',
+        'X-Coach-Weekly-Limit': String(isInTrial),
       },
     })
   } catch {
