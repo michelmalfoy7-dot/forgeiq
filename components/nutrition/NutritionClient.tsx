@@ -502,6 +502,8 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
   const [favLoading, setFavLoading] = useState(false)
   const [savingFav, setSavingFav] = useState(false)
   const [savedFav, setSavedFav] = useState(false)
+  const [favError, setFavError] = useState<string | null>(null)
+  const [deletingFavId, setDeletingFavId] = useState<string | null>(null)
   // Recettes
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [recLoading, setRecLoading] = useState(false)
@@ -550,9 +552,14 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
 
   // Reset savedFav + restaure préférence unité quand on change d'aliment
   useEffect(() => {
-    setSavedFav(false)
-    if (!selectedFood) return
+    setFavError(null)
+    if (!selectedFood) { setSavedFav(false); return }
     const name = selectedFood.name_fr ?? selectedFood.name
+    // Pré-cocher l'étoile si cet aliment est déjà dans les favoris chargés
+    const alreadySaved = favorites.some(
+      f => f.food_name.toLowerCase() === name.toLowerCase()
+    )
+    setSavedFav(alreadySaved)
     const serving = getServingInfo(name)
     if (serving) {
       // Par défaut 'unit' pour les aliments avec unité naturelle (oeuf, banane…)
@@ -566,7 +573,8 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
     } else {
       setUnitMode('g')
     }
-  }, [selectedFood])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFood, favorites])
 
   // Cycling des messages de chargement analyse photo
   useEffect(() => {
@@ -817,10 +825,11 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
   }
 
   async function saveFavorite() {
-    if (!selectedFood) return
+    if (!selectedFood || savedFav) return
     setSavingFav(true)
+    setFavError(null)
     try {
-      await fetch('/api/nutrition/favorites', {
+      const res = await fetch('/api/nutrition/favorites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -835,10 +844,27 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
           default_quantity_g: parseInt(quantity) || 100,
         }),
       })
-      setSavedFav(true)
-      setFavorites([]) // Invalide le cache pour le prochain chargement
+      const json = await res.json()
+      if (json.error) {
+        setFavError('Impossible de sauvegarder. Réessaie.')
+      } else {
+        setSavedFav(true)
+        setFavorites([]) // Invalide le cache pour le prochain chargement
+      }
+    } catch {
+      setFavError('Erreur réseau. Réessaie.')
     } finally {
       setSavingFav(false)
+    }
+  }
+
+  async function deleteFavorite(favId: string) {
+    setDeletingFavId(favId)
+    try {
+      await fetch(`/api/nutrition/favorites?id=${favId}`, { method: 'DELETE' })
+      setFavorites(prev => prev.filter(f => f.id !== favId))
+    } finally {
+      setDeletingFavId(null)
     }
   }
 
@@ -1184,33 +1210,45 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
             ) : (
               <div className="space-y-2 max-h-[50vh] overflow-y-auto pb-2">
                 {favorites.map(fav => (
-                  <button
-                    key={fav.id}
-                    onClick={() => addFromFavorite(fav)}
-                    className="w-full text-left px-3 py-3 rounded-xl transition-all flex items-center gap-3"
-                    style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
-                  >
-                    <Star className="w-4 h-4 shrink-0" style={{ color: '#F59E0B', fill: '#F59E0B' }} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold truncate" style={{ color: 'var(--fiq-text)' }}>
-                        {fav.food_name}
-                      </p>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
-                        {fav.brand ? `${fav.brand} · ` : ''}
-                        {fav.calories_per_100g ? `${Math.round(fav.calories_per_100g)} kcal` : ''}
-                        {fav.protein_per_100g ? ` · ${Math.round(fav.protein_per_100g)}g prot.` : ''}
-                        {' /100g'}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-xs font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
-                        {fav.default_quantity_g}g
-                      </p>
-                      {fav.use_count > 1 && (
-                        <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>×{fav.use_count}</p>
-                      )}
-                    </div>
-                  </button>
+                  <div key={fav.id} className="flex items-stretch gap-2">
+                    <button
+                      onClick={() => addFromFavorite(fav)}
+                      className="flex-1 text-left px-3 py-3 rounded-xl transition-all flex items-center gap-3"
+                      style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
+                    >
+                      <Star className="w-4 h-4 shrink-0" style={{ color: '#F59E0B', fill: '#F59E0B' }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate" style={{ color: 'var(--fiq-text)' }}>
+                          {fav.food_name}
+                        </p>
+                        <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                          {fav.brand ? `${fav.brand} · ` : ''}
+                          {fav.calories_per_100g ? `${Math.round(fav.calories_per_100g)} kcal` : ''}
+                          {fav.protein_per_100g ? ` · ${Math.round(fav.protein_per_100g)}g prot.` : ''}
+                          {' /100g'}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
+                          {fav.default_quantity_g}g
+                        </p>
+                        {fav.use_count > 1 && (
+                          <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>×{fav.use_count}</p>
+                        )}
+                      </div>
+                    </button>
+                    {/* Bouton suppression favori */}
+                    <button
+                      onClick={() => deleteFavorite(fav.id)}
+                      disabled={deletingFavId === fav.id}
+                      className="px-3 rounded-xl flex items-center justify-center shrink-0"
+                      style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
+                    >
+                      {deletingFavId === fav.id
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <X className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -1876,21 +1914,27 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
                   )}
                 </div>
                 {/* Bouton favoris */}
-                <button
-                  onClick={saveFavorite}
-                  disabled={savingFav}
-                  className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all"
-                  style={{
-                    background: savedFav ? '#F59E0B22' : 'var(--fiq-faint)',
-                    border: `1px solid ${savedFav ? '#F59E0B66' : 'var(--fiq-border)'}`,
-                    color: savedFav ? '#F59E0B' : 'var(--fiq-muted)',
-                  }}
-                >
-                  {savingFav
-                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : <Star className="w-3.5 h-3.5" style={{ fill: savedFav ? '#F59E0B' : 'none', color: savedFav ? '#F59E0B' : 'var(--fiq-muted)' }} />}
-                  {savedFav ? 'Favori' : ''}
-                </button>
+                <div className="flex flex-col items-end gap-1">
+                  <button
+                    onClick={saveFavorite}
+                    disabled={savingFav || savedFav}
+                    title={savedFav ? 'Déjà dans les favoris' : 'Ajouter aux favoris'}
+                    className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all"
+                    style={{
+                      background: savedFav ? '#F59E0B22' : 'var(--fiq-faint)',
+                      border: `1px solid ${savedFav ? '#F59E0B66' : favError ? '#EF444466' : 'var(--fiq-border)'}`,
+                      color: savedFav ? '#F59E0B' : favError ? '#EF4444' : 'var(--fiq-muted)',
+                    }}
+                  >
+                    {savingFav
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <Star className="w-3.5 h-3.5" style={{ fill: savedFav ? '#F59E0B' : 'none', color: savedFav ? '#F59E0B' : favError ? '#EF4444' : 'var(--fiq-muted)' }} />}
+                    {savedFav ? 'Favori ✓' : favError ? '!' : ''}
+                  </button>
+                  {favError && (
+                    <span className="text-[10px]" style={{ color: '#EF4444' }}>{favError}</span>
+                  )}
+                </div>
               </div>
               {/* Macros pour 100g */}
               <div className="grid grid-cols-4 gap-2 pt-2">
