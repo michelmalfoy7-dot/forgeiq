@@ -13,7 +13,7 @@ const MODEL_HAIKU  = 'claude-haiku-3-5-20241022'
 
 // Limites selon le plan — alignées avec la page /pricing
 const LIMITS = {
-  free:     3,         // Gratuit — 3 essais à VIE (pas mensuel), pour découvrir sans saigner sur l'IA
+  free_trial_days: 30, // Gratuit — 30 jours d'essai complet post-inscription
   monthly:  60,        // Pro mensuel — usage confortable
   annual:   Infinity,  // Pro annuel — illimité
   lifetime: Infinity,  // Accès à vie — illimité
@@ -213,28 +213,26 @@ export async function POST(req: NextRequest) {
     const isAdmin = subProfile?.is_admin ?? false
     const isFree = !isAdmin && status !== 'pro' && status !== 'lifetime'
 
-    // Résolution du tier de limite
-    let msgLimit: number
-    if (isAdmin) msgLimit = LIMITS.lifetime            // Admin = illimité
-    else if (status === 'lifetime') msgLimit = LIMITS.lifetime
-    else if (status === 'pro' && plan === 'annual') msgLimit = LIMITS.annual
-    else if (status === 'pro') msgLimit = LIMITS.monthly
-    else msgLimit = LIMITS.free
+    // Résolution du tier de limite + essai gratuit 30 jours
+    const accountCreatedAt = new Date(user.created_at ?? Date.now())
+    const accountAgeDays = (Date.now() - accountCreatedAt.getTime()) / (1000 * 60 * 60 * 24)
+    const trialDaysLeft = Math.max(0, Math.ceil(LIMITS.free_trial_days - accountAgeDays))
+    const isInTrial = isFree && accountAgeDays < LIMITS.free_trial_days
 
-    // Admin → pas de comptage (inutile)
-    // Free → comptage all-time (pas mensuel) → coût fixe max $0.06/user
-    // Pro  → comptage mensuel (reset chaque mois)
-    let msgCount: number
-    if (isAdmin) {
-      msgCount = 0
-    } else if (isFree) {
-      const { count: total } = await supabase
-        .from('coach_messages')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('role', 'user')
-      msgCount = total ?? 0
-    } else {
+    // Bloquer les utilisateurs free hors essai AVANT d'interroger les compteurs
+    if (isFree && !isInTrial) {
+      return NextResponse.json({
+        data: null,
+        error: 'Ton essai gratuit de 30 jours est terminé. Passe en Pro pour continuer avec le coach IA.',
+        limitReached: true,
+        isFree: true,
+        trialExpired: true,
+      }, { status: 429 })
+    }
+
+    // Comptage usage mensuel (Pro mensuel seulement — trial + illimités = pas de comptage)
+    let msgCount = 0
+    if (!isAdmin && !isInTrial && status === 'pro') {
       const startOfMonth = new Date()
       startOfMonth.setDate(1)
       startOfMonth.setHours(0, 0, 0, 0)
@@ -247,18 +245,21 @@ export async function POST(req: NextRequest) {
       msgCount = monthly ?? 0
     }
 
-    if (msgCount >= msgLimit) {
+    const msgLimit = isAdmin ? Infinity
+      : isInTrial ? Infinity
+      : status === 'lifetime' ? Infinity
+      : status === 'pro' && plan === 'annual' ? Infinity
+      : status === 'pro' ? LIMITS.monthly
+      : 0  // fallback (ne devrait pas arriver — free sans trial = bloqué au-dessus)
+
+    if (msgLimit !== Infinity && msgCount >= msgLimit) {
       return NextResponse.json({
         data: null,
-        error: isFree
-          ? `Tes ${LIMITS.free} messages de découverte sont épuisés. Passe en Pro pour accéder au coach IA.`
-          : msgLimit === Infinity
-            ? 'Erreur comptage'
-            : `Limite de ${msgLimit} messages atteinte ce mois-ci.`,
+        error: `Limite de ${msgLimit} messages atteinte ce mois-ci.`,
         limitReached: true,
         count: msgCount,
         limit: msgLimit,
-        isFree,
+        isFree: false,
       }, { status: 429 })
     }
 
@@ -486,6 +487,9 @@ export async function POST(req: NextRequest) {
         'X-Coach-Limit': String(msgLimit === Infinity ? 9999 : msgLimit),
         'X-Coach-Is-Free': String(isFree),
         'X-Coach-Is-Admin': String(isAdmin),
+        // Période d'essai gratuit
+        'X-Coach-Trial-Days-Left': String(isInTrial ? trialDaysLeft : 0),
+        'X-Coach-In-Trial': String(isInTrial),
         // Modèle utilisé (debug / monitoring)
         'X-Coach-Model': selectedModel === MODEL_HAIKU ? 'haiku' : 'sonnet',
       },

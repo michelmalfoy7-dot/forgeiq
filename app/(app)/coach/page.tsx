@@ -218,6 +218,8 @@ export default function CoachPage() {
   const [coachLimit, setCoachLimit] = useState(9999)
   const [isFree, setIsFree] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null)
+  const [isInTrial, setIsInTrial] = useState(false)
   const [followUps] = useState<string[]>(getFollowUps())
   const [clearing, setClearing] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -296,19 +298,22 @@ export default function CoachPage() {
       const free = !admin && status !== 'pro' && status !== 'lifetime'
       setIsFree(free)
 
+      // Période d'essai gratuit : 30 jours post-inscription
+      const accountCreatedAt = new Date(user.created_at ?? Date.now())
+      const accountAgeDays = (Date.now() - accountCreatedAt.getTime()) / (1000 * 60 * 60 * 24)
+      const daysLeft = Math.max(0, Math.ceil(30 - accountAgeDays))
+      const inTrial = free && accountAgeDays < 30
+      setIsInTrial(inTrial)
+      setTrialDaysLeft(inTrial ? daysLeft : null)
+
       if (admin) {
         // Admin : pas de comptage, pas de limite
         setCoachLimit(9999)
         setCoachCount(0)
       } else if (free) {
-        // Comptage all-time pour les free
-        setCoachLimit(3)
-        const { count: total } = await supabase
-          .from('coach_messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('role', 'user')
-        setCoachCount(total ?? 0)
+        // Free : accès illimité pendant 30j, bloqué après
+        setCoachLimit(inTrial ? 9999 : 0)
+        setCoachCount(inTrial ? 0 : 1) // count=1 avec limit=0 → limitReached = true
       } else {
         // Comptage mensuel pour les Pro
         const limit = (status === 'lifetime' || plan === 'annual') ? 9999 : 60
@@ -390,9 +395,15 @@ export default function CoachPage() {
       }
       if (!res.ok || !res.body) throw new Error('Erreur réseau')
 
-      // Lire le compteur depuis les headers de réponse
+      // Lire le compteur + trial depuis les headers de réponse
       const headerCount = res.headers.get('X-Coach-Count')
       if (headerCount) setCoachCount(parseInt(headerCount))
+      const headerTrialDays = res.headers.get('X-Coach-Trial-Days-Left')
+      const headerInTrial = res.headers.get('X-Coach-In-Trial')
+      if (headerInTrial === 'true' && headerTrialDays) {
+        setIsInTrial(true)
+        setTrialDaysLeft(parseInt(headerTrialDays))
+      }
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -641,31 +652,26 @@ export default function CoachPage() {
         </div>
 
         {/* Compteur quota free — visible dès le début (pas seulement après 1 message) */}
-        {isFree && !limitReached && !historyLoading && (
+        {/* Bannière essai gratuit — affichée si dans les 30 derniers jours */}
+        {isFree && isInTrial && !limitReached && !historyLoading && (
           <div className="mt-2 flex items-center justify-between">
-            <div className="flex gap-1">
-              {[0, 1, 2].map(i => (
-                <div
-                  key={i}
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: i < coachCount ? 'var(--fiq-muted)' : 'var(--fiq-accent)', opacity: i < coachCount ? 0.3 : 1 }}
-                />
-              ))}
-            </div>
-            <p className="text-xs" style={{ color: remaining <= 1 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
-              {remaining} essai{remaining !== 1 ? 's' : ''} gratuit{remaining !== 1 ? 's' : ''} restant{remaining !== 1 ? 's' : ''}
-              {' '}· <Link href="/pricing" style={{ color: 'var(--fiq-accent)', fontWeight: 700 }}>Pro →</Link>
+            <p className="text-xs" style={{ color: (trialDaysLeft ?? 30) <= 5 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+              🎁 Essai gratuit ·{' '}
+              <span className="font-black" style={{ color: (trialDaysLeft ?? 30) <= 5 ? 'var(--fiq-orange)' : 'var(--fiq-accent)' }}>
+                {trialDaysLeft}j restant{(trialDaysLeft ?? 0) > 1 ? 's' : ''}
+              </span>
+              {' '}· <Link href="/pricing" style={{ color: 'var(--fiq-accent)', fontWeight: 700 }}>Passer en Pro →</Link>
             </p>
           </div>
         )}
 
-        {/* Mur d'upgrade free — CTA visible dans la zone de saisie */}
+        {/* Mur d'upgrade free — essai terminé */}
         {isFree && limitReached && (
           <div className="mt-3 rounded-2xl p-4 flex items-center gap-3"
             style={{ background: '#B4FF4A12', border: '1px solid #B4FF4A44' }}>
             <Crown className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Tes 3 essais sont utilisés</p>
+              <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Essai gratuit terminé</p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Passe en Pro pour continuer avec le coach IA.</p>
             </div>
             <Link href="/pricing"
