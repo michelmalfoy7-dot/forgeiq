@@ -325,14 +325,16 @@ export function calcWorkoutKcal(
 
 export type DailyTarget = {
   bmr: number
-  stepsKcal: number               // calories steps du JOUR
+  stepsKcal: number               // calories steps (source : hier ou aujourd'hui)
   workoutKcal: number             // calories séance du JOUR (0 si repos)
   workoutMuscleGroup: MuscleGroupCategory | null  // groupe musculaire identifié
   tdee: number                    // BMR + steps + workout
   adjustment: number              // surplus/déficit objectif
   targetCalories: number          // cible effective (plancher 1 200)
   macros: TDEEMacros
-  todaySteps: number | null
+  stepsUsed: number | null        // pas utilisés pour le TDEE (hier de préférence)
+  usedYesterdaySteps: boolean     // true → pas d'hier (complets), false → aujourd'hui
+  todaySteps: number | null       // pas bruts du jour (pour affichage KPI seulement)
   todayWorkoutTonnage: number | null
   usedFallback: boolean           // pas de données → multiplicateur
   isCustom: boolean               // macros manuelles actives
@@ -357,27 +359,32 @@ export function calcDailyTarget(params: {
   custom_protein_g?:  number | null
   custom_carbs_g?:    number | null
   custom_fat_g?:      number | null
-  todaySteps?:             number | null
+  todaySteps?:             number | null  // pas bruts du jour (KPI uniquement)
+  yesterdaySteps?:         number | null  // pas d'hier — journée COMPLÈTE (préféré pour TDEE)
   todayWorkoutTonnage?:    number | null
-  todayWorkoutSets?:       number | null  // nombre de séries → précision groupe musculaire
-  todayWorkoutName?:       string | null  // nom séance → classification Push/Pull/Legs
+  todayWorkoutSets?:       number | null
+  todayWorkoutName?:       string | null
 }): DailyTarget {
   const w = (params.weight_kg && params.weight_kg > 30 && params.weight_kg < 250)
     ? params.weight_kg : 75
 
   const bmr = calcBMR(w, params.height_cm ?? 175, params.age ?? 30, params.gender ?? 'male')
 
-  const steps   = params.todaySteps            ?? null
-  const tonnage = params.todayWorkoutTonnage   ?? null
-  const sets    = params.todayWorkoutSets      ?? null
-  const name    = params.todayWorkoutName      ?? null
+  // Pour le TDEE NEAT : préférer les pas d'hier (journée terminée et comptabilisée)
+  // Fallback sur les pas du jour si hier non disponible (début d'utilisation)
+  const usedYesterdaySteps = params.yesterdaySteps != null
+  const stepsForTdee = params.yesterdaySteps ?? params.todaySteps ?? null
+  const todaySteps   = params.todaySteps ?? null
 
-  const stepsKcal   = steps ? Math.round(steps * 0.04) : 0
-  // calcWorkoutKcal intègre groupe musculaire + séries (60%) + tonnage (40%)
+  const tonnage = params.todayWorkoutTonnage ?? null
+  const sets    = params.todayWorkoutSets    ?? null
+  const name    = params.todayWorkoutName    ?? null
+
+  const stepsKcal   = stepsForTdee ? Math.round(stepsForTdee * 0.04) : 0
   const workoutKcal = calcWorkoutKcal(tonnage, sets, name)
   const workoutMuscleGroup: MuscleGroupCategory | null = tonnage ? getSessionMuscleGroup(name) : null
 
-  const hasActivity = steps !== null || tonnage !== null
+  const hasActivity = stepsForTdee !== null || tonnage !== null
   let tdee: number
   let usedFallback = false
 
@@ -414,7 +421,8 @@ export function calcDailyTarget(params: {
   return {
     bmr, stepsKcal, workoutKcal, workoutMuscleGroup,
     tdee, adjustment, targetCalories, macros,
-    todaySteps: steps, todayWorkoutTonnage: tonnage, usedFallback, isCustom,
+    stepsUsed: stepsForTdee, usedYesterdaySteps,
+    todaySteps, todayWorkoutTonnage: tonnage, usedFallback, isCustom,
   }
 }
 

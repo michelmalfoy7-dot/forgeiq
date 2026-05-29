@@ -175,7 +175,10 @@ export default async function DashboardPage() {
   }
 
   // ── Cible calorique dynamique du jour — source unique via calcDailyTarget ──
-  // Utilise les données RÉELLES : steps + tonnage + séries + nom séance
+  // Steps : hier (journée complète) > aujourd'hui (partiel) — via weekLogs déjà chargés
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+  const yesterdaySteps = (weekLogs ?? []).find(l => l.log_date === yesterday)?.steps ?? null
+
   const dailyTarget = calcDailyTarget({
     weight_kg:         profile?.weight_kg,
     height_cm:         profile?.height_cm,
@@ -189,6 +192,7 @@ export default async function DashboardPage() {
     custom_carbs_g:    profile?.custom_carbs_g,
     custom_fat_g:      profile?.custom_fat_g,
     todaySteps:          todayLog?.steps                         ?? null,
+    yesterdaySteps,
     todayWorkoutTonnage: latestTodayWorkout?.total_tonnage_kg    ?? null,
     todayWorkoutSets:    latestTodayWorkout?.total_sets          ?? null,
     todayWorkoutName:    latestTodayWorkout?.session_name        ?? null,
@@ -380,7 +384,7 @@ export default async function DashboardPage() {
                     <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
                       {'📊 '}
                       {dailyTarget.bmr.toLocaleString('fr-FR')} BMR
-                      {dailyTarget.stepsKcal > 0 && ` + ${dailyTarget.stepsKcal} (pas)`}
+                      {dailyTarget.stepsKcal > 0 && ` + ${dailyTarget.stepsKcal} (${dailyTarget.usedYesterdaySteps ? 'pas hier' : 'pas'})`}
                       {dailyTarget.workoutKcal > 0 && ` + ${dailyTarget.workoutKcal} (${
                         dailyTarget.workoutMuscleGroup === 'legs'      ? 'jambes' :
                         dailyTarget.workoutMuscleGroup === 'back'      ? 'dos' :

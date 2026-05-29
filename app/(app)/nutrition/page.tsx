@@ -10,10 +10,17 @@ export default async function NutritionPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const today = new Date().toISOString().split('T')[0]
+  const today     = new Date().toISOString().split('T')[0]
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
 
-  // Charger logs, profil, steps du jour ET tonnage séance du jour en parallèle
-  const [{ data: logs }, { data: profile }, { data: todayLog }, { data: todayWorkout }] = await Promise.all([
+  // Charger logs, profil, steps du jour, steps d'hier (TDEE NEAT), séance du jour en parallèle
+  const [
+    { data: logs },
+    { data: profile },
+    { data: todayLog },
+    { data: yesterdayLog },
+    { data: todayWorkout },
+  ] = await Promise.all([
     supabase
       .from('food_logs')
       .select('*')
@@ -25,12 +32,19 @@ export default async function NutritionPage() {
       .select('goal, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g')
       .eq('id', user.id)
       .single(),
-    // Steps du check-in du jour pour le TDEE dynamique
+    // Steps du jour (KPI uniquement — partiel en cours de journée)
     supabase
       .from('daily_logs')
       .select('steps')
       .eq('user_id', user.id)
       .eq('log_date', today)
+      .maybeSingle(),
+    // Steps d'hier — journée complète → TDEE NEAT plus précis
+    supabase
+      .from('daily_logs')
+      .select('steps')
+      .eq('user_id', user.id)
+      .eq('log_date', yesterday)
       .maybeSingle(),
     // Séance complétée aujourd'hui — tonnage + séries + nom pour TDEE précis
     supabase
@@ -45,7 +59,7 @@ export default async function NutritionPage() {
   ])
 
   // Source unique de vérité : calcDailyTarget avec données réelles du jour
-  // Utilise tonnage + séries + nom séance pour estimer les calories avec précision
+  // Steps : hier (complets) > aujourd'hui (partiels). Tonnage + séries + nom séance.
   const dailyTarget = calcDailyTarget({
     weight_kg:         profile?.weight_kg,
     height_cm:         profile?.height_cm,
@@ -59,6 +73,7 @@ export default async function NutritionPage() {
     custom_carbs_g:    profile?.custom_carbs_g,
     custom_fat_g:      profile?.custom_fat_g,
     todaySteps:          todayLog?.steps                  ?? null,
+    yesterdaySteps:      yesterdayLog?.steps              ?? null,
     todayWorkoutTonnage: todayWorkout?.total_tonnage_kg   ?? null,
     todayWorkoutSets:    todayWorkout?.total_sets          ?? null,
     todayWorkoutName:    todayWorkout?.session_name        ?? null,

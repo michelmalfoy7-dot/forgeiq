@@ -14,10 +14,21 @@ type SetRow = {
   exercise_id: string
   exercise_name: string
   set_number: number
-  weight_kg: number | ''
+  weight_kg: string | number   // string pendant la saisie (supporte virgule locale)
   reps: number | ''
-  rpe: number | ''
+  rpe: string | number         // string pendant la saisie
   is_warmup: boolean
+}
+
+/** Normalise virgule → point et parse un poids flottant sans NaN */
+function parseWeight(val: string | number): number | string {
+  if (val === '' || val === null || val === undefined) return ''
+  const normalized = String(val).replace(',', '.')
+  // Garder comme string si l'utilisateur est en train de saisir "6." ou "6.8"
+  // Number() convertit "6." → 6, donc on préserve la string pour le rendu
+  if (normalized.endsWith('.')) return normalized
+  const n = parseFloat(normalized)
+  return isNaN(n) ? '' : n
 }
 
 type Exercise = {
@@ -46,7 +57,11 @@ function uid() { return Math.random().toString(36).slice(2) }
 function calcTonnage(sets: SetRow[], isBilateral = false) {
   return sets
     .filter((s) => s.weight_kg !== '' && s.reps !== '')
-    .reduce((acc, s) => acc + (Number(s.weight_kg) * Number(s.reps) * (isBilateral ? 2 : 1)), 0)
+    .reduce((acc, s) => {
+      const w = parseFloat(String(s.weight_kg).replace(',', '.')) || 0
+      const r = Number(s.reps) || 0
+      return acc + w * r * (isBilateral ? 2 : 1)
+    }, 0)
 }
 
 function calcTonnageGroup(group: ExerciseGroup) {
@@ -424,9 +439,25 @@ export default function WorkoutSessionPage() {
       const updated = [...prev]
       updated[groupIdx] = {
         ...updated[groupIdx],
-        sets: updated[groupIdx].sets.map((s) =>
-          s.id === setId ? { ...s, [key]: key === 'weight_kg' || key === 'rpe' ? (value === '' ? '' : parseFloat(value as string)) : key === 'reps' ? (value === '' ? '' : parseInt(value as string, 10)) : value } : s
-        ),
+        sets: updated[groupIdx].sets.map((s) => {
+          if (s.id !== setId) return s
+          if (key === 'weight_kg') {
+            // Stocker en string normalisée (virgule → point) pendant la saisie
+            // Ça permet "6." comme état intermédiaire sans perdre le point décimal
+            if (value === '') return { ...s, weight_kg: '' }
+            const norm = String(value).replace(',', '.')
+            return { ...s, weight_kg: norm }
+          }
+          if (key === 'rpe') {
+            if (value === '') return { ...s, rpe: '' }
+            const norm = String(value).replace(',', '.')
+            return { ...s, rpe: norm }
+          }
+          if (key === 'reps') {
+            return { ...s, reps: value === '' ? '' : parseInt(String(value), 10) }
+          }
+          return { ...s, [key]: value }
+        }),
       }
       return updated
     })
@@ -454,9 +485,9 @@ export default function WorkoutSessionPage() {
         exercise_id: s.exercise_id,
         exercise_name: s.exercise_name,
         set_number: s.set_number,
-        weight_kg: Number(s.weight_kg) || 0,
+        weight_kg: parseFloat(String(s.weight_kg).replace(',', '.')) || 0,
         reps: Number(s.reps) || 0,
-        rpe: s.rpe !== '' && s.rpe !== null ? parseFloat(String(s.rpe)) : null,
+        rpe: s.rpe !== '' && s.rpe !== null ? parseFloat(String(s.rpe).replace(',', '.')) : null,
         is_warmup: s.is_warmup,
         is_bilateral_dumbbell: g.is_bilateral_dumbbell ?? false,
       }))),
@@ -1152,7 +1183,7 @@ function ExerciseCard({
           <p className="fiq-label mb-2">Dernière séance</p>
           {group.lastSession.map((s, i) => {
             const current = group.sets[i]
-            const weightDiff = current && current.weight_kg !== '' ? Number(current.weight_kg) - s.weight_kg : null
+            const weightDiff = current && current.weight_kg !== '' ? parseFloat(String(current.weight_kg).replace(',', '.')) - s.weight_kg : null
             const repsDiff = current && current.reps !== '' ? Number(current.reps) - s.reps : null
             return (
               <div key={i} className="flex items-center justify-between">
@@ -1193,9 +1224,10 @@ function ExerciseCard({
       </div>
 
       {group.sets.map((s) => {
+        const parseW = (v: string | number) => parseFloat(String(v).replace(',', '.')) || 0
         const isTopSet = !s.is_warmup && s.weight_kg !== '' && s.reps !== '' &&
-          Number(s.weight_kg) * Number(s.reps) === Math.max(...group.sets.filter(x => !x.is_warmup && x.weight_kg !== '' && x.reps !== '').map(x => Number(x.weight_kg) * Number(x.reps)))
-        const isPR = !s.is_warmup && group.pr && s.weight_kg !== '' && Number(s.weight_kg) > group.pr
+          parseW(s.weight_kg) * Number(s.reps) === Math.max(...group.sets.filter(x => !x.is_warmup && x.weight_kg !== '' && x.reps !== '').map(x => parseW(x.weight_kg) * Number(x.reps)))
+        const isPR = !s.is_warmup && group.pr && s.weight_kg !== '' && parseW(s.weight_kg) > group.pr
 
         return (
           <div key={s.id} className="grid grid-cols-[40px_1fr_1fr_60px_32px] gap-2 items-center">
@@ -1209,17 +1241,29 @@ function ExerciseCard({
                     </span>
               }
             </div>
-            <Input type="number" step="0.5" placeholder="—" value={s.weight_kg}
+            <Input
+              type="text"
+              inputMode="decimal"
+              placeholder="—"
+              value={s.weight_kg}
               onChange={(e) => onUpdateSet(s.id, 'weight_kg', e.target.value)}
               className="text-center text-sm h-9"
               style={{ background: 'var(--surface)', borderColor: isPR ? 'var(--fiq-accent)' : 'var(--fiq-border)', color: 'var(--fiq-text)' }}
             />
-            <Input type="number" placeholder="—" value={s.reps}
+            <Input
+              type="text"
+              inputMode="numeric"
+              placeholder="—"
+              value={s.reps}
               onChange={(e) => onUpdateSet(s.id, 'reps', e.target.value)}
               className="text-center text-sm h-9"
               style={{ background: 'var(--surface)', borderColor: 'var(--fiq-border)', color: 'var(--fiq-text)' }}
             />
-            <Input type="number" min={1} max={10} step={0.5} inputMode="decimal" placeholder="—" value={s.rpe}
+            <Input
+              type="text"
+              inputMode="decimal"
+              placeholder="—"
+              value={s.rpe}
               onChange={(e) => onUpdateSet(s.id, 'rpe', e.target.value)}
               className="text-center text-sm h-9"
               style={{ background: 'var(--surface)', borderColor: 'var(--fiq-border)', color: 'var(--fiq-text)' }}

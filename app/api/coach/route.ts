@@ -88,6 +88,7 @@ function buildSystemPrompt(ctx: {
   tdeeBreakdown: {
     bmr: number
     stepsKcal: number
+    stepsUsed: number | null
     workoutKcal: number
     workoutMuscleGroup: string | null
     tdee: number
@@ -151,7 +152,7 @@ ${ctx.tdeeBreakdown.usedFallback
   ? `- Méthode : multiplicateur (aucune donnée d'activité renseignée aujourd'hui)
 - TDEE estimé : ${ctx.tdeeBreakdown.tdee} kcal`
   : `- BMR de base : ${ctx.tdeeBreakdown.bmr} kcal
-- Pas (${ctx.steps ?? 0} pas) : +${ctx.tdeeBreakdown.stepsKcal} kcal${ctx.tdeeBreakdown.workoutKcal > 0 ? `
+- Pas (${ctx.tdeeBreakdown.stepsUsed ?? 0} pas hier, journée complète) : +${ctx.tdeeBreakdown.stepsKcal} kcal${ctx.tdeeBreakdown.workoutKcal > 0 ? `
 - Séance ${ctx.tdeeBreakdown.workoutMuscleGroup ? `[${ctx.tdeeBreakdown.workoutMuscleGroup}]` : ''} (${ctx.tdeeBreakdown.todayWorkoutTonnage?.toLocaleString('fr-FR') ?? 0} kg · ${ctx.tdeeBreakdown.todayWorkoutSets ?? '?'} séries) : +${ctx.tdeeBreakdown.workoutKcal} kcal` : ''}
 - TDEE du jour : ${ctx.tdeeBreakdown.tdee} kcal`}
 - Ajustement objectif (FIXE) : ${ctx.tdeeBreakdown.adjustment > 0 ? '+' : ''}${ctx.tdeeBreakdown.adjustment} kcal
@@ -261,13 +262,15 @@ export async function POST(req: NextRequest) {
       }, { status: 429 })
     }
 
-    const today = new Date().toISOString().split('T')[0]
+    const today     = new Date().toISOString().split('T')[0]
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
 
     // Charger le contexte utilisateur en parallèle
     const [
       { data: profile },
       { data: todayLog },
+      { data: yesterdayLog },
       { data: recentWorkouts },
       { data: topPRs },
       { data: todayFoodLogs },
@@ -278,6 +281,10 @@ export async function POST(req: NextRequest) {
       supabase.from('daily_logs')
         .select('weight_kg, weight_trend, sleep_deep_min, sleep_total_min, fatigue_score, protein_g, steps, sys_bp')
         .eq('user_id', user.id).eq('log_date', today).maybeSingle(),
+      // Steps d'hier — journée complète → TDEE NEAT plus précis
+      supabase.from('daily_logs')
+        .select('steps')
+        .eq('user_id', user.id).eq('log_date', yesterday).maybeSingle(),
       supabase.from('workouts')
         .select('session_name, session_date, total_tonnage_kg, total_sets')
         .eq('user_id', user.id).not('completed_at', 'is', null)
@@ -344,6 +351,7 @@ export async function POST(req: NextRequest) {
       custom_carbs_g:    profile?.custom_carbs_g,
       custom_fat_g:      profile?.custom_fat_g,
       todaySteps:          todayLog?.steps                              ?? null,
+      yesterdaySteps:      yesterdayLog?.steps                         ?? null,
       todayWorkoutTonnage: todayWorkoutInRecent?.total_tonnage_kg       ?? null,
       todayWorkoutSets:    todayWorkoutInRecent?.total_sets             ?? null,
       todayWorkoutName:    todayWorkoutInRecent?.session_name           ?? null,
@@ -374,6 +382,7 @@ export async function POST(req: NextRequest) {
       tdeeBreakdown: {
         bmr:                  coachDailyTarget.bmr,
         stepsKcal:            coachDailyTarget.stepsKcal,
+        stepsUsed:            coachDailyTarget.stepsUsed,
         workoutKcal:          coachDailyTarget.workoutKcal,
         workoutMuscleGroup:   coachDailyTarget.workoutMuscleGroup,
         tdee:                 coachDailyTarget.tdee,
