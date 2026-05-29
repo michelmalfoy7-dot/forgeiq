@@ -106,6 +106,12 @@ export default function WorkoutSessionPage() {
   const [sharing, setSharing] = useState(false)
   const [sharePosted, setSharePosted] = useState(false)
   const [shareDismissed, setShareDismissed] = useState(false)
+  // Bilan IA post-séance
+  const [aiInsights, setAiInsights] = useState<{
+    congrats: string
+    insights: { emoji: string; title: string; text: string }[]
+  } | null>(null)
+  const [aiInsightsLoading, setAiInsightsLoading] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const restRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // Timestamp de début séance — résistant au background
@@ -545,6 +551,17 @@ export default function WorkoutSessionPage() {
         setCompleted(true)
         if (timerRef.current) clearInterval(timerRef.current)
         stopRest()
+        // Lancer le bilan IA en arrière-plan (non bloquant)
+        setAiInsightsLoading(true)
+        fetch('/api/workout/bilan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workout_id: workoutId }),
+        })
+          .then(r => r.json())
+          .then(({ data: bilan }) => { if (bilan) setAiInsights(bilan) })
+          .catch(() => { /* silencieux — bilan optionnel */ })
+          .finally(() => setAiInsightsLoading(false))
       } else {
         setCompleteError('Réponse inattendue du serveur. Réessaie.')
       }
@@ -691,6 +708,46 @@ export default function WorkoutSessionPage() {
               {summary.newPRs.map((name) => (
                 <p key={name} className="text-sm" style={{ color: 'var(--fiq-text)' }}>🎯 {name}</p>
               ))}
+            </div>
+          )}
+
+          {/* ── Bilan IA ForgeIQ ── */}
+          {(aiInsightsLoading || aiInsights) && (
+            <div className="fiq-card text-left space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">🤖</span>
+                <p className="text-xs font-black uppercase tracking-wider" style={{ color: 'var(--fiq-accent)' }}>
+                  Analyse ForgeIQ
+                </p>
+              </div>
+
+              {aiInsightsLoading ? (
+                <div className="flex items-center gap-3 py-2">
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" style={{ color: 'var(--fiq-accent)' }} />
+                  <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>Analyse de ta séance en cours…</p>
+                </div>
+              ) : aiInsights ? (
+                <>
+                  <p className="text-base font-black leading-snug" style={{ color: 'var(--fiq-text)' }}>
+                    {aiInsights.congrats}
+                  </p>
+                  <div className="space-y-3 pt-1">
+                    {aiInsights.insights.map((insight, i) => (
+                      <div key={i} className="flex gap-3">
+                        <span className="text-xl shrink-0 mt-0.5">{insight.emoji}</span>
+                        <div>
+                          <p className="text-sm font-black mb-0.5" style={{ color: 'var(--fiq-text)' }}>
+                            {insight.title}
+                          </p>
+                          <p className="text-xs leading-relaxed" style={{ color: 'var(--fiq-muted)' }}>
+                            {insight.text}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : null}
             </div>
           )}
 
