@@ -12,6 +12,8 @@ type SetInput = {
   rpe?: number | null
   is_warmup?: boolean
   is_bilateral_dumbbell?: boolean
+  is_unilateral?: boolean
+  unilateral_both_sides?: boolean
 }
 
 export async function POST(request: Request) {
@@ -33,12 +35,13 @@ export async function POST(request: Request) {
     const workingSets = (sets as SetInput[]).filter((s) => !s.is_warmup)
     const warmupSets = (sets as SetInput[]).filter((s) => s.is_warmup)
     const setsForTonnage = includeWarmup ? [...workingSets, ...warmupSets] : workingSets
-    // Tonnage × 2 pour les exercices bilatéraux aux haltères (ex: développé haltères = 2 haltères)
-    // Garde-fou : on ne double jamais si rpe est présent et charge > seuil machine (haltères max ~60kg/côté)
-    // La vraie protection vient du flag is_bilateral_dumbbell qui ne doit jamais être TRUE sur machines
+    // Multiplicateur × 2 pour :
+    //  - is_bilateral_dumbbell : haltères 2 bras simultanément (poids max 120kg/côté)
+    //  - is_unilateral + unilateral_both_sides : câble/machine fait des 2 côtés (tirage unilatéral, etc.)
     const totalTonnage = setsForTonnage.reduce((acc, s) => {
-      // Sécurité : si poids > 120kg on ne multiplie jamais par 2 (c'est forcément une machine/barre)
-      const multiplier = (s.is_bilateral_dumbbell && s.weight_kg <= 120) ? 2 : 1
+      const isBilateralDumbbell = (s.is_bilateral_dumbbell && s.weight_kg <= 120)
+      const isUnilateralDouble  = (s.is_unilateral && (s.unilateral_both_sides ?? true))
+      const multiplier = (isBilateralDumbbell || isUnilateralDouble) ? 2 : 1
       return acc + s.weight_kg * s.reps * multiplier
     }, 0)
     const totalSets = workingSets.length
@@ -68,8 +71,9 @@ export async function POST(request: Request) {
       const { error: sErr } = await supabase
         .from('workout_sets')
         .insert(sets.map((s: SetInput) => {
+          // Retirer les flags de multiplicateur (cols non présents dans workout_sets)
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { is_bilateral_dumbbell: _b, ...setData } = s
+          const { is_bilateral_dumbbell: _b, is_unilateral: _u, unilateral_both_sides: _ubs, ...setData } = s
           return { ...setData, workout_id }
         }))
 

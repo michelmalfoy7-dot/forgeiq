@@ -39,6 +39,7 @@ type Exercise = {
   muscle_primary: string[]
   equipment: string
   is_bilateral_dumbbell?: boolean
+  is_unilateral?: boolean
 }
 
 type ExerciseGroup = {
@@ -46,6 +47,9 @@ type ExerciseGroup = {
   exercise_name: string
   exercise_equipment?: string
   is_bilateral_dumbbell?: boolean
+  is_unilateral?: boolean
+  // Toggle × 2 côtés pour exercices unilatéraux (défaut true = on fait les 2 côtés)
+  unilateral_both_sides?: boolean
   sets: SetRow[]
   lastSession?: { weight_kg: number; reps: number }[]
   pr?: number
@@ -67,8 +71,10 @@ function calcTonnage(sets: SetRow[], isBilateral = false) {
 function calcTonnageGroup(group: ExerciseGroup) {
   const workSets = group.sets.filter((s) => !s.is_warmup)
   const warmSets = group.sets.filter((s) => s.is_warmup)
-  const isBilateral = group.is_bilateral_dumbbell ?? false
-  return calcTonnage(workSets, isBilateral) + calcTonnage(warmSets, isBilateral)
+  // × 2 si haltères bilatéraux OU exercice unilatéral avec toggle "2 côtés" actif
+  const isDouble = (group.is_bilateral_dumbbell ?? false) ||
+    (group.is_unilateral === true && (group.unilateral_both_sides ?? true))
+  return calcTonnage(workSets, isDouble) + calcTonnage(warmSets, isDouble)
 }
 
 export default function WorkoutSessionPage() {
@@ -194,7 +200,7 @@ export default function WorkoutSessionPage() {
       const { data: { user } } = await supabase.auth.getUser()
 
       const [{ data: exos }, { data: workout }] = await Promise.all([
-        supabase.from('exercises_library').select('id,name,name_fr,slug,muscle_primary,equipment,is_bilateral_dumbbell').order('name_fr'),
+        supabase.from('exercises_library').select('id,name,name_fr,slug,muscle_primary,equipment,is_bilateral_dumbbell,is_unilateral').order('name_fr'),
         supabase.from('workouts').select('session_name, completed_at').eq('id', workoutId).single(),
       ])
 
@@ -286,6 +292,8 @@ export default function WorkoutSessionPage() {
                 exercise_name: match.name_fr ?? match.name,
                 exercise_equipment: match.equipment,
                 is_bilateral_dumbbell: match.is_bilateral_dumbbell ?? false,
+                is_unilateral: match.is_unilateral ?? false,
+                unilateral_both_sides: true,
                 sets, lastSession, pr,
               }
             })
@@ -406,6 +414,8 @@ export default function WorkoutSessionPage() {
       exercise_name: ex.name_fr ?? ex.name,
       exercise_equipment: ex.equipment,
       is_bilateral_dumbbell: ex.is_bilateral_dumbbell ?? false,
+      is_unilateral: ex.is_unilateral ?? false,
+      unilateral_both_sides: true,
       sets: [firstSet], lastSession, pr,
     }])
     setShowSearch(false)
@@ -473,6 +483,15 @@ export default function WorkoutSessionPage() {
     })
   }
 
+  function toggleUnilateralSides(groupIdx: number) {
+    setGroups((prev) => {
+      const updated = [...prev]
+      const g = updated[groupIdx]
+      updated[groupIdx] = { ...g, unilateral_both_sides: !(g.unilateral_both_sides ?? true) }
+      return updated
+    })
+  }
+
   // ── TERMINER SÉANCE ──────────────────────────────────────────
   const completeWorkout = useCallback(async (retryPayload?: unknown) => {
     setCompleting(true)
@@ -490,6 +509,8 @@ export default function WorkoutSessionPage() {
         rpe: s.rpe !== '' && s.rpe !== null ? parseFloat(String(s.rpe).replace(',', '.')) : null,
         is_warmup: s.is_warmup,
         is_bilateral_dumbbell: g.is_bilateral_dumbbell ?? false,
+        is_unilateral: g.is_unilateral ?? false,
+        unilateral_both_sides: g.unilateral_both_sides ?? true,
       }))),
       notes: null,
       rpe_overall: null,
@@ -869,6 +890,7 @@ export default function WorkoutSessionPage() {
             onAddWarmup={() => addWarmupSet(gIdx)}
             onUpdateSet={(setId, key, value) => updateSet(gIdx, setId, key, value)}
             onRemoveSet={(setId) => removeSet(gIdx, setId)}
+            onToggleUnilateral={() => toggleUnilateralSides(gIdx)}
           />
         ))}
 
@@ -1139,17 +1161,20 @@ export default function WorkoutSessionPage() {
 
 // ── Composant exercice avec sets ──────────────────────────────
 function ExerciseCard({
-  group, onAddSet, onAddWarmup, onUpdateSet, onRemoveSet,
+  group, onAddSet, onAddWarmup, onUpdateSet, onRemoveSet, onToggleUnilateral,
 }: {
   group: ExerciseGroup
   onAddSet: () => void
   onAddWarmup: () => void
   onUpdateSet: (setId: string, key: keyof SetRow, value: string | boolean | number) => void
   onRemoveSet: (setId: string) => void
+  onToggleUnilateral: () => void
 }) {
   const [showHistory, setShowHistory] = useState(true)
   const tonnage = calcTonnageGroup(group)
   const isBilateral = group.is_bilateral_dumbbell ?? false
+  const isUnilateral = group.is_unilateral ?? false
+  const bothSides = group.unilateral_both_sides ?? true
 
   return (
     <div className="fiq-card space-y-3">
@@ -1160,7 +1185,23 @@ function ExerciseCard({
             <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-accent)' }}>
               {tonnage.toLocaleString('fr-FR')} kg
               {isBilateral && <span style={{ color: 'var(--fiq-muted)', marginLeft: 4 }}>· × 2 haltères</span>}
+              {isUnilateral && bothSides && <span style={{ color: 'var(--fiq-muted)', marginLeft: 4 }}>· × 2 côtés</span>}
             </p>
+          )}
+          {/* Toggle unilatéral — discret, sous le tonnage */}
+          {isUnilateral && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleUnilateral() }}
+              className="text-[10px] mt-1 px-2 py-0.5 rounded-full flex items-center gap-1"
+              style={{
+                background: bothSides ? '#B4FF4A18' : 'var(--fiq-faint)',
+                color: bothSides ? 'var(--fiq-accent)' : 'var(--fiq-muted)',
+                border: `1px solid ${bothSides ? '#B4FF4A44' : 'var(--fiq-border)'}`,
+              }}
+            >
+              <span>{bothSides ? '✓' : '○'}</span>
+              <span>{bothSides ? '× 2 côtés' : '× 1 côté (rééducation)'}</span>
+            </button>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -1208,10 +1249,21 @@ function ExerciseCard({
         </div>
       )}
 
-      {/* Indication tonnage × 2 si haltères bilatéraux */}
+      {/* Indication transparente du multiplicateur × 2 */}
       {isBilateral && group.sets.some(s => s.weight_kg !== '') && (
         <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
-          × 2 haltères — tonnage calculé sur les 2 côtés
+          × 2 haltères — tonnage calculé sur les 2 bras
+        </p>
+      )}
+      {isUnilateral && bothSides && group.sets.some(s => s.weight_kg !== '' && s.reps !== '') && (
+        <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+          {(() => {
+            const topSet = group.sets.filter(s => !s.is_warmup && s.weight_kg !== '' && s.reps !== '')[0]
+            if (!topSet) return null
+            const w = parseFloat(String(topSet.weight_kg).replace(',', '.'))
+            const r = Number(topSet.reps)
+            return `Ex: ${w}kg × ${r} reps × 2 côtés = ${w * r * 2} kg tonnage`
+          })()}
         </p>
       )}
 
