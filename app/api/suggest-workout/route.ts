@@ -10,11 +10,14 @@ import { unstable_cache } from 'next/cache'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
+
+    // ?skip=N — permet à l'utilisateur d'avancer manuellement dans le programme (ex: déjà fait cette séance)
+    const skipOffset = parseInt(new URL(req.url).searchParams.get('skip') ?? '0') || 0
 
     const today = new Date().toISOString().split('T')[0]
 
@@ -66,6 +69,10 @@ export async function GET() {
         if (lastWorkout) {
           const lastIdx = dayNames.indexOf(lastWorkout.session_name)
           nextIndex = lastIdx >= 0 ? (lastIdx + 1) % dayNames.length : 0
+        }
+        // Appliquer le décalage manuel (bouton "séance suivante" côté client)
+        if (skipOffset > 0) {
+          nextIndex = (nextIndex + skipOffset) % dayNames.length
         }
         sessionName = dayNames[nextIndex] ?? 'Séance libre'
 

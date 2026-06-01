@@ -73,6 +73,8 @@ export default function WorkoutPage() {
   const [suggestion, setSuggestion] = useState<SuggestedSession | null>(null)
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
+  const [skipOffset, setSkipOffset] = useState(0)
+  const [skipLoading, setSkipLoading] = useState(false)
   const [loggingRest, setLoggingRest] = useState(false)
   const [restLogged, setRestLogged] = useState(false)
   const [showActivityModal, setShowActivityModal] = useState(false)
@@ -117,6 +119,14 @@ export default function WorkoutPage() {
       }
     })()
   }, [])
+
+  async function fetchSuggestion(skip = 0) {
+    try {
+      const res = await fetch(`/api/suggest-workout${skip > 0 ? `?skip=${skip}` : ''}`)
+      const { data } = await res.json()
+      if (data) setSuggestion(data)
+    } catch { /* silencieux */ }
+  }
 
   useEffect(() => {
     async function load() {
@@ -357,15 +367,44 @@ export default function WorkoutPage() {
           {/* Card séance suggérée */}
           {suggestion && (
             <div className="fiq-card space-y-4">
-              <div>
-                <p className="fiq-label">Prochaine séance</p>
-                <h2 className="text-xl font-black mt-1" style={{ color: 'var(--fiq-text)' }}>
-                  {suggestion.session_name}
-                </h2>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
-                  {suggestion.program_name} · Séance {suggestion.session_index + 1}/{suggestion.total_sessions}
-                </p>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="fiq-label">Prochaine séance</p>
+                  <h2 className="text-xl font-black mt-1" style={{ color: 'var(--fiq-text)' }}>
+                    {suggestion.session_name}
+                  </h2>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                    {suggestion.program_name
+                      ? `${suggestion.program_name} · Séance ${suggestion.session_index + 1}/${suggestion.total_sessions}`
+                      : 'Séance libre'}
+                  </p>
+                </div>
+                {/* Bouton skip — uniquement si programme avec plusieurs séances */}
+                {suggestion.program_id && suggestion.total_sessions > 1 && (
+                  <button
+                    onClick={async () => {
+                      setSkipLoading(true)
+                      const next = skipOffset + 1
+                      setSkipOffset(next)
+                      await fetchSuggestion(next)
+                      setSkipLoading(false)
+                    }}
+                    disabled={skipLoading || starting}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all"
+                    style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
+                    title="Passer à la séance suivante du programme"
+                  >
+                    {skipLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Minus className="w-3 h-3" />Suivante</>}
+                  </button>
+                )}
               </div>
+
+              {skipOffset > 0 && (
+                <div className="rounded-lg px-3 py-2 text-xs"
+                  style={{ background: '#3D8BFF12', border: '1px solid #3D8BFF33', color: 'var(--fiq-blue)' }}>
+                  ↩ Séance avancée manuellement · <button className="underline" onClick={async () => { setSkipOffset(0); await fetchSuggestion(0) }}>Réinitialiser</button>
+                </div>
+              )}
 
               {suggestion.volume_adjustment !== 'normal' && (
                 <div

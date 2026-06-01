@@ -42,23 +42,33 @@ export async function POST(req: NextRequest) {
 
     if (!food_name) return NextResponse.json({ data: null, error: 'Nom manquant' }, { status: 400 })
 
-    // Upsert par (user_id, food_name) — pas de doublon
-    const { data, error } = await supabase
+    // Chercher si le favori existe déjà (insensible à la casse)
+    // On évite onConflict car l'index est une expression (lower(food_name)) — incompatible avec PostgREST upsert
+    const { data: existing } = await supabase
       .from('food_favorites')
-      .upsert({
-        user_id: user.id,
-        food_name,
-        food_id,
-        brand,
-        calories_per_100g,
-        protein_per_100g,
-        carbs_per_100g,
-        fat_per_100g,
-        fiber_per_100g,
-        default_quantity_g,
-      }, { onConflict: 'user_id,food_name', ignoreDuplicates: false })
-      .select()
-      .single()
+      .select('id')
+      .eq('user_id', user.id)
+      .ilike('food_name', food_name)
+      .maybeSingle()
+
+    let data, error
+    if (existing?.id) {
+      // Mise à jour du favori existant
+      ;({ data, error } = await supabase
+        .from('food_favorites')
+        .update({ brand, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, fiber_per_100g, default_quantity_g })
+        .eq('id', existing.id)
+        .eq('user_id', user.id)
+        .select()
+        .single())
+    } else {
+      // Insertion d'un nouveau favori
+      ;({ data, error } = await supabase
+        .from('food_favorites')
+        .insert({ user_id: user.id, food_name, food_id, brand, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, fiber_per_100g, default_quantity_g })
+        .select()
+        .single())
+    }
 
     if (error) throw error
     return NextResponse.json({ data, error: null })
