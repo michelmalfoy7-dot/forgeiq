@@ -53,9 +53,11 @@ export default async function DashboardPage() {
       .eq('user_id', user.id).not('completed_at', 'is', null)
       .order('session_date', { ascending: false }).limit(1).maybeSingle(),
 
-    supabase.from('workouts').select('id, session_date')
+    // Séances réelles de la semaine — jours de repos exclus du compteur
+    supabase.from('workouts').select('id, session_date, session_name')
       .eq('user_id', user.id).not('completed_at', 'is', null)
       .gte('session_date', getWeekStart())
+      .not('session_name', 'in', '("Jour de repos","Repos actif","Repos complet")')
       .order('session_date', { ascending: false }),
 
     supabase.from('daily_logs')
@@ -175,9 +177,22 @@ export default async function DashboardPage() {
   }
 
   // ── Cible calorique dynamique du jour — source unique via calcDailyTarget ──
-  // Steps : hier (journée complète) > aujourd'hui (partiel) — via weekLogs déjà chargés
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
   const yesterdaySteps = (weekLogs ?? []).find(l => l.log_date === yesterday)?.steps ?? null
+
+  // Moyenne steps 30 derniers jours (journées COMPLÈTES = exclut aujourd'hui, exclut 0)
+  // Source stable — évite le bug TDEE avec steps partiels du jour ou du matin
+  const logsWithSteps = (weekLogs ?? []).filter(l => l.log_date !== today && (l.steps ?? 0) > 0)
+  const avgSteps30d = logsWithSteps.length >= 3
+    ? Math.round(logsWithSteps.reduce((acc, l) => acc + (l.steps ?? 0), 0) / logsWithSteps.length)
+    : null
+
+  // Détection jour de repos (aucune séance réelle aujourd'hui)
+  const isRestDay = !latestTodayWorkout ||
+    ['Jour de repos', 'Repos actif', 'Repos complet'].includes(latestTodayWorkout.session_name ?? '')
+
+  // Tonnage de la dernière séance réelle (pour déficit = 0 si post-séance très lourde)
+  const recentHeavyTonnage = lastWorkout?.total_tonnage_kg ?? null
 
   const dailyTarget = calcDailyTarget({
     weight_kg:         profile?.weight_kg,
@@ -191,11 +206,14 @@ export default async function DashboardPage() {
     custom_protein_g:  profile?.custom_protein_g,
     custom_carbs_g:    profile?.custom_carbs_g,
     custom_fat_g:      profile?.custom_fat_g,
+    avgSteps30d,
     todaySteps:          todayLog?.steps                         ?? null,
     yesterdaySteps,
     todayWorkoutTonnage: latestTodayWorkout?.total_tonnage_kg    ?? null,
     todayWorkoutSets:    latestTodayWorkout?.total_sets          ?? null,
     todayWorkoutName:    latestTodayWorkout?.session_name        ?? null,
+    isRestDay,
+    recentHeavyTonnage,
   })
 
   const proteinTarget = { min: dailyTarget.macros.protein_g, max: dailyTarget.macros.protein_g }

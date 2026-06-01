@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Plus, Camera, ScanLine, Search, Trash2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, X, Check, Keyboard, Star, ChefHat, Minus, ArrowLeft } from 'lucide-react'
+import { Plus, Camera, ScanLine, Search, Trash2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, X, Check, Keyboard, Star, ChefHat, Minus, ArrowLeft, Link2, Sparkles } from 'lucide-react'
+import { WaterWidget } from '@/components/nutrition/WaterWidget'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -79,10 +80,24 @@ type Targets = {
   fat_g: number
 }
 
+type MealSuggestion = {
+  nom: string
+  emoji: string
+  description: string
+  aliments: string[]
+  calories: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+  prep_time?: string
+}
+
 type Props = {
   initialLogs: FoodLog[]
   targets: Targets
   today: string
+  initialWaterMl?: number
+  waterGoalMl?: number
 }
 
 // ── Types analyse photo ────────────────────────────────────────
@@ -2314,12 +2329,32 @@ function addDays(dateStr: string, n: number): string {
   return d.toISOString().split('T')[0]
 }
 
-export function NutritionClient({ initialLogs, targets, today }: Props) {
+export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 0, waterGoalMl = 2500 }: Props) {
   const [logs, setLogs] = useState<FoodLog[]>(initialLogs)
   const [viewDate, setViewDate] = useState(today)       // date affichée (peut être ≠ today)
   const [dateLoading, setDateLoading] = useState(false)
   const [modalMeal, setModalMeal] = useState<string | null>(null)
   const [expandedMeals, setExpandedMeals] = useState<Set<string>>(new Set(['breakfast', 'lunch', 'dinner', 'snack']))
+
+  // ── Suggestions IA repas ─────────────────────────────────────
+  const [showSuggest, setShowSuggest] = useState(false)
+  const [suggestLoading, setSuggestLoading] = useState(false)
+  const [suggestions, setSuggestions] = useState<MealSuggestion[]>([])
+  const [suggestError, setSuggestError] = useState<string | null>(null)
+  const [suggestMealType, setSuggestMealType] = useState('lunch')
+
+  // ── Import recette URL ───────────────────────────────────────
+  const [showUrlImport, setShowUrlImport] = useState(false)
+  const [urlInput, setUrlInput] = useState('')
+  const [urlLoading, setUrlLoading] = useState(false)
+  const [urlError, setUrlError] = useState<string | null>(null)
+  const [urlResult, setUrlResult] = useState<{
+    nom: string; portions: number; description?: string | null
+    ingredients: Array<{ nom: string; quantite_g: number; calories_per_100g: number; protein_per_100g: number; carbs_per_100g: number; fat_per_100g: number; fiber_per_100g?: number }>
+    macros_per_portion: { calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number }
+    note?: string | null; source_url: string
+  } | null>(null)
+  const [urlSaving, setUrlSaving] = useState(false)
 
   // Limite de navigation : 30 jours en arrière
   const minDate = addDays(today, -30)
@@ -2381,6 +2416,103 @@ export function NutritionClient({ initialLogs, targets, today }: Props) {
 
   function handleAdded(log: FoodLog) {
     setLogs(prev => [...prev, log])
+  }
+
+  // ── Suggestions IA ───────────────────────────────────────────
+
+  async function fetchSuggestions(mealType: string) {
+    setSuggestLoading(true)
+    setSuggestError(null)
+    setSuggestions([])
+    try {
+      const remaining_calories = Math.max(0, targets.calories - totals.calories)
+      const remaining_protein_g = Math.max(0, targets.protein_g - totals.protein_g)
+      const remaining_carbs_g = Math.max(0, targets.carbs_g - totals.carbs_g)
+      const remaining_fat_g = Math.max(0, targets.fat_g - totals.fat_g)
+      const res = await fetch('/api/nutrition/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ remaining_calories, remaining_protein_g, remaining_carbs_g, remaining_fat_g, meal_type: mealType }),
+      })
+      const { data, error } = await res.json()
+      if (error || !data) {
+        setSuggestError(error ?? 'Erreur lors de la génération.')
+      } else {
+        setSuggestions((data as { suggestions: MealSuggestion[] }).suggestions ?? [])
+      }
+    } catch {
+      setSuggestError('Erreur réseau. Réessaie.')
+    } finally {
+      setSuggestLoading(false)
+    }
+  }
+
+  // ── Import URL ───────────────────────────────────────────────
+
+  async function importFromUrl() {
+    if (!urlInput.trim() || urlLoading) return
+    setUrlLoading(true)
+    setUrlError(null)
+    setUrlResult(null)
+    try {
+      const res = await fetch('/api/nutrition/import-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urlInput.trim() }),
+      })
+      const { data, error, requiresPro } = await res.json() as { data: typeof urlResult; error: string | null; requiresPro?: boolean }
+      if (requiresPro) {
+        setUrlError('🔒 Fonctionnalité Pro — Passe au plan Pro pour importer des recettes depuis le web.')
+      } else if (error || !data) {
+        setUrlError(error ?? 'Impossible d\'extraire la recette.')
+      } else {
+        setUrlResult(data)
+      }
+    } catch {
+      setUrlError('Erreur réseau. Vérifie ta connexion.')
+    } finally {
+      setUrlLoading(false)
+    }
+  }
+
+  async function saveUrlAsRecipe() {
+    if (!urlResult) return
+    setUrlSaving(true)
+    try {
+      const ingredients = urlResult.ingredients.map((ing, i) => ({
+        food_name: ing.nom,
+        food_id: null,
+        quantity_g: ing.quantite_g,
+        calories_per_100g: ing.calories_per_100g,
+        protein_per_100g: ing.protein_per_100g,
+        carbs_per_100g: ing.carbs_per_100g,
+        fat_per_100g: ing.fat_per_100g,
+        fiber_per_100g: ing.fiber_per_100g ?? 0,
+        sort_order: i,
+      }))
+      const res = await fetch('/api/nutrition/recipes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: urlResult.nom,
+          description: urlResult.description ?? null,
+          total_servings: urlResult.portions,
+          ingredients,
+        }),
+      })
+      const { data, error } = await res.json()
+      if (data && !error) {
+        setShowUrlImport(false)
+        setUrlInput('')
+        setUrlResult(null)
+      } else {
+        setUrlError(error ?? 'Erreur lors de la sauvegarde.')
+      }
+    } catch {
+      setUrlError('Erreur réseau. Réessaie.')
+    } finally {
+      setUrlSaving(false)
+    }
   }
 
   const caloriesLeft = targets.calories - Math.round(totals.calories)
@@ -2506,6 +2638,49 @@ export function NutritionClient({ initialLogs, targets, today }: Props) {
         </div>
       </div>
 
+      {/* Widget hydratation */}
+      {isToday && (
+        <div className="mb-4">
+          <WaterWidget initialWaterMl={initialWaterMl} goalMl={waterGoalMl} />
+        </div>
+      )}
+
+      {/* Suggestions IA + Import URL — uniquement aujourd'hui */}
+      {isToday && (
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => {
+              const hour = new Date().getHours()
+              const auto = hour < 10 ? 'breakfast' : hour < 14 ? 'lunch' : hour < 18 ? 'snack' : 'dinner'
+              setSuggestMealType(auto)
+              setSuggestions([])
+              setSuggestError(null)
+              setShowSuggest(true)
+              fetchSuggestions(auto)
+            }}
+            className="flex-1 flex items-center gap-2.5 px-3 py-3 rounded-2xl transition-all"
+            style={{ background: '#B4FF4A12', border: '1px solid #B4FF4A33' }}
+          >
+            <Sparkles className="w-4 h-4 shrink-0" style={{ color: 'var(--fiq-accent)' }} />
+            <div className="text-left">
+              <p className="text-xs font-black" style={{ color: 'var(--fiq-accent)' }}>Suggestions IA</p>
+              <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>Repas adapté à tes macros</p>
+            </div>
+          </button>
+          <button
+            onClick={() => { setShowUrlImport(true); setUrlResult(null); setUrlError(null); setUrlInput('') }}
+            className="flex-1 flex items-center gap-2.5 px-3 py-3 rounded-2xl transition-all"
+            style={{ background: '#3D8BFF12', border: '1px solid #3D8BFF33' }}
+          >
+            <Link2 className="w-4 h-4 shrink-0" style={{ color: 'var(--fiq-blue)' }} />
+            <div className="text-left">
+              <p className="text-xs font-black" style={{ color: 'var(--fiq-blue)' }}>Import URL</p>
+              <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>Recette depuis le web</p>
+            </div>
+          </button>
+        </div>
+      )}
+
       {/* Journal par repas */}
       <div className="space-y-3">
         {MEAL_ORDER.map(meal => {
@@ -2591,6 +2766,299 @@ export function NutritionClient({ initialLogs, targets, today }: Props) {
             fat_g:     totals.fat_g,
           }}
         />
+      )}
+
+      {/* ── Modale Suggestions IA ────────────────────────────────── */}
+      {showSuggest && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: 'rgba(0,0,0,0.75)' }}
+          onClick={() => setShowSuggest(false)}
+        >
+          <div
+            className="w-full max-w-[480px] rounded-t-3xl p-5 space-y-4"
+            style={{
+              background: 'var(--fiq-card)',
+              border: '1px solid var(--fiq-border)',
+              maxHeight: 'calc(85dvh - 4rem - env(safe-area-inset-bottom))',
+              overflowY: 'auto',
+              marginBottom: 'calc(4rem + env(safe-area-inset-bottom))',
+              paddingBottom: '24px',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>
+                  ✨ Suggestions repas
+                </h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                  Adapté à tes macros restantes · {Math.round(Math.max(0, targets.calories - totals.calories))} kcal disponibles
+                </p>
+              </div>
+              <button onClick={() => setShowSuggest(false)}>
+                <X className="w-5 h-5" style={{ color: 'var(--fiq-muted)' }} />
+              </button>
+            </div>
+
+            {/* Sélecteur type de repas */}
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {MEAL_ORDER.map(m => (
+                <button
+                  key={m}
+                  onClick={() => {
+                    setSuggestMealType(m)
+                    setSuggestions([])
+                    fetchSuggestions(m)
+                  }}
+                  className="shrink-0 px-3 py-1.5 rounded-xl text-xs font-black transition-all"
+                  style={{
+                    background: suggestMealType === m ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
+                    color: suggestMealType === m ? 'var(--bg)' : 'var(--fiq-muted)',
+                    border: `1px solid ${suggestMealType === m ? 'var(--fiq-accent)' : 'var(--fiq-border)'}`,
+                  }}
+                >
+                  {MEAL_LABELS[m]}
+                </button>
+              ))}
+            </div>
+
+            {/* Contenu */}
+            {suggestLoading ? (
+              <div className="flex flex-col items-center gap-3 py-10">
+                <Loader2 className="w-7 h-7 animate-spin" style={{ color: 'var(--fiq-accent)' }} />
+                <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>ForgeIQ analyse tes macros…</p>
+              </div>
+            ) : suggestError ? (
+              <div className="rounded-2xl px-4 py-3 text-sm"
+                style={{ background: '#EF444418', border: '1px solid #EF444433', color: '#EF4444' }}>
+                {suggestError}
+              </div>
+            ) : suggestions.length === 0 ? (
+              <div className="text-center py-8" style={{ color: 'var(--fiq-muted)' }}>
+                <p className="text-3xl mb-2">🤖</p>
+                <p className="text-sm">Sélectionne un type de repas pour générer des suggestions.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {suggestions.map((s, i) => (
+                  <div key={i} className="rounded-2xl p-4 space-y-2"
+                    style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+                    <div className="flex items-start gap-3">
+                      <span className="text-2xl shrink-0">{s.emoji}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black text-sm" style={{ color: 'var(--fiq-text)' }}>{s.nom}</p>
+                        <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>{s.description}</p>
+                      </div>
+                      {s.prep_time && (
+                        <span className="text-[10px] shrink-0 px-2 py-1 rounded-lg font-semibold"
+                          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}>
+                          ⏱ {s.prep_time}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Macros */}
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="text-sm font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
+                        {s.calories} kcal
+                      </span>
+                      <span className="text-xs fiq-data" style={{ color: 'var(--fiq-blue)' }}>
+                        P {s.protein_g}g
+                      </span>
+                      <span className="text-xs fiq-data" style={{ color: '#A855F7' }}>
+                        G {s.carbs_g}g
+                      </span>
+                      <span className="text-xs fiq-data" style={{ color: 'var(--fiq-orange)' }}>
+                        L {s.fat_g}g
+                      </span>
+                    </div>
+
+                    {/* Liste aliments */}
+                    {s.aliments.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {s.aliments.map((a, j) => (
+                          <span key={j}
+                            className="text-[10px] px-2 py-0.5 rounded-full"
+                            style={{ background: 'var(--surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}>
+                            {a}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Régénérer */}
+                <button
+                  onClick={() => fetchSuggestions(suggestMealType)}
+                  className="w-full py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2"
+                  style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-accent)' }}
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Nouvelles suggestions
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Modale Import URL ────────────────────────────────────── */}
+      {showUrlImport && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: 'rgba(0,0,0,0.75)' }}
+          onClick={() => setShowUrlImport(false)}
+        >
+          <div
+            className="w-full max-w-[480px] rounded-t-3xl p-5 space-y-4"
+            style={{
+              background: 'var(--fiq-card)',
+              border: '1px solid var(--fiq-border)',
+              maxHeight: 'calc(88dvh - 4rem - env(safe-area-inset-bottom))',
+              overflowY: 'auto',
+              marginBottom: 'calc(4rem + env(safe-area-inset-bottom))',
+              paddingBottom: '24px',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>
+                  🔗 Importer une recette
+                </h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                  Colle l'URL d'une recette — l'IA extrait les macros
+                </p>
+              </div>
+              <button onClick={() => setShowUrlImport(false)}>
+                <X className="w-5 h-5" style={{ color: 'var(--fiq-muted)' }} />
+              </button>
+            </div>
+
+            {/* Input URL */}
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://www.marmiton.org/recettes/..."
+                  value={urlInput}
+                  onChange={e => setUrlInput(e.target.value)}
+                  className="flex-1 px-4 py-3 rounded-xl text-sm outline-none"
+                  style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+                  onKeyDown={e => { if (e.key === 'Enter') importFromUrl() }}
+                />
+                <button
+                  onClick={importFromUrl}
+                  disabled={!urlInput.trim() || urlLoading}
+                  className="px-4 py-3 rounded-xl font-black text-sm shrink-0 flex items-center gap-2"
+                  style={{
+                    background: urlInput.trim() && !urlLoading ? 'var(--fiq-blue)' : 'var(--fiq-faint)',
+                    color: urlInput.trim() && !urlLoading ? '#fff' : 'var(--fiq-muted)',
+                    border: '1px solid var(--fiq-border)',
+                  }}
+                >
+                  {urlLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[10px] px-1" style={{ color: 'var(--fiq-muted)' }}>
+                Sites supportés : Marmiton, Cuisineaz, 750g, AllRecipes, et la plupart des blogs cuisine.
+              </p>
+            </div>
+
+            {/* Erreur */}
+            {urlError && (
+              <div className="rounded-2xl px-4 py-3 text-sm"
+                style={{ background: '#EF444418', border: '1px solid #EF444433', color: '#EF4444' }}>
+                {urlError}
+              </div>
+            )}
+
+            {/* Résultat */}
+            {urlLoading && !urlResult && (
+              <div className="flex flex-col items-center gap-3 py-8">
+                <Loader2 className="w-7 h-7 animate-spin" style={{ color: 'var(--fiq-blue)' }} />
+                <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>Analyse de la recette en cours…</p>
+              </div>
+            )}
+
+            {urlResult && (
+              <div className="space-y-3">
+                {/* Infos recette */}
+                <div className="rounded-2xl p-4 space-y-3"
+                  style={{ background: 'var(--fiq-faint)', border: '1px solid #B4FF4A44' }}>
+                  <div>
+                    <p className="font-black text-base" style={{ color: 'var(--fiq-text)' }}>{urlResult.nom}</p>
+                    {urlResult.description && (
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>{urlResult.description}</p>
+                    )}
+                    <p className="text-xs mt-1" style={{ color: 'var(--fiq-muted)' }}>
+                      {urlResult.portions} portion{urlResult.portions > 1 ? 's' : ''} · {urlResult.ingredients.length} ingrédients
+                    </p>
+                  </div>
+
+                  {/* Macros par portion */}
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { label: 'Kcal/p.', value: urlResult.macros_per_portion.calories, color: 'var(--fiq-accent)' },
+                      { label: 'Prot.', value: urlResult.macros_per_portion.protein_g, color: 'var(--fiq-blue)' },
+                      { label: 'Gluc.', value: urlResult.macros_per_portion.carbs_g, color: '#A855F7' },
+                      { label: 'Lip.', value: urlResult.macros_per_portion.fat_g, color: 'var(--fiq-orange)' },
+                    ].map(m => (
+                      <div key={m.label} className="text-center">
+                        <p className="text-sm font-black fiq-data" style={{ color: m.color }}>
+                          {Math.round(m.value)}
+                        </p>
+                        <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>{m.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Liste ingrédients */}
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {urlResult.ingredients.map((ing, i) => (
+                    <div key={i}
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+                      style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+                      <span className="flex-1 font-semibold truncate" style={{ color: 'var(--fiq-text)' }}>
+                        {ing.nom}
+                      </span>
+                      <span style={{ color: 'var(--fiq-muted)' }}>{ing.quantite_g}g</span>
+                      {ing.calories_per_100g && (
+                        <span style={{ color: 'var(--fiq-accent)' }}>
+                          {Math.round(ing.calories_per_100g * ing.quantite_g / 100)} kcal
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {urlResult.note && (
+                  <p className="text-xs px-1 italic" style={{ color: 'var(--fiq-muted)' }}>
+                    💡 {urlResult.note}
+                  </p>
+                )}
+
+                {/* Bouton sauvegarder */}
+                <button
+                  onClick={saveUrlAsRecipe}
+                  disabled={urlSaving}
+                  className="w-full py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2"
+                  style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+                >
+                  {urlSaving
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <><Check className="w-4 h-4" />Sauvegarder dans mes recettes</>}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

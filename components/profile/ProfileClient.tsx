@@ -113,11 +113,21 @@ function NumberField({ label, value, onChange, min, max, unit }: {
   )
 }
 
+type GymProfile = {
+  id: string
+  slug: string
+  name: string
+  tier: string
+  logo_emoji: string
+}
+
 export function ProfileClient({
   profile, email, stats, big5 = [],
   subscriptionStatus = 'free',
   subscriptionPlan = null,
   hasStripeCustomer = false,
+  gymId = null,
+  gymProfiles = [],
 }: {
   profile: Profile
   email: string
@@ -126,6 +136,8 @@ export function ProfileClient({
   subscriptionStatus?: string
   subscriptionPlan?: string | null
   hasStripeCustomer?: boolean
+  gymId?: string | null
+  gymProfiles?: GymProfile[]
 }) {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -136,6 +148,8 @@ export function ProfileClient({
   )
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [avatarError, setAvatarError] = useState<string | null>(null)
+
+  const [gymIdState, setGymIdState] = useState<string>(gymId ?? '')
 
   const [goal, setGoal] = useState(profile?.goal ?? 'general')
   const [level, setLevel] = useState(profile?.level ?? 'beginner')
@@ -281,6 +295,7 @@ export function ProfileClient({
           steps_goal: Number(stepsGoal) || 8000,
           target_weight_kg: targetWeightKg ? Number(targetWeightKg) : null,
           include_warmup_in_tonnage: includeWarmupInTonnage,
+          gym_id: gymIdState || null,
         }),
       })
       if (res.ok) {
@@ -580,6 +595,60 @@ export function ProfileClient({
         <SelectField label="Objectif" value={goal} onChange={setGoal} options={GOAL_OPTIONS} />
         <SelectField label="Niveau" value={level} onChange={setLevel} options={LEVEL_OPTIONS} />
         <SelectField label="Équipement" value={equipment} onChange={setEquipment} options={EQUIP_OPTIONS} />
+
+        {/* Salle de sport — sélection pour exercices adaptés dans les programmes */}
+        {gymProfiles.length > 0 && (
+          <div>
+            <p className="fiq-label mb-1.5">Ma salle de sport</p>
+            <div className="grid grid-cols-1 gap-2">
+              {/* Option "Aucune / non configurée" */}
+              <button
+                type="button"
+                onClick={() => setGymIdState('')}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-left transition-all"
+                style={{
+                  background: !gymIdState ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
+                  border: `1px solid ${!gymIdState ? 'var(--fiq-accent)' : 'var(--fiq-border)'}`,
+                  color: !gymIdState ? 'var(--bg)' : 'var(--fiq-muted)',
+                }}>
+                <span className="text-lg">🚫</span>
+                <span className="font-semibold">Non configurée</span>
+              </button>
+              {gymProfiles.map(gym => {
+                const isSelected = gymIdState === gym.id
+                return (
+                  <button
+                    key={gym.id}
+                    type="button"
+                    onClick={() => setGymIdState(gym.id)}
+                    className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-left transition-all"
+                    style={{
+                      background: isSelected ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
+                      border: `1px solid ${isSelected ? 'var(--fiq-accent)' : 'var(--fiq-border)'}`,
+                      color: isSelected ? 'var(--bg)' : 'var(--fiq-text)',
+                    }}>
+                    <span className="text-lg">{gym.logo_emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-semibold">{gym.name}</span>
+                      <span className="ml-2 text-[10px] font-black px-1.5 py-0.5 rounded-full"
+                        style={{
+                          background: isSelected
+                            ? 'rgba(0,0,0,0.15)'
+                            : gym.tier === 'premium' ? '#B4FF4A22' : gym.tier === 'home' ? '#3D8BFF22' : 'var(--fiq-faint)',
+                          color: isSelected ? 'inherit' : gym.tier === 'premium' ? 'var(--fiq-accent)' : gym.tier === 'home' ? 'var(--fiq-blue)' : 'var(--fiq-muted)',
+                        }}>
+                        {gym.tier === 'premium' ? 'PREMIUM' : gym.tier === 'home' ? 'DOMICILE' : 'STANDARD'}
+                      </span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-[11px] mt-2 px-1" style={{ color: 'var(--fiq-muted)' }}>
+              Les programmes adaptent leurs exercices selon ton équipement de salle.
+            </p>
+          </div>
+        )}
 
         <div>
           <p className="fiq-label mb-1.5">Séances par semaine</p>

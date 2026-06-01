@@ -5,9 +5,21 @@ import { useRouter } from 'next/navigation'
 import { Plus, Dumbbell, Calendar, Clock, CheckCircle, X, ChevronRight, Filter, Eye } from 'lucide-react'
 import Link from 'next/link'
 
-type ProgramExercise = {
+type TierKey = 'premium' | 'standard' | 'home'
+
+type ExerciseTierOption = {
   slug: string
   name_fr: string
+}
+
+type ProgramExercise = {
+  // Format v1 (backward compat)
+  slug?: string
+  name_fr?: string
+  // Format v2 — sélection par tier salle
+  slot?: string
+  by_tier?: Record<TierKey, ExerciseTierOption>
+  // Communs
   sets: number
   reps: string
   rest_sec?: number
@@ -16,6 +28,7 @@ type ProgramExercise = {
 
 type ProgramDay = {
   name: string
+  focus?: string
   exercises?: ProgramExercise[]
 }
 
@@ -33,6 +46,16 @@ type Program = {
   is_custom: boolean
 }
 
+// Nom d'affichage d'un exercice selon le tier de la salle
+// Priorité : by_tier[tier] → by_tier.standard → name_fr → 'Exercice'
+function getExerciseName(ex: ProgramExercise, tier: TierKey | null): string {
+  if (ex.by_tier) {
+    const key = tier ?? 'standard'
+    return ex.by_tier[key]?.name_fr ?? ex.by_tier.standard?.name_fr ?? 'Exercice'
+  }
+  return ex.name_fr ?? 'Exercice'
+}
+
 // Normalise le format ancien (string) et nouveau ({name, exercises})
 function getDayName(day: string | ProgramDay): string {
   return typeof day === 'string' ? day : day.name
@@ -44,6 +67,9 @@ type Props = {
   userGoal: string | null
   userLevel: string | null
   userEquipment: string | null
+  gymTier?: TierKey | null
+  gymName?: string | null
+  gymEmoji?: string | null
 }
 
 const LEVEL_LABELS: Record<string, string> = {
@@ -78,17 +104,20 @@ function Badge({ label, color = 'accent' }: { label: string; color?: 'accent' | 
   )
 }
 
-function AdoptModal({ program, onClose, onConfirm, loading }: {
+function AdoptModal({ program, onClose, onConfirm, loading, gymTier, gymName, gymEmoji }: {
   program: Program; onClose: () => void; onConfirm: () => void; loading: boolean
+  gymTier: TierKey | null; gymName: string | null; gymEmoji: string | null
 }) {
+  const [expandedDay, setExpandedDay] = useState<number | null>(null)
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:pb-4"
       style={{ background: 'rgba(0,0,0,0.7)' }}
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl p-6 space-y-5 sm:mb-0"
-        style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)', marginBottom: 'calc(4rem + env(safe-area-inset-bottom))' }}
+        className="w-full max-w-sm rounded-2xl p-5 space-y-4 sm:mb-0"
+        style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)', marginBottom: 'calc(4rem + env(safe-area-inset-bottom))', maxHeight: '85vh', overflowY: 'auto' }}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between">
@@ -103,21 +132,72 @@ function AdoptModal({ program, onClose, onConfirm, loading }: {
           </button>
         </div>
 
-        <div className="rounded-xl p-3 space-y-1"
-          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
-          <p className="fiq-label mb-2">Structure des séances</p>
+        {/* Indicateur salle active */}
+        {gymName && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold"
+            style={{ background: '#B4FF4A10', border: '1px solid #B4FF4A30', color: 'var(--fiq-accent)' }}>
+            <span>{gymEmoji ?? '🏋️'}</span>
+            <span>Exercices adaptés pour {gymName}</span>
+          </div>
+        )}
+
+        {/* Structure des séances */}
+        <div className="rounded-xl overflow-hidden"
+          style={{ border: '1px solid var(--fiq-border)' }}>
+          <div className="px-3 pt-3 pb-2" style={{ background: 'var(--fiq-faint)' }}>
+            <p className="fiq-label">Structure des séances</p>
+          </div>
           {program.structure.days.map((day, i) => {
             const name = getDayName(day)
-            const exCount = typeof day === 'string' ? null : (day.exercises?.length ?? null)
+            const exercises = typeof day === 'string' ? [] : (day.exercises ?? [])
+            const focus = typeof day === 'string' ? null : (day as ProgramDay).focus ?? null
+            const isExpanded = expandedDay === i
             return (
-              <div key={i} className="flex items-center gap-2 text-sm" style={{ color: 'var(--fiq-text)' }}>
-                <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0"
-                  style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
-                  {i + 1}
-                </span>
-                <span className="flex-1">{name}</span>
-                {exCount !== null && (
-                  <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>{exCount} ex.</span>
+              <div key={i} style={{ borderTop: '1px solid var(--fiq-border)' }}>
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-2.5 text-left"
+                  style={{ background: isExpanded ? '#B4FF4A08' : 'transparent' }}
+                  onClick={() => setExpandedDay(isExpanded ? null : i)}
+                >
+                  <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0"
+                    style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
+                    {i + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>{name}</span>
+                    {focus && <span className="text-[10px] ml-2" style={{ color: 'var(--fiq-muted)' }}>{focus}</span>}
+                  </div>
+                  {exercises.length > 0 && (
+                    <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+                      {isExpanded ? '▲' : `${exercises.length} ex.`}
+                    </span>
+                  )}
+                </button>
+
+                {/* Exercices détaillés */}
+                {isExpanded && exercises.length > 0 && (
+                  <div className="px-3 pb-3 space-y-1.5" style={{ background: '#B4FF4A05' }}>
+                    {exercises.map((ex, j) => {
+                      const exName = getExerciseName(ex, gymTier)
+                      return (
+                        <div key={j} className="flex items-start gap-2">
+                          <span className="text-[10px] mt-0.5 font-black w-4 flex-shrink-0"
+                            style={{ color: 'var(--fiq-accent)' }}>
+                            {j + 1}.
+                          </span>
+                          <div className="flex-1">
+                            <span className="text-xs font-semibold" style={{ color: 'var(--fiq-text)' }}>
+                              {exName}
+                            </span>
+                            <span className="text-[10px] ml-1.5" style={{ color: 'var(--fiq-muted)' }}>
+                              {ex.sets}×{ex.reps}
+                              {ex.rest_sec && ` · ${ex.rest_sec}s`}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 )}
               </div>
             )
@@ -146,7 +226,7 @@ function AdoptModal({ program, onClose, onConfirm, loading }: {
   )
 }
 
-export function ProgramsClient({ programs, currentProgramId, userGoal, userLevel, userEquipment }: Props) {
+export function ProgramsClient({ programs, currentProgramId, userGoal, userLevel, userEquipment, gymTier = null, gymName = null, gymEmoji = null }: Props) {
   const router = useRouter()
   const [filterLevel, setFilterLevel] = useState<string>('all')
   const [filterGoal, setFilterGoal] = useState<string>('all')
@@ -186,6 +266,26 @@ export function ProgramsClient({ programs, currentProgramId, userGoal, userLevel
 
   return (
     <>
+      {/* Bandeau salle active */}
+      {gymName ? (
+        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl mb-4 text-sm font-semibold"
+          style={{ background: '#B4FF4A10', border: '1px solid #B4FF4A30', color: 'var(--fiq-accent)' }}>
+          <span className="text-base">{gymEmoji ?? '🏋️'}</span>
+          <span className="flex-1">Exercices adaptés pour <strong>{gymName}</strong></span>
+          <Link href="/profile" className="text-[10px] font-black px-2 py-0.5 rounded-full"
+            style={{ background: '#B4FF4A22', color: 'var(--fiq-accent)' }}>
+            Changer
+          </Link>
+        </div>
+      ) : (
+        <Link href="/profile" className="flex items-center gap-2 px-3 py-2.5 rounded-xl mb-4 text-sm"
+          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}>
+          <span className="text-base">🏋️</span>
+          <span className="flex-1">Configure ta salle pour des exercices adaptés</span>
+          <ChevronRight className="w-4 h-4 flex-shrink-0" />
+        </Link>
+      )}
+
       {/* Bouton custom + filtres */}
       <div className="flex gap-3 mb-4">
         <Link href="/programs/custom"
@@ -381,6 +481,9 @@ export function ProgramsClient({ programs, currentProgramId, userGoal, userLevel
           onClose={() => setAdoptTarget(null)}
           onConfirm={adoptProgram}
           loading={adopting}
+          gymTier={gymTier ?? null}
+          gymName={gymName ?? null}
+          gymEmoji={gymEmoji ?? null}
         />
       )}
     </>

@@ -601,15 +601,18 @@ export default function WorkoutSessionPage() {
   // Exercices récemment utilisés (pour les remonter dans les résultats)
   const recentExerciseIds = new Set(groups.map(g => g.exercise_id))
 
+  // Normalisation identique à ExerciseBrowser (accents + tirets)
+  const normEx = (s: string) =>
+    s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[-_]/g, ' ').replace(/[^a-z0-9 ]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase()
+
   const filteredExercises = exercises
     .filter((e) => {
-      // Filtre texte — trim + normalisation accents
       const rawQ = searchQuery.trim()
-      const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-      const q = normalize(rawQ)
+      const q = normEx(rawQ)
       const matchQuery = rawQ.length < 1 ||
-        normalize(e.name_fr ?? '').includes(q) ||
-        normalize(e.name).includes(q)
+        normEx(e.name_fr ?? '').includes(q) ||
+        normEx(e.name).includes(q) ||
+        (e.muscle_primary ?? []).some(m => normEx(m).includes(q))
       // Filtre équipement
       const matchEquip = equipmentFilter === 'all' || e.equipment === equipmentFilter
       // Filtre groupe musculaire
@@ -626,12 +629,13 @@ export default function WorkoutSessionPage() {
         const bRecent = recentExerciseIds.has(b.id) ? 1 : 0
         return aRecent - bRecent
       }
-      const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-      const q = normalize(rawQ)
-      // Correspondance exacte nom_fr en premier
-      const aExact = normalize(a.name_fr ?? '').startsWith(q) ? 0 : 1
-      const bExact = normalize(b.name_fr ?? '').startsWith(q) ? 0 : 1
-      return aExact - bExact
+      const q = normEx(rawQ)
+      // Exact match nom_fr > starts with > contains
+      const aFr = normEx(a.name_fr ?? '')
+      const bFr = normEx(b.name_fr ?? '')
+      const aScore = aFr === q ? 0 : aFr.startsWith(q) ? 1 : 2
+      const bScore = bFr === q ? 0 : bFr.startsWith(q) ? 1 : 2
+      return aScore - bScore
     })
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`

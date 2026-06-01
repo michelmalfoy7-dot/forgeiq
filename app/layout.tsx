@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { PostHogProvider } from '@/lib/posthog'
+import { SplashScreen } from '@/components/ui/SplashScreen'
 import './globals.css'
 
 const geistSans = Geist({
@@ -92,6 +93,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${geistSans.variable} ${geistMono.variable} h-full`}
     >
       <body className="min-h-full flex flex-col antialiased">
+        <SplashScreen />
         <PostHogProvider>{children}</PostHogProvider>
       </body>
     </html>

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { AlertBar } from '@/components/ui/AlertBar'
-import { Loader2, Plus, Dumbbell, ChevronRight, History, Moon, Bike, Play, Minus, Check } from 'lucide-react'
+import { Loader2, Plus, Dumbbell, ChevronRight, History, Moon, Bike, Play, Minus, Check, X } from 'lucide-react'
 import Link from 'next/link'
 
 const ACTIVITIES = [
@@ -39,6 +39,14 @@ function getActiveWorkoutId(): string | null {
     }
   } catch { /* ignore */ }
   return null
+}
+
+/** Supprime les entrées localStorage de séance obsolètes (> 24h ou déjà complétées en DB) */
+function clearWorkoutLocalStorage(workoutId: string) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.removeItem(`forgeiq_workout_${workoutId}`)
+  } catch { /* ignore */ }
 }
 
 type Exercise = {
@@ -78,10 +86,36 @@ export default function WorkoutPage() {
 
   const [recentWorkouts, setRecentWorkouts] = useState<{id: string; session_name: string; session_date: string; total_tonnage_kg: number; duration_min?: number; distance_km?: number; workout_type?: string}[]>([])
   const [activeWorkoutId, setActiveWorkoutId] = useState<string | null>(null)
+  const [abandoningWorkout, setAbandoningWorkout] = useState(false)
   const router = useRouter()
 
+  // Vérification de cohérence : localStorage vs état en DB
   useEffect(() => {
-    setActiveWorkoutId(getActiveWorkoutId())
+    const localId = getActiveWorkoutId()
+    if (!localId) { setActiveWorkoutId(null); return }
+
+    // Vérifier si la séance est déjà terminée / supprimée en DB
+    const supabase = createClient()
+    ;(async () => {
+      try {
+        const { data } = await supabase
+          .from('workouts')
+          .select('id, completed_at')
+          .eq('id', localId)
+          .maybeSingle()
+
+        if (!data || data.completed_at) {
+          // Séance terminée ou inexistante → nettoyer localStorage
+          clearWorkoutLocalStorage(localId)
+          setActiveWorkoutId(null)
+        } else {
+          setActiveWorkoutId(localId)
+        }
+      } catch {
+        // En cas d'erreur réseau, on affiche quand même (prudence)
+        setActiveWorkoutId(localId)
+      }
+    })()
   }, [])
 
   useEffect(() => {
@@ -154,6 +188,22 @@ export default function WorkoutPage() {
     } finally {
       setLoggingRest(false)
     }
+  }
+
+  // Abandonner la séance fantôme depuis la bannière
+  async function abandonActiveWorkout() {
+    if (!activeWorkoutId || abandoningWorkout) return
+    setAbandoningWorkout(true)
+    try {
+      await fetch('/api/workout/abandon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workout_id: activeWorkoutId }),
+      })
+    } catch { /* ignore — on nettoie quand même */ }
+    clearWorkoutLocalStorage(activeWorkoutId)
+    setActiveWorkoutId(null)
+    setAbandoningWorkout(false)
   }
 
   // Enregistrer une activité cardio directement (sans passer par le logger musculation)
@@ -257,18 +307,32 @@ export default function WorkoutPage() {
         <div className="space-y-4">
           {/* Bannière "Séance en cours" si localStorage a une séance active */}
           {activeWorkoutId && (
-            <Link
-              href={`/workout/${activeWorkoutId}`}
+            <div
               className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl"
               style={{ background: '#B4FF4A18', border: '1px solid #B4FF4A44' }}
             >
-              <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'var(--fiq-accent)', flexShrink: 0 }} />
-              <div className="flex-1">
+              <span className="w-2 h-2 rounded-full animate-pulse flex-shrink-0" style={{ background: 'var(--fiq-accent)' }} />
+              <Link href={`/workout/${activeWorkoutId}`} className="flex-1 min-w-0">
                 <p className="font-black text-sm" style={{ color: 'var(--fiq-accent)' }}>Séance en cours</p>
                 <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Ta progression est sauvegardée — reprends où tu t&apos;es arrêté</p>
-              </div>
-              <Play className="w-5 h-5" style={{ color: 'var(--fiq-accent)' }} />
-            </Link>
+              </Link>
+              <Link href={`/workout/${activeWorkoutId}`} className="flex-shrink-0 p-1">
+                <Play className="w-5 h-5" style={{ color: 'var(--fiq-accent)' }} />
+              </Link>
+              {/* Bouton abandonner la séance fantôme */}
+              <button
+                onClick={abandonActiveWorkout}
+                disabled={abandoningWorkout}
+                className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-xl transition-all"
+                style={{ background: '#EF444422', border: '1px solid #EF444444' }}
+                title="Abandonner cette séance"
+              >
+                {abandoningWorkout
+                  ? <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--fiq-red)' }} />
+                  : <X className="w-4 h-4" style={{ color: 'var(--fiq-red)' }} />
+                }
+              </button>
+            </div>
           )}
 
           {/* Bannière "Séance du jour terminée" */}

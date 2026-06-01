@@ -325,25 +325,33 @@ export function calcWorkoutKcal(
 
 export type DailyTarget = {
   bmr: number
-  stepsKcal: number               // calories steps (source : hier ou aujourd'hui)
+  stepsKcal: number               // calories steps (source : moy 30j > hier > aujourd'hui)
   workoutKcal: number             // calories séance du JOUR (0 si repos)
   workoutMuscleGroup: MuscleGroupCategory | null  // groupe musculaire identifié
   tdee: number                    // BMR + steps + workout
-  adjustment: number              // surplus/déficit objectif
-  targetCalories: number          // cible effective (plancher 1 200)
+  adjustment: number              // surplus/déficit objectif (adapté si repos)
+  targetCalories: number          // cible effective (plancher BMR×1.2)
   macros: TDEEMacros
-  stepsUsed: number | null        // pas utilisés pour le TDEE (hier de préférence)
-  usedYesterdaySteps: boolean     // true → pas d'hier (complets), false → aujourd'hui
-  todaySteps: number | null       // pas bruts du jour (pour affichage KPI seulement)
+  stepsUsed: number | null        // pas utilisés pour le TDEE
+  usedYesterdaySteps: boolean     // true → pas d'hier, false → aujourd'hui ou moy
+  todaySteps: number | null       // pas bruts du jour (KPI uniquement)
   todayWorkoutTonnage: number | null
   usedFallback: boolean           // pas de données → multiplicateur
   isCustom: boolean               // macros manuelles actives
+  isRestDay: boolean              // jour de repos détecté
+  safetyFloorApplied: boolean     // plancher BMR×1.2 appliqué
 }
 
 /**
  * Source unique de vérité pour la cible calorique du jour.
- * Utilise les données RÉELLES du jour (steps + tonnage + séries + nom séance).
- * Fallback BMR × multiplicateur si aucune donnée d'activité disponible.
+ *
+ * Priorité NEAT (steps) : moyenne 30j > hier > aujourd'hui
+ * → La moyenne 30j évite les pics/creux (matin avec 0 steps, dimanche soir peu actif)
+ *
+ * Jour de repos : déficit réduit (-150 kcal vs -350 normal) ou maintenance si
+ * dernière séance très lourde (>20 000 kg).
+ *
+ * Plancher de sécurité absolu : BMR × 1.2 (jamais en dessous, quelle que soit la situation)
  *
  * Appelé depuis : dashboard, nutrition/page, api/coach
  */
@@ -359,21 +367,26 @@ export function calcDailyTarget(params: {
   custom_protein_g?:  number | null
   custom_carbs_g?:    number | null
   custom_fat_g?:      number | null
-  todaySteps?:             number | null  // pas bruts du jour (KPI uniquement)
-  yesterdaySteps?:         number | null  // pas d'hier — journée COMPLÈTE (préféré pour TDEE)
+  // Sources steps — ordre de priorité décroissante
+  avgSteps30d?:            number | null  // PRÉFÉRÉ — moyenne 30j (stable, journées complètes)
+  todaySteps?:             number | null  // KPI affichage uniquement (journée incomplète)
+  yesterdaySteps?:         number | null  // fallback si pas de moy 30j
+  // Séance du jour
   todayWorkoutTonnage?:    number | null
   todayWorkoutSets?:       number | null
   todayWorkoutName?:       string | null
+  // Contexte repos
+  isRestDay?:              boolean        // jour de repos déclaré ou détecté
+  recentHeavyTonnage?:     number | null  // tonnage dernière séance (pour déficit = 0 si > 20k)
 }): DailyTarget {
   const w = (params.weight_kg && params.weight_kg > 30 && params.weight_kg < 250)
     ? params.weight_kg : 75
 
   const bmr = calcBMR(w, params.height_cm ?? 175, params.age ?? 30, params.gender ?? 'male')
 
-  // Pour le TDEE NEAT : préférer les pas d'hier (journée terminée et comptabilisée)
-  // Fallback sur les pas du jour si hier non disponible (début d'utilisation)
-  const usedYesterdaySteps = params.yesterdaySteps != null
-  const stepsForTdee = params.yesterdaySteps ?? params.todaySteps ?? null
+  // ── Steps NEAT : moy 30j (stable) > hier (complet) > aujourd'hui (partiel) ──
+  const usedYesterdaySteps = params.avgSteps30d == null && params.yesterdaySteps != null
+  const stepsForTdee = params.avgSteps30d ?? params.yesterdaySteps ?? params.todaySteps ?? null
   const todaySteps   = params.todaySteps ?? null
 
   const tonnage = params.todayWorkoutTonnage ?? null
@@ -397,7 +410,23 @@ export function calcDailyTarget(params: {
     usedFallback = true
   }
 
-  const adjustment = goalAdjustment(params.goal ?? 'general')
+  // ── Ajustement objectif + logique jour de repos ───────────────────────────
+  const baseAdjustment = goalAdjustment(params.goal ?? 'general')
+  const isRestDay = params.isRestDay ?? false
+  const postHeavy = (params.recentHeavyTonnage ?? 0) > 20000
+
+  let adjustment: number
+  if (isRestDay && baseAdjustment <= 0) {
+    // Repos : déficit réduit pour préserver la synthèse protéique
+    // Post-séance très lourde (>20t) → maintenance complète
+    adjustment = postHeavy ? 0 : Math.max(baseAdjustment, -150)
+  } else {
+    adjustment = baseAdjustment
+  }
+
+  // ── Plancher de sécurité : jamais < BMR × 1.2 ────────────────────────────
+  const safetyFloor = Math.round(bmr * 1.2)
+
   const isCustom = params.macro_mode === 'custom' &&
     !!(params.custom_protein_g || params.custom_calories)
 
@@ -405,16 +434,17 @@ export function calcDailyTarget(params: {
   let macros: TDEEMacros
 
   if (isCustom) {
-    targetCalories = params.custom_calories ?? Math.max(1200, tdee + adjustment)
-    const base = calcMacrosFromCalories(targetCalories, w)
+    const base = params.custom_calories ?? Math.max(safetyFloor, tdee + adjustment)
+    targetCalories = Math.max(safetyFloor, base)
+    const baseMacros = calcMacrosFromCalories(targetCalories, w)
     macros = {
       calories:  targetCalories,
-      protein_g: params.custom_protein_g ?? base.protein_g,
-      carbs_g:   params.custom_carbs_g   ?? base.carbs_g,
-      fat_g:     params.custom_fat_g     ?? base.fat_g,
+      protein_g: params.custom_protein_g ?? baseMacros.protein_g,
+      carbs_g:   params.custom_carbs_g   ?? baseMacros.carbs_g,
+      fat_g:     params.custom_fat_g     ?? baseMacros.fat_g,
     }
   } else {
-    targetCalories = Math.max(1200, tdee + adjustment)
+    targetCalories = Math.max(safetyFloor, tdee + adjustment)
     macros = calcMacrosFromCalories(targetCalories, w)
   }
 
@@ -423,6 +453,7 @@ export function calcDailyTarget(params: {
     tdee, adjustment, targetCalories, macros,
     stepsUsed: stepsForTdee, usedYesterdaySteps,
     todaySteps, todayWorkoutTonnage: tonnage, usedFallback, isCustom,
+    isRestDay, safetyFloorApplied: Math.max(safetyFloor, tdee + adjustment) > tdee + adjustment,
   }
 }
 

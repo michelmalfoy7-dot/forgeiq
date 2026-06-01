@@ -805,7 +805,9 @@ function ScoreSlider({
       </div>
       <input
         type="range" min={1} max={10} value={value}
+        inputMode="none"
         onChange={(e) => onChange(parseInt(e.target.value))}
+        onFocus={(e) => e.currentTarget.blur()} // empêche ouverture clavier mobile
         style={{
           width: '100%',
           height: 6,
@@ -813,6 +815,9 @@ function ScoreSlider({
           appearance: 'none',
           cursor: 'pointer',
           accentColor: color,
+          touchAction: 'pan-x',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
           background: `linear-gradient(to right, ${color} ${(value - 1) / 9 * 100}%, var(--border) ${(value - 1) / 9 * 100}%)`,
         }}
       />

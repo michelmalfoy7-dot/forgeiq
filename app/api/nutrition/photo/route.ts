@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 30 // Vercel — analyse vision peut prendre jusqu'à 30s
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -89,9 +90,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ data: null, error: 'Image manquante' }, { status: 400 })
     }
 
+    // Vérification taille image (base64) — limite ~4MB décodé ≈ ~5.5MB base64
+    if (image_base64.length > 5_500_000) {
+      return NextResponse.json({
+        data: null,
+        error: 'Photo trop lourde. Prends une photo plus proche ou utilise la galerie.',
+      }, { status: 400 })
+    }
+
     const res = await anthropic.messages.create({
-      // Haiku vision : ~$0.003/analyse vs $0.015 avec Sonnet — 5x moins cher, qualité suffisante pour la reconnaissance alimentaire
-      model: 'claude-haiku-4-20250514',
+      // claude-haiku-4-5 : modèle vision Haiku — ~$0.003/analyse, qualité suffisante
+      model: 'claude-haiku-4-5',
       max_tokens: 800,
       messages: [
         {

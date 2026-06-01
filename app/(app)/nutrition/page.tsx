@@ -29,13 +29,13 @@ export default async function NutritionPage() {
       .order('created_at', { ascending: true }),
     supabase
       .from('profiles')
-      .select('goal, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g')
+      .select('goal, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, water_goal_ml')
       .eq('id', user.id)
       .single(),
-    // Steps du jour (KPI uniquement — partiel en cours de journée)
+    // Steps + eau du jour
     supabase
       .from('daily_logs')
-      .select('steps')
+      .select('steps, water_ml')
       .eq('user_id', user.id)
       .eq('log_date', today)
       .maybeSingle(),
@@ -91,6 +91,8 @@ export default async function NutritionPage() {
       initialLogs={logs ?? []}
       targets={targets}
       today={today}
+      initialWaterMl={todayLog?.water_ml ?? 0}
+      waterGoalMl={profile?.water_goal_ml ?? 2500}
     />
   )
 }

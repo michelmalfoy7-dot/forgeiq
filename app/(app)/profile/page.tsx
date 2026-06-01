@@ -19,9 +19,10 @@ export default async function ProfilePage() {
     { data: workoutStats },
     { data: allPRs },
     { data: streakData },
+    { data: gymProfiles },
   ] = await Promise.all([
     supabase.from('profiles')
-      .select('display_name, username, avatar_url, goal, level, equipment, sessions_per_week, age, height_cm, gender, weight_kg, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, created_at, subscription_status, subscription_plan, stripe_customer_id, include_warmup_in_tonnage')
+      .select('display_name, username, avatar_url, goal, level, equipment, sessions_per_week, age, height_cm, gender, weight_kg, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, created_at, subscription_status, subscription_plan, stripe_customer_id, include_warmup_in_tonnage, gym_id')
       .eq('id', user.id).single(),
 
     supabase.from('workouts')
@@ -41,6 +42,11 @@ export default async function ProfilePage() {
       .eq('user_id', user.id)
       .order('log_date', { ascending: false })
       .limit(60),
+
+    // Liste des salles disponibles pour le sélecteur
+    supabase.from('gym_equipment_profiles')
+      .select('id, slug, name, tier, logo_emoji')
+      .order('sort_order', { ascending: true }),
   ])
 
   // Calculer le streak (jours consécutifs depuis aujourd'hui)
@@ -123,6 +129,8 @@ export default async function ProfilePage() {
         subscriptionStatus={profile?.subscription_status ?? 'free'}
         subscriptionPlan={profile?.subscription_plan ?? null}
         hasStripeCustomer={!!profile?.stripe_customer_id}
+        gymId={(profile as unknown as { gym_id?: string | null })?.gym_id ?? null}
+        gymProfiles={gymProfiles ?? []}
       />
     </div>
   )
