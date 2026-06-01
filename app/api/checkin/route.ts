@@ -6,20 +6,39 @@ export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
+    const raw = await request.json()
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
 
-    const today = body.log_date ?? new Date().toISOString().split('T')[0]
+    const today = raw.log_date ?? new Date().toISOString().split('T')[0]
+
+    // Whitelist stricte des colonnes autorisées — empêche l'injection de champs arbitraires
+    const body = {
+      log_date:           today,
+      user_id:            user.id,
+      weight_kg:          raw.weight_kg          ?? null,
+      weight_trend:       raw.weight_trend        ?? null,
+      sys_bp:             raw.sys_bp              ?? null,
+      dia_bp:             raw.dia_bp              ?? null,
+      steps:              raw.steps               ?? null,
+      sleep_total_min:    raw.sleep_total_min     ?? null,
+      sleep_deep_min:     raw.sleep_deep_min      ?? null,
+      sleep_light_min:    raw.sleep_light_min     ?? null,
+      sleep_rem_min:      raw.sleep_rem_min       ?? null,
+      calories:           raw.calories            ?? null,
+      protein_g:          raw.protein_g           ?? null,
+      carbs_g:            raw.carbs_g             ?? null,
+      fat_g:              raw.fat_g               ?? null,
+      fatigue_score:      raw.fatigue_score       ?? null,
+      motivation_score:   raw.motivation_score    ?? null,
+      notes:              raw.notes               ?? null,
+    }
 
     // Upsert : mise à jour si log du jour existe déjà
     const { data, error } = await supabase
       .from('daily_logs')
-      .upsert(
-        { ...body, user_id: user.id, log_date: today },
-        { onConflict: 'user_id,log_date' }
-      )
+      .upsert(body, { onConflict: 'user_id,log_date' })
       .select()
       .single()
 

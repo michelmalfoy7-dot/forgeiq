@@ -655,7 +655,7 @@ export default async function DashboardPage() {
             {lastWorkout && (
               <p className="text-xs text-center" style={{ color: 'var(--fiq-muted)' }}>
                 Dernière : {lastWorkout.session_name} ·{' '}
-                {new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(lastWorkout.session_date))}
+                {new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(lastWorkout.session_date + 'T12:00:00'))}
                 {lastWorkout.total_tonnage_kg ? ` · ${lastWorkout.total_tonnage_kg.toLocaleString('fr-FR')}kg` : ''}
               </p>
             )}

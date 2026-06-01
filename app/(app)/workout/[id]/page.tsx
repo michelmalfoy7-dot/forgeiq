@@ -925,10 +925,12 @@ export default function WorkoutSessionPage() {
           </div>
           <button
             onClick={() => completeWorkout(lastPayloadRef.current)}
+            disabled={completing}
             className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg flex-shrink-0"
-            style={{ background: 'var(--fiq-red)', color: 'white' }}
+            style={{ background: 'var(--fiq-red)', color: 'white', opacity: completing ? 0.5 : 1 }}
           >
-            <RefreshCw className="w-3 h-3" />Réessayer
+            {completing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+            Réessayer
           </button>
         </div>
       )}
@@ -1338,8 +1340,10 @@ function ExerciseCard({
 
       {group.sets.map((s) => {
         const parseW = (v: string | number) => parseFloat(String(v).replace(',', '.')) || 0
-        const isTopSet = !s.is_warmup && s.weight_kg !== '' && s.reps !== '' &&
-          parseW(s.weight_kg) * Number(s.reps) === Math.max(...group.sets.filter(x => !x.is_warmup && x.weight_kg !== '' && x.reps !== '').map(x => parseW(x.weight_kg) * Number(x.reps)))
+        const workingSetVolumes = group.sets.filter(x => !x.is_warmup && x.weight_kg !== '' && x.reps !== '').map(x => parseW(x.weight_kg) * Number(x.reps))
+        const maxVolume = workingSetVolumes.length > 0 ? Math.max(...workingSetVolumes) : -1
+        const isTopSet = !s.is_warmup && s.weight_kg !== '' && s.reps !== '' && maxVolume > 0 &&
+          parseW(s.weight_kg) * Number(s.reps) === maxVolume
         const isPR = !s.is_warmup && group.pr && s.weight_kg !== '' && parseW(s.weight_kg) > group.pr
 
         return (

@@ -45,7 +45,8 @@ export default async function ProgressPage() {
   const tonnageByWeek: Record<string, number> = {}
   for (const w of workouts ?? []) {
     if (!w.total_tonnage_kg) continue
-    const weekKey = getISOWeek(new Date(w.session_date))
+    // T12:00:00 évite le décalage timezone (new Date('2026-05-15') = UTC midnight = 14 mai en UTC+2)
+    const weekKey = getISOWeek(new Date(w.session_date + 'T12:00:00'))
     tonnageByWeek[weekKey] = (tonnageByWeek[weekKey] ?? 0) + w.total_tonnage_kg
   }
 
@@ -58,7 +59,7 @@ export default async function ProgressPage() {
     }))
 
   const weightData = (weightLogs ?? []).map((l) => ({
-    date: new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(l.log_date)),
+    date: new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(l.log_date + 'T12:00:00')),
     weight: l.weight_kg,
     trend: l.weight_trend,
   }))

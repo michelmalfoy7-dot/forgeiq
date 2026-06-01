@@ -80,9 +80,10 @@ export async function POST(request: Request) {
       if (sErr) return NextResponse.json({ data: null, error: sErr.message }, { status: 400 })
     }
 
-    // Détection des PRs — batch query pour éviter N+1
+    // Détection des PRs — uniquement les sets valides (poids et reps > 0)
     const newPRs: string[] = []
-    const exerciseGroups = groupByExercise(workingSets)
+    const validSets = workingSets.filter(s => s.weight_kg > 0 && s.reps > 0)
+    const exerciseGroups = groupByExercise(validSets)
     const exerciseIds = Object.keys(exerciseGroups)
     const today = new Date().toISOString().split('T')[0]
 

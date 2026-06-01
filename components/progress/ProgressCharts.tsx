@@ -407,7 +407,7 @@ export function ProgressCharts({
                         {pr.achieved_date && (
                           <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
                             <Calendar className="w-3 h-3" />
-                            {new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(pr.achieved_date))}
+                            {new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(pr.achieved_date + 'T12:00:00'))}
                           </p>
                         )}
                       </div>

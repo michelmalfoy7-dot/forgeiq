@@ -152,21 +152,25 @@ export default function CheckinPage() {
     setSaving(true)
     setError(null)
     try {
+      // Helpers : convertit une string en number ou null, sans effacer la valeur 0
+      const toInt = (s: string) => s.trim() !== '' && !isNaN(parseInt(s)) ? parseInt(s) : null
+      const toFloat = (s: string) => s.trim() !== '' && !isNaN(parseFloat(s)) ? parseFloat(s) : null
+
       const payload = {
         log_date: getLogDate(isYesterday),
-        weight_kg: parseFloat(form.weight_kg) || null,
+        weight_kg: toFloat(form.weight_kg),
         weight_trend: ewma,
-        sys_bp: parseInt(form.sys_bp) || null,
-        dia_bp: parseInt(form.dia_bp) || null,
-        steps: parseInt(form.steps) || null,
-        sleep_total_min: parseInt(form.sleep_total_min) || null,
-        sleep_deep_min: parseInt(form.sleep_deep_min) || null,
-        sleep_light_min: parseInt(form.sleep_light_min) || null,
-        sleep_rem_min: parseInt(form.sleep_rem_min) || null,
-        calories: parseInt(form.calories) || null,
-        protein_g: parseFloat(form.protein_g) || null,
-        carbs_g: parseFloat(form.carbs_g) || null,
-        fat_g: parseFloat(form.fat_g) || null,
+        sys_bp: toInt(form.sys_bp),
+        dia_bp: toInt(form.dia_bp),
+        steps: toInt(form.steps),
+        sleep_total_min: toInt(form.sleep_total_min),
+        sleep_deep_min: toInt(form.sleep_deep_min),
+        sleep_light_min: toInt(form.sleep_light_min),
+        sleep_rem_min: toInt(form.sleep_rem_min),
+        calories: toInt(form.calories),
+        protein_g: toFloat(form.protein_g),
+        carbs_g: toFloat(form.carbs_g),
+        fat_g: toFloat(form.fat_g),
         fatigue_score: form.fatigue_score,
         motivation_score: form.motivation_score,
         notes: form.notes || null,

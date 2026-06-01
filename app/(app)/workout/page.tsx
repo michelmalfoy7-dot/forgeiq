@@ -622,7 +622,7 @@ export default function WorkoutPage() {
                   <div>
                     <p className="text-sm font-medium" style={{ color: 'var(--fiq-text)' }}>{w.session_name}</p>
                     <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
-                      {new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(w.session_date))}
+                      {new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(w.session_date + 'T12:00:00'))}
                     </p>
                   </div>
                   <div className="text-right">
