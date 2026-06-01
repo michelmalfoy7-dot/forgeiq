@@ -28,7 +28,7 @@ export async function GET(req: Request) {
       { data: topPRs },
     ] = await Promise.all([
       supabase.from('profiles')
-        .select('current_program_id, sessions_per_week, goal, level, weight_kg')
+        .select('current_program_id, sessions_per_week, goal, level, weight_kg, gym_id, gym_equipment_profiles(tier)')
         .eq('id', user.id).single(),
       supabase.from('daily_logs')
         .select('sleep_deep_min, fatigue_score, weight_trend')
@@ -39,6 +39,11 @@ export async function GET(req: Request) {
         .order('value', { ascending: false }).limit(15),
     ])
 
+    // Résoudre le tier gym de l'utilisateur (premium / standard / home)
+    type TierKey = 'premium' | 'standard' | 'home'
+    const gymRef = (profile as unknown as { gym_equipment_profiles?: { tier: string } | null })?.gym_equipment_profiles
+    const gymTier: TierKey = (gymRef?.tier as TierKey | undefined) ?? 'standard'
+
     // Rotation de séance dans le programme
     let sessionName = 'Séance libre'
     let programName = ''
@@ -46,8 +51,23 @@ export async function GET(req: Request) {
     let totalSessions = 0
 
     // Exercices du programme pour la séance suivante (si définis dans la structure)
-    type ProgramExercise = { slug: string; name_fr: string; sets: number; reps: string; rest_sec?: number; note?: string }
+    // Support format v1 (name_fr direct) et format v2 (by_tier — programmes scientifiques)
+    type ByTierEntry = { slug: string; name_fr: string }
+    type ProgramExercise = {
+      slug?: string; name_fr?: string; sets: number; reps: string; rest_sec?: number; note?: string
+      // Format v2 — sélection d'exercice selon le tier gym de l'utilisateur
+      by_tier?: { premium?: ByTierEntry; standard?: ByTierEntry; home?: ByTierEntry }
+    }
     let programExercises: ProgramExercise[] = []
+
+    /** Résout name_fr + slug depuis un exercice (v1 ou v2 by_tier) */
+    function resolveExercise(ex: ProgramExercise): { name_fr: string; slug: string } {
+      if (ex.by_tier) {
+        const entry = ex.by_tier[gymTier] ?? ex.by_tier.standard ?? ex.by_tier.home ?? ex.by_tier.premium
+        return { name_fr: entry?.name_fr ?? 'Exercice', slug: entry?.slug ?? '' }
+      }
+      return { name_fr: ex.name_fr ?? 'Exercice', slug: ex.slug ?? '' }
+    }
 
     if (profile?.current_program_id) {
       const { data: program } = await supabase
@@ -120,15 +140,19 @@ export async function GET(req: Request) {
     let aiExercises: { name: string; slug?: string; sets: number; reps: string; weight_kg: number | null; note: string }[] = []
 
     // Pré-charger les exercices du programme comme base
+    // resolveExercise gère les deux formats : v1 (name_fr direct) et v2 (by_tier)
     if (programExercises.length > 0) {
-      aiExercises = programExercises.map(ex => ({
-        name: ex.name_fr,
-        slug: ex.slug, // Slug pour matching robuste (insensible à la corruption UTF-8)
-        sets: ex.sets,
-        reps: ex.reps,
-        weight_kg: null, // Sera rempli par les PRs dans le logger
-        note: ex.note ?? '',
-      }))
+      aiExercises = programExercises.map(ex => {
+        const { name_fr, slug } = resolveExercise(ex)
+        return {
+          name: name_fr,
+          slug,
+          sets: ex.sets,
+          reps: ex.reps,
+          weight_kg: null,
+          note: ex.note ?? '',
+        }
+      })
     }
 
     // Utiliser l'IA uniquement si le programme n'a pas d'exercices définis
@@ -142,7 +166,7 @@ export async function GET(req: Request) {
 
         if (programExercises.length > 0) {
           // Programme avec exercices — IA génère uniquement la raison narrative + les poids suggérés
-          const exoList = programExercises.map(e => e.name_fr).join(', ')
+          const exoList = programExercises.map(e => resolveExercise(e).name_fr).join(', ')
           const prompt = `Tu es un coach fitness. Suggère des poids pour cette séance en JSON.
 
 Séance: ${sessionName} (${programName})
