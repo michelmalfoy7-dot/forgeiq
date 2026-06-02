@@ -109,6 +109,8 @@ export default function WorkoutSessionPage() {
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
   // Superset : index du groupe qui attend un exercice partenaire (-1 = mode normal)
   const [supersetTargetIdx, setSupersetTargetIdx] = useState<number | null>(null)
+  // Édition nom de séance en ligne
+  const [editingName, setEditingName] = useState(false)
   // États partage post-séance
   const [shareCaption, setShareCaption] = useState('')
   const [sharing, setSharing] = useState(false)
@@ -668,6 +670,17 @@ export default function WorkoutSessionPage() {
     })
   }
 
+  // ── Déplacer un exercice vers le haut ou le bas ─────────────
+  function moveGroup(groupIdx: number, direction: 'up' | 'down') {
+    setGroups((prev) => {
+      const target = direction === 'up' ? groupIdx - 1 : groupIdx + 1
+      if (target < 0 || target >= prev.length) return prev
+      const updated = [...prev]
+      ;[updated[groupIdx], updated[target]] = [updated[target], updated[groupIdx]]
+      return updated
+    })
+  }
+
   // ── TERMINER SÉANCE ──────────────────────────────────────────
   const completeWorkout = useCallback(async (retryPayload?: unknown) => {
     setCompleting(true)
@@ -1062,7 +1075,26 @@ export default function WorkoutSessionPage() {
         style={{ background: 'var(--surface)', borderBottom: '1px solid var(--fiq-border)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
       >
         <div>
-          <p className="font-bold text-sm" style={{ color: 'var(--fiq-text)' }}>{sessionName}</p>
+          {editingName ? (
+            <input
+              autoFocus
+              value={sessionName}
+              onChange={(e) => setSessionName(e.target.value)}
+              onBlur={() => setEditingName(false)}
+              onKeyDown={(e) => { if (e.key === 'Enter') setEditingName(false) }}
+              className="font-bold text-sm bg-transparent outline-none border-b"
+              style={{ color: 'var(--fiq-text)', borderColor: 'var(--fiq-accent)', minWidth: 120, maxWidth: 180 }}
+            />
+          ) : (
+            <button
+              onClick={() => setEditingName(true)}
+              className="font-bold text-sm flex items-center gap-1"
+              style={{ color: 'var(--fiq-text)' }}
+            >
+              {sessionName}
+              <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>✏️</span>
+            </button>
+          )}
           <div className="flex items-center gap-2 mt-0.5">
             <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>{formatTime(elapsed)}</p>
             {restTimer !== null && (
@@ -1166,6 +1198,8 @@ export default function WorkoutSessionPage() {
                 onCycleSetType={(setId) => cycleSetType(gIdx, setId)}
                 onAddToSuperset={() => { setSupersetTargetIdx(gIdx); setShowSearch(true) }}
                 onRemoveSuperset={() => removeSuperset(gIdx)}
+                onMoveUp={gIdx > 0 ? () => moveGroup(gIdx, 'up') : undefined}
+                onMoveDown={gIdx < groups.length - 1 ? () => moveGroup(gIdx, 'down') : undefined}
               />
 
               {/* Connecteur entre deux exercices du même superset */}
@@ -1476,7 +1510,7 @@ const SET_TYPE_CONFIG: Record<SetType, { label: string; color: string; bg: strin
 // ── Composant exercice avec sets ──────────────────────────────
 function ExerciseCard({
   group, onAddSet, onAddWarmup, onAddDropSet, onUpdateSet, onRemoveSet, onToggleUnilateral,
-  onCycleSetType, onAddToSuperset, onRemoveSuperset,
+  onCycleSetType, onAddToSuperset, onRemoveSuperset, onMoveUp, onMoveDown,
 }: {
   group: ExerciseGroup
   onAddSet: () => void
@@ -1488,6 +1522,8 @@ function ExerciseCard({
   onCycleSetType: (setId: string) => void
   onAddToSuperset: () => void
   onRemoveSuperset: () => void
+  onMoveUp?: () => void
+  onMoveDown?: () => void
 }) {
   const [showHistory, setShowHistory] = useState(true)
   const tonnage = calcTonnageGroup(group)
@@ -1527,13 +1563,32 @@ function ExerciseCard({
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {group.pr && (
             <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
               style={{ background: '#B4FF4A22', color: 'var(--fiq-accent)', border: '1px solid #B4FF4A44' }}>
               PR {group.pr}kg
             </span>
           )}
+          {/* Boutons réordonner ↑↓ */}
+          <div className="flex flex-col gap-0.5">
+            <button
+              onClick={onMoveUp}
+              disabled={!onMoveUp}
+              className="flex items-center justify-center w-5 h-4 rounded"
+              style={{ color: onMoveUp ? 'var(--fiq-muted)' : 'transparent', background: onMoveUp ? 'var(--fiq-faint)' : 'transparent' }}
+            >
+              <ChevronUp className="w-3 h-3" />
+            </button>
+            <button
+              onClick={onMoveDown}
+              disabled={!onMoveDown}
+              className="flex items-center justify-center w-5 h-4 rounded"
+              style={{ color: onMoveDown ? 'var(--fiq-muted)' : 'transparent', background: onMoveDown ? 'var(--fiq-faint)' : 'transparent' }}
+            >
+              <ChevronDown className="w-3 h-3" />
+            </button>
+          </div>
           {group.lastSession && group.lastSession.length > 0 && (
             <button onClick={() => setShowHistory(!showHistory)} style={{ color: 'var(--fiq-muted)' }}>
               {showHistory ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}

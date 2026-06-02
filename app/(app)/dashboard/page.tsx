@@ -10,6 +10,7 @@ import { CancelWorkoutButton } from '@/components/dashboard/CancelWorkoutButton'
 import { formatSleep } from '@/lib/formatSleep'
 import { Dumbbell, TrendingUp, ClipboardList, MessageCircle, Utensils } from 'lucide-react'
 import { calcDailyTarget } from '@/lib/utils/tdee'
+import { VolumeHebdoWidget } from '@/components/dashboard/VolumeHebdoWidget'
 
 export const dynamic = 'force-dynamic'
 
@@ -354,6 +355,9 @@ export default async function DashboardPage() {
           accent={!!todayLog?.steps && todayLog.steps >= stepsTarget}
         />
       </div>
+
+      {/* Volume hebdomadaire par groupe musculaire */}
+      <VolumeHebdoWidget />
 
       {/* Widget Nutrition rapide */}
       <Link href="/nutrition" className="fiq-card block space-y-3">
