@@ -9,6 +9,8 @@ import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, Ch
 import { Confetti } from '@/components/ui/Confetti'
 
 // ── Types ─────────────────────────────────────────────────────
+type SetType = 'work' | 'dropset' | 'failure'
+
 type SetRow = {
   id: string
   exercise_id: string
@@ -18,6 +20,7 @@ type SetRow = {
   reps: number | ''
   rpe: string | number         // string pendant la saisie
   is_warmup: boolean
+  set_type?: SetType           // type de série : travail / drop set / échec
 }
 
 /** Normalise virgule → point et parse un poids flottant sans NaN */
@@ -54,6 +57,8 @@ type ExerciseGroup = {
   sets: SetRow[]
   lastSession?: { weight_kg: number; reps: number }[]
   pr?: number
+  // Superset : exercices avec le même superset_id sont visuellement liés
+  superset_id?: string | null
 }
 
 // ── Utils ─────────────────────────────────────────────────────
@@ -102,6 +107,8 @@ export default function WorkoutSessionPage() {
   const [showQuitModal, setShowQuitModal] = useState(false)
   const [restoredFromStorage, setRestoredFromStorage] = useState(false)
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
+  // Superset : index du groupe qui attend un exercice partenaire (-1 = mode normal)
+  const [supersetTargetIdx, setSupersetTargetIdx] = useState<number | null>(null)
   // États partage post-séance
   const [shareCaption, setShareCaption] = useState('')
   const [sharing, setSharing] = useState(false)
@@ -470,40 +477,125 @@ export default function WorkoutSessionPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function addExercise(ex: Exercise) {
+  // ── Fetch lastSession + PR pour un exercice ──────────────────
+  async function fetchExerciseData(exId: string): Promise<{
+    lastSession: { weight_kg: number; reps: number }[]
+    pr: number | undefined
+  }> {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    let lastSession: { weight_kg: number; reps: number }[] = []
-    let pr: number | undefined
+    if (!user) return { lastSession: [], pr: undefined }
+    const { data: lastSets } = await supabase.from('workout_sets')
+      .select('weight_kg, reps, workout_id, workouts!inner(user_id, session_date)')
+      .eq('exercise_id', exId).eq('workouts.user_id', user.id)
+      .not('is_warmup', 'eq', true).order('created_at', { ascending: false }).limit(6)
+    const lastSession = (lastSets ?? []).slice(0, 4).map((s: {weight_kg: number; reps: number}) => ({ weight_kg: s.weight_kg, reps: s.reps }))
+    const { data: prData } = await supabase.from('personal_records').select('value')
+      .eq('exercise_id', exId).eq('user_id', user.id).eq('record_type', 'top_set').maybeSingle()
+    return { lastSession, pr: prData?.value }
+  }
 
-    if (user) {
-      const { data: lastSets } = await supabase.from('workout_sets')
-        .select('weight_kg, reps, workout_id, workouts!inner(user_id, session_date)')
-        .eq('exercise_id', ex.id).eq('workouts.user_id', user.id)
-        .not('is_warmup', 'eq', true).order('created_at', { ascending: false }).limit(6)
-
-      lastSession = (lastSets ?? []).slice(0, 4).map((s: {weight_kg: number; reps: number}) => ({ weight_kg: s.weight_kg, reps: s.reps }))
-      const { data: prData } = await supabase.from('personal_records').select('value')
-        .eq('exercise_id', ex.id).eq('user_id', user.id).eq('record_type', 'top_set').single()
-      pr = prData?.value
-    }
+  async function addExercise(ex: Exercise) {
+    const { lastSession, pr } = await fetchExerciseData(ex.id)
 
     const firstSet: SetRow = {
       id: uid(), exercise_id: ex.id, exercise_name: ex.name_fr ?? ex.name,
       set_number: 1, weight_kg: lastSession[0]?.weight_kg ?? '', reps: lastSession[0]?.reps ?? '',
-      rpe: '', is_warmup: false,
+      rpe: '', is_warmup: false, set_type: 'work',
     }
-    setGroups((prev) => [...prev, {
-      exercise_id: ex.id,
-      exercise_name: ex.name_fr ?? ex.name,
-      exercise_equipment: ex.equipment,
-      is_bilateral_dumbbell: ex.is_bilateral_dumbbell ?? false,
-      is_unilateral: ex.is_unilateral ?? false,
-      unilateral_both_sides: true,
-      sets: [firstSet], lastSession, pr,
-    }])
+
+    if (supersetTargetIdx !== null) {
+      // Mode superset : lier le nouvel exercice au groupe existant
+      const targetIdx = supersetTargetIdx
+      setGroups((prev) => {
+        const target = prev[targetIdx]
+        const ssId = target.superset_id ?? uid()
+        // Insérer juste après le dernier exercice lié au même superset
+        const lastLinkedIdx = prev.reduce((last, g, i) =>
+          (g.superset_id === ssId && i > last) ? i : last, targetIdx)
+        const newGroup: ExerciseGroup = {
+          exercise_id: ex.id,
+          exercise_name: ex.name_fr ?? ex.name,
+          exercise_equipment: ex.equipment,
+          is_bilateral_dumbbell: ex.is_bilateral_dumbbell ?? false,
+          is_unilateral: ex.is_unilateral ?? false,
+          unilateral_both_sides: true,
+          sets: [firstSet], lastSession, pr,
+          superset_id: ssId,
+        }
+        const updated = [...prev]
+        updated[targetIdx] = { ...target, superset_id: ssId }
+        updated.splice(lastLinkedIdx + 1, 0, newGroup)
+        return updated
+      })
+      setSupersetTargetIdx(null)
+    } else {
+      setGroups((prev) => [...prev, {
+        exercise_id: ex.id,
+        exercise_name: ex.name_fr ?? ex.name,
+        exercise_equipment: ex.equipment,
+        is_bilateral_dumbbell: ex.is_bilateral_dumbbell ?? false,
+        is_unilateral: ex.is_unilateral ?? false,
+        unilateral_both_sides: true,
+        sets: [firstSet], lastSession, pr,
+      }])
+    }
     setShowSearch(false)
     setSearchQuery('')
+  }
+
+  // ── Cycler le type d'une série : travail → drop set → échec → travail ─
+  function cycleSetType(groupIdx: number, setId: string) {
+    setGroups((prev) => {
+      const updated = [...prev]
+      updated[groupIdx] = {
+        ...updated[groupIdx],
+        sets: updated[groupIdx].sets.map((s) => {
+          if (s.id !== setId || s.is_warmup) return s
+          const order: SetType[] = ['work', 'dropset', 'failure']
+          const cur = s.set_type ?? 'work'
+          const next = order[(order.indexOf(cur) + 1) % order.length]
+          return { ...s, set_type: next }
+        }),
+      }
+      return updated
+    })
+  }
+
+  // ── Ajouter un drop set (copie du dernier set, type = dropset) ──
+  function addDropSet(groupIdx: number) {
+    setGroups((prev) => {
+      const g = prev[groupIdx]
+      const lastWork = [...g.sets].reverse().find(s => !s.is_warmup)
+      const newSet: SetRow = {
+        id: uid(), exercise_id: g.exercise_id, exercise_name: g.exercise_name,
+        set_number: g.sets.filter(s => !s.is_warmup).length + 1,
+        weight_kg: lastWork?.weight_kg ?? '', reps: lastWork?.reps ?? '',
+        rpe: '', is_warmup: false, set_type: 'dropset',
+      }
+      const updated = [...prev]
+      updated[groupIdx] = { ...g, sets: [...g.sets, newSet] }
+      return updated
+    })
+    startRest()
+  }
+
+  // ── Délier un exercice de son superset ─────────────────────
+  function removeSuperset(groupIdx: number) {
+    setGroups((prev) => {
+      const updated = [...prev]
+      const ssId = updated[groupIdx].superset_id
+      if (!ssId) return updated
+      // Délier le groupe courant
+      updated[groupIdx] = { ...updated[groupIdx], superset_id: null }
+      // Si un seul exercice reste dans le superset, le délier aussi
+      const remaining = updated.filter((g, i) => i !== groupIdx && g.superset_id === ssId)
+      if (remaining.length === 1) {
+        const lastIdx = updated.findIndex((g, i) => i !== groupIdx && g.superset_id === ssId)
+        if (lastIdx >= 0) updated[lastIdx] = { ...updated[lastIdx], superset_id: null }
+      }
+      return updated
+    })
   }
 
   function addWarmupSet(groupIdx: number) {
@@ -593,9 +685,11 @@ export default function WorkoutSessionPage() {
         reps: Number(s.reps) || 0,
         rpe: s.rpe !== '' && s.rpe !== null ? parseFloat(String(s.rpe).replace(',', '.')) : null,
         is_warmup: s.is_warmup,
+        set_type: s.is_warmup ? 'warmup' : (s.set_type ?? 'work'),
         is_bilateral_dumbbell: g.is_bilateral_dumbbell ?? false,
         is_unilateral: g.is_unilateral ?? false,
         unilateral_both_sides: g.unilateral_both_sides ?? true,
+        superset_id: g.superset_id ?? null,
       }))),
       notes: null,
       rpe_overall: null,
@@ -1044,17 +1138,52 @@ export default function WorkoutSessionPage() {
           </div>
         )}
 
-        {groups.map((group, gIdx) => (
-          <ExerciseCard
-            key={group.exercise_id + gIdx}
-            group={group}
-            onAddSet={() => addSet(gIdx)}
-            onAddWarmup={() => addWarmupSet(gIdx)}
-            onUpdateSet={(setId, key, value) => updateSet(gIdx, setId, key, value)}
-            onRemoveSet={(setId) => removeSet(gIdx, setId)}
-            onToggleUnilateral={() => toggleUnilateralSides(gIdx)}
-          />
-        ))}
+        {groups.map((group, gIdx) => {
+          const nextGroup = groups[gIdx + 1]
+          const ssId = group.superset_id
+          const isFirstInSuperset = ssId && (gIdx === 0 || groups[gIdx - 1].superset_id !== ssId)
+          const isLinkedToNext = ssId && nextGroup?.superset_id === ssId
+
+          return (
+            <div key={group.exercise_id + gIdx}>
+              {/* Label SUPERSET au-dessus du premier exercice du groupe */}
+              {isFirstInSuperset && (
+                <div className="flex items-center gap-1.5 mb-1.5 ml-1">
+                  <span className="text-xs font-black uppercase tracking-wider" style={{ color: 'var(--fiq-orange)' }}>
+                    ⚡ Superset
+                  </span>
+                </div>
+              )}
+
+              <ExerciseCard
+                group={group}
+                onAddSet={() => addSet(gIdx)}
+                onAddWarmup={() => addWarmupSet(gIdx)}
+                onAddDropSet={() => addDropSet(gIdx)}
+                onUpdateSet={(setId, key, value) => updateSet(gIdx, setId, key, value)}
+                onRemoveSet={(setId) => removeSet(gIdx, setId)}
+                onToggleUnilateral={() => toggleUnilateralSides(gIdx)}
+                onCycleSetType={(setId) => cycleSetType(gIdx, setId)}
+                onAddToSuperset={() => { setSupersetTargetIdx(gIdx); setShowSearch(true) }}
+                onRemoveSuperset={() => removeSuperset(gIdx)}
+              />
+
+              {/* Connecteur entre deux exercices du même superset */}
+              {isLinkedToNext && (
+                <div className="flex items-center justify-center py-1">
+                  <div className="flex flex-col items-center gap-0.5">
+                    <div style={{ width: 2, height: 10, background: '#FF6B3566', borderRadius: 1 }} />
+                    <span className="text-[9px] font-black tracking-wider px-2 py-0.5 rounded-full"
+                      style={{ background: '#FF6B3522', color: 'var(--fiq-orange)', border: '1px solid #FF6B3344' }}>
+                      + superset
+                    </span>
+                    <div style={{ width: 2, height: 10, background: '#FF6B3566', borderRadius: 1 }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
 
         <Button
           variant="outline"
@@ -1125,7 +1254,7 @@ export default function WorkoutSessionPage() {
           <div
             className="fixed inset-0 z-40"
             style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
-            onClick={() => { setShowSearch(false); setSearchQuery(''); setMuscleFilter('all'); setEquipmentFilter('all') }}
+            onClick={() => { setShowSearch(false); setSearchQuery(''); setMuscleFilter('all'); setEquipmentFilter('all'); setSupersetTargetIdx(null) }}
           />
           {/* Sheet */}
           <div
@@ -1144,8 +1273,17 @@ export default function WorkoutSessionPage() {
             {/* Header */}
             <div className="px-4 pb-3 space-y-3" style={{ borderBottom: '1px solid var(--fiq-border)' }}>
               <div className="flex items-center justify-between">
-                <h2 className="font-bold" style={{ color: 'var(--fiq-text)' }}>Choisir un exercice</h2>
-                <button onClick={() => { setShowSearch(false); setSearchQuery(''); setMuscleFilter('all'); setEquipmentFilter('all') }}>
+                <div>
+                  <h2 className="font-bold" style={{ color: 'var(--fiq-text)' }}>
+                    {supersetTargetIdx !== null ? '⚡ Ajouter au superset' : 'Choisir un exercice'}
+                  </h2>
+                  {supersetTargetIdx !== null && (
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-orange)' }}>
+                      Lié à : {groups[supersetTargetIdx]?.exercise_name}
+                    </p>
+                  )}
+                </div>
+                <button onClick={() => { setShowSearch(false); setSearchQuery(''); setMuscleFilter('all'); setEquipmentFilter('all'); setSupersetTargetIdx(null) }}>
                   <X className="w-5 h-5" style={{ color: 'var(--fiq-muted)' }} />
                 </button>
               </div>
@@ -1328,25 +1466,41 @@ export default function WorkoutSessionPage() {
   )
 }
 
+// Libellés et couleurs des types de série
+const SET_TYPE_CONFIG: Record<SetType, { label: string; color: string; bg: string }> = {
+  work:    { label: '',   color: 'var(--fiq-muted)',   bg: 'transparent' },
+  dropset: { label: '⬇', color: 'var(--fiq-orange)',  bg: '#FF6B3522' },
+  failure: { label: '💥', color: 'var(--fiq-red)',     bg: '#EF444422' },
+}
+
 // ── Composant exercice avec sets ──────────────────────────────
 function ExerciseCard({
-  group, onAddSet, onAddWarmup, onUpdateSet, onRemoveSet, onToggleUnilateral,
+  group, onAddSet, onAddWarmup, onAddDropSet, onUpdateSet, onRemoveSet, onToggleUnilateral,
+  onCycleSetType, onAddToSuperset, onRemoveSuperset,
 }: {
   group: ExerciseGroup
   onAddSet: () => void
   onAddWarmup: () => void
+  onAddDropSet: () => void
   onUpdateSet: (setId: string, key: keyof SetRow, value: string | boolean | number) => void
   onRemoveSet: (setId: string) => void
   onToggleUnilateral: () => void
+  onCycleSetType: (setId: string) => void
+  onAddToSuperset: () => void
+  onRemoveSuperset: () => void
 }) {
   const [showHistory, setShowHistory] = useState(true)
   const tonnage = calcTonnageGroup(group)
   const isBilateral = group.is_bilateral_dumbbell ?? false
   const isUnilateral = group.is_unilateral ?? false
   const bothSides = group.unilateral_both_sides ?? true
+  const inSuperset = !!group.superset_id
 
   return (
-    <div className="fiq-card space-y-3">
+    <div
+      className="fiq-card space-y-3"
+      style={inSuperset ? { borderLeft: '3px solid var(--fiq-orange)' } : undefined}
+    >
       <div className="flex items-start justify-between">
         <div>
           <h3 className="font-bold" style={{ color: 'var(--fiq-text)' }}>{group.exercise_name}</h3>
@@ -1451,19 +1605,31 @@ function ExerciseCard({
         const isTopSet = !s.is_warmup && s.weight_kg !== '' && s.reps !== '' && maxVolume > 0 &&
           parseW(s.weight_kg) * Number(s.reps) === maxVolume
         const isPR = !s.is_warmup && group.pr && s.weight_kg !== '' && parseW(s.weight_kg) > group.pr
+        const setType = s.set_type ?? 'work'
+        const typeCfg = SET_TYPE_CONFIG[setType]
 
         return (
           <div key={s.id} className="grid grid-cols-[40px_1fr_1fr_60px_32px] gap-2 items-center">
-            <div className="text-center">
+            {/* Numéro / badge type — tap pour cycler (sauf échauffement) */}
+            <button
+              className="flex items-center justify-center h-9 rounded-lg"
+              style={{ background: s.is_warmup ? '#F59E0B22' : typeCfg.bg }}
+              onClick={() => !s.is_warmup && onCycleSetType(s.id)}
+              title={s.is_warmup ? 'Échauffement' : 'Tap pour changer le type'}
+            >
               {isPR
                 ? <span className="text-xs font-black" style={{ color: 'var(--fiq-accent)' }}>PR</span>
-                : isTopSet && group.sets.filter(x => !x.is_warmup && x.weight_kg !== '').length > 1
-                  ? <span className="text-xs" style={{ color: 'var(--fiq-accent)' }}>★</span>
-                  : <span className="text-xs" style={{ color: s.is_warmup ? 'var(--fiq-muted)' : 'var(--fiq-text)' }}>
-                      {s.is_warmup ? 'W' : s.set_number}
-                    </span>
+                : s.is_warmup
+                  ? <span className="text-xs font-bold" style={{ color: '#F59E0B' }}>C</span>
+                  : setType === 'dropset'
+                    ? <span className="text-xs font-black" style={{ color: typeCfg.color }}>⬇</span>
+                    : setType === 'failure'
+                      ? <span className="text-xs font-black" style={{ color: typeCfg.color }}>💥</span>
+                      : isTopSet && group.sets.filter(x => !x.is_warmup && x.weight_kg !== '').length > 1
+                        ? <span className="text-xs" style={{ color: 'var(--fiq-accent)' }}>★</span>
+                        : <span className="text-xs" style={{ color: 'var(--fiq-text)' }}>{s.set_number}</span>
               }
-            </div>
+            </button>
             <Input
               type="text"
               inputMode="decimal"
@@ -1471,7 +1637,11 @@ function ExerciseCard({
               value={s.weight_kg}
               onChange={(e) => onUpdateSet(s.id, 'weight_kg', e.target.value)}
               className="text-center text-sm h-9"
-              style={{ background: 'var(--surface)', borderColor: isPR ? 'var(--fiq-accent)' : 'var(--fiq-border)', color: 'var(--fiq-text)' }}
+              style={{
+                background: 'var(--surface)',
+                borderColor: isPR ? 'var(--fiq-accent)' : setType === 'dropset' ? '#FF6B3544' : setType === 'failure' ? '#EF444444' : 'var(--fiq-border)',
+                color: 'var(--fiq-text)',
+              }}
             />
             <Input
               type="text"
@@ -1498,14 +1668,39 @@ function ExerciseCard({
         )
       })}
 
-      <div className="flex gap-2 pt-1">
+      {/* Boutons d'action : série, échauffement, drop set, superset */}
+      <div className="flex flex-wrap gap-2 pt-1">
         <Button size="sm" variant="outline" onClick={onAddSet} className="flex-1 text-xs"
           style={{ borderColor: 'var(--fiq-border)', color: 'var(--fiq-text)', background: 'transparent' }}>
           <Plus className="w-3.5 h-3.5 mr-1" />+ Série
         </Button>
-        <Button size="sm" variant="ghost" onClick={onAddWarmup} className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
-          + Échauffement
+        <Button size="sm" variant="ghost" onClick={onAddDropSet} className="text-xs"
+          style={{ color: 'var(--fiq-orange)' }}>
+          ⬇ Drop
         </Button>
+        <Button size="sm" variant="ghost" onClick={onAddWarmup} className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+          + Chauffe
+        </Button>
+      </div>
+
+      {/* Superset — bouton discret dans le footer */}
+      <div className="flex items-center justify-between pt-0.5">
+        <button
+          onClick={onAddToSuperset}
+          className="text-[11px] flex items-center gap-1 px-2 py-1 rounded-lg"
+          style={{ color: 'var(--fiq-orange)', background: '#FF6B3512', border: '1px solid #FF6B3330' }}
+        >
+          ⚡ + exercice lié
+        </button>
+        {inSuperset && (
+          <button
+            onClick={onRemoveSuperset}
+            className="text-[11px] px-2 py-1 rounded-lg"
+            style={{ color: 'var(--fiq-muted)' }}
+          >
+            Délier
+          </button>
+        )}
       </div>
     </div>
   )
