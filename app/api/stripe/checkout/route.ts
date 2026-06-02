@@ -23,6 +23,16 @@ export async function POST(req: NextRequest) {
 
     let customerId = profile?.stripe_customer_id
 
+    // Vérifier que le customer existe en live mode (peut être un ID test)
+    if (customerId) {
+      try {
+        await getStripe().customers.retrieve(customerId)
+      } catch {
+        // Customer test ou invalide → on en crée un nouveau
+        customerId = null
+      }
+    }
+
     if (!customerId) {
       const customer = await getStripe().customers.create({
         email: user.email,
@@ -58,8 +68,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ data: { url: session.url }, error: null })
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    console.error('Stripe checkout error:', msg)
-    return NextResponse.json({ data: null, error: msg }, { status: 500 })
+    console.error('Stripe checkout error:', err)
+    return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
   }
 }
