@@ -98,6 +98,8 @@ type Props = {
   today: string
   initialWaterMl?: number
   waterGoalMl?: number
+  isRestDay?: boolean    // jour de repos (pas de séance complétée)
+  workoutKcal?: number   // calories séance d'aujourd'hui (+0 si repos)
 }
 
 // ── Types analyse photo ────────────────────────────────────────
@@ -2329,7 +2331,7 @@ function addDays(dateStr: string, n: number): string {
   return d.toISOString().split('T')[0]
 }
 
-export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 0, waterGoalMl = 2500 }: Props) {
+export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 0, waterGoalMl = 2500, isRestDay, workoutKcal }: Props) {
   const [logs, setLogs] = useState<FoodLog[]>(initialLogs)
   const [viewDate, setViewDate] = useState(today)       // date affichée (peut être ≠ today)
   const [dateLoading, setDateLoading] = useState(false)
@@ -2678,6 +2680,28 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
             </>
           )
         })()}
+
+        {/* Contexte jour d'entraînement / repos — uniquement aujourd'hui */}
+        {isToday && isRestDay !== undefined && (
+          <div
+            className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold"
+            style={{
+              background: isRestDay ? '#6B728018' : '#B4FF4A18',
+              color:      isRestDay ? 'var(--fiq-muted)' : 'var(--fiq-accent)',
+              border:     `1px solid ${isRestDay ? '#6B728033' : '#B4FF4A33'}`,
+            }}
+          >
+            <span>{isRestDay ? '🛌' : '🏋️'}</span>
+            <span>
+              {isRestDay
+                ? 'Jour de repos — objectif ajusté'
+                : workoutKcal
+                  ? `Jour d'entraînement +${workoutKcal} kcal séance`
+                  : "Jour d'entraînement"
+              }
+            </span>
+          </div>
+        )}
 
         <div className="flex justify-around pt-1">
           <MacroRing value={totals.protein_g} target={targets.protein_g} color="var(--fiq-blue)" label="Protéines" />

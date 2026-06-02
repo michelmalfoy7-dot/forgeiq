@@ -23,7 +23,7 @@ export type TDEEBreakdown = {
   trainingCalories: number // Calories entraînement musculaire par jour
   cardioCalories: number  // Calories cardio (MET × poids × durée) par jour
   tdee: number            // TDEE total = BMR + steps + training + cardio
-  adjustment: number      // Ajustement objectif (+250 masse, -350 sèche)
+  adjustment: number      // Ajustement objectif (+250 masse, -200~-400 sèche proportionnel)
   targetCalories: number  // Calories cibles = TDEE + adjustment
   macros: TDEEMacros
   hasEnoughData: boolean  // ≥ 7 jours de daily_logs avec steps
@@ -327,10 +327,11 @@ export type DailyTarget = {
   bmr: number
   stepsKcal: number               // calories steps (source : moy 30j > hier > aujourd'hui)
   workoutKcal: number             // calories séance du JOUR (0 si repos)
+  trainingResidualKcal: number    // EPOC résiduel lissé — métabolisme élevé des jours d'entraînement réguliers
   workoutMuscleGroup: MuscleGroupCategory | null  // groupe musculaire identifié
-  tdee: number                    // BMR + steps + workout
-  adjustment: number              // surplus/déficit objectif (adapté si repos)
-  targetCalories: number          // cible effective (plancher BMR×1.2)
+  tdee: number                    // BMR + steps + workout + résiduel entraînement
+  adjustment: number              // surplus/déficit objectif (proportionnel, adapté si repos)
+  targetCalories: number          // cible effective (plancher TDEE×0.78, min 1200)
   macros: TDEEMacros
   stepsUsed: number | null        // pas utilisés pour le TDEE
   usedYesterdaySteps: boolean     // true → pas d'hier, false → aujourd'hui ou moy
@@ -339,7 +340,7 @@ export type DailyTarget = {
   usedFallback: boolean           // pas de données → multiplicateur
   isCustom: boolean               // macros manuelles actives
   isRestDay: boolean              // jour de repos détecté
-  safetyFloorApplied: boolean     // plancher BMR×1.2 appliqué
+  safetyFloorApplied: boolean     // plancher TDEE×0.78 appliqué
 }
 
 /**
@@ -348,12 +349,21 @@ export type DailyTarget = {
  * Priorité NEAT (steps) : moyenne 30j > hier > aujourd'hui
  * → La moyenne 30j évite les pics/creux (matin avec 0 steps, dimanche soir peu actif)
  *
- * Jour de repos : déficit réduit (-150 kcal vs -350 normal) ou maintenance si
- * dernière séance très lourde (>20 000 kg).
+ * TDEE = BMR + stepsKcal + workoutKcal + trainingResidualKcal
+ *   trainingResidualKcal = sessions_per_week × 50 / 7
+ *   → Représente l'EPOC chronique et le métabolisme élevé même les jours de repos.
+ *   → Réduit l'écart artificiel entre jours d'entraînement et jours de repos.
  *
- * Plancher de sécurité absolu : BMR × 1.2 (jamais en dessous, quelle que soit la situation)
+ * Déficit sèche (weight_loss) : proportionnel 13 % du TDEE, borné [200–400 kcal].
+ *   → Pas de réduction isRestDay : le cyclage naturel du TDEE (workout = 0 au repos)
+ *     génère déjà un écart de 200–350 kcal entre jour actif et jour de repos.
  *
- * Appelé depuis : dashboard, nutrition/page, api/coach
+ * Surplus (muscle_gain / strength) + repos : réduit à 50 % pour limiter le stockage.
+ *
+ * Plancher de sécurité : max(1 200, TDEE × 0.78)
+ *   → Proportionnel au TDEE réel — n'écrase plus la cible des profils actifs.
+ *
+ * Appelé depuis : dashboard, nutrition/page, api/coach, api/profile/tdee
  */
 export function calcDailyTarget(params: {
   weight_kg?:         number | null
@@ -397,35 +407,49 @@ export function calcDailyTarget(params: {
   const workoutKcal = calcWorkoutKcal(tonnage, sets, name)
   const workoutMuscleGroup: MuscleGroupCategory | null = tonnage ? getSessionMuscleGroup(name) : null
 
+  // EPOC résiduel chronique — métabolisme élevé même les jours de repos pour les athlètes actifs
+  // 50 kcal/séance lissé sur la semaine (ISSN 2017 — Phillips et Van Loon)
+  const sessions = params.sessions_per_week ?? 3
+  const trainingResidualKcal = Math.round((sessions * 50) / 7)
+
   const hasActivity = stepsForTdee !== null || tonnage !== null
   let tdee: number
   let usedFallback = false
 
   if (hasActivity) {
-    tdee = bmr + stepsKcal + workoutKcal
+    // TDEE réel : BMR + activité quotidienne (steps) + séance du jour + résiduel entraînement
+    tdee = bmr + stepsKcal + workoutKcal + trainingResidualKcal
   } else {
-    const sessions = params.sessions_per_week ?? 3
+    // Fallback : multiplicateur Harris-Benedict — englobe déjà l'activité physique
     const mult = sessions >= 5 ? 1.725 : sessions >= 3 ? 1.55 : 1.375
     tdee = Math.round(bmr * mult)
     usedFallback = true
   }
 
-  // ── Ajustement objectif + logique jour de repos ───────────────────────────
-  const baseAdjustment = goalAdjustment(params.goal ?? 'general')
+  // ── Ajustement objectif — proportionnel et sécurisé ──────────────────────
   const isRestDay = params.isRestDay ?? false
-  const postHeavy = (params.recentHeavyTonnage ?? 0) > 20000
+  const goal      = params.goal ?? 'general'
 
   let adjustment: number
-  if (isRestDay && baseAdjustment <= 0) {
-    // Repos : déficit réduit pour préserver la synthèse protéique
-    // Post-séance très lourde (>20t) → maintenance complète
-    adjustment = postHeavy ? 0 : Math.max(baseAdjustment, -150)
+
+  if (goal === 'weight_loss') {
+    // Déficit proportionnel : 13 % du TDEE, borné [200–400 kcal]
+    // Pas de réduction isRestDay : le TDEE cyclé (workout=0 au repos) crée déjà l'écart naturel
+    const deficit = Math.min(400, Math.max(200, Math.round(tdee * 0.13)))
+    adjustment = -deficit
+
+  } else if (isRestDay && goalAdjustment(goal) > 0) {
+    // Surplus (muscle_gain / strength) en jour de repos : réduit à 50 % pour limiter le stockage
+    adjustment = Math.round(goalAdjustment(goal) * 0.5)
+
   } else {
-    adjustment = baseAdjustment
+    adjustment = goalAdjustment(goal)
   }
 
-  // ── Plancher de sécurité : jamais < BMR × 1.2 ────────────────────────────
-  const safetyFloor = Math.round(bmr * 1.2)
+  // ── Plancher de sécurité proportionnel au TDEE réel ──────────────────────
+  // max(1 200, TDEE × 0.78) — ne pénalise plus les profils très actifs
+  // Remplace l'ancien BMR × 1.2 qui écrasait la cible pour les athlètes 12k+ steps
+  const safetyFloor = Math.max(1200, Math.round(tdee * 0.78))
 
   const isCustom = params.macro_mode === 'custom' &&
     !!(params.custom_protein_g || params.custom_calories)
@@ -449,7 +473,7 @@ export function calcDailyTarget(params: {
   }
 
   return {
-    bmr, stepsKcal, workoutKcal, workoutMuscleGroup,
+    bmr, stepsKcal, workoutKcal, trainingResidualKcal, workoutMuscleGroup,
     tdee, adjustment, targetCalories, macros,
     stepsUsed: stepsForTdee, usedYesterdaySteps,
     todaySteps, todayWorkoutTonnage: tonnage, usedFallback, isCustom,

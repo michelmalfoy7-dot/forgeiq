@@ -112,6 +112,8 @@ export default async function NutritionPage() {
       today={today}
       initialWaterMl={todayLog?.water_ml ?? 0}
       waterGoalMl={profile?.water_goal_ml ?? 2500}
+      isRestDay={isRestDay}
+      workoutKcal={dailyTarget.workoutKcal > 0 ? dailyTarget.workoutKcal : undefined}
     />
   )
 }
