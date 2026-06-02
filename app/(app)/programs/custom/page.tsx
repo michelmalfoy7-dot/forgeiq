@@ -9,10 +9,26 @@ export default async function CustomProgramPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: exercises } = await supabase
-    .from('exercises_library')
-    .select('id, name, name_fr, muscle_primary, equipment, category')
-    .order('name_fr', { ascending: true })
+  const [{ data: exercises }, { data: aliasRows }] = await Promise.all([
+    supabase
+      .from('exercises_library')
+      .select('id, name, name_fr, muscle_primary, equipment, category')
+      .order('name_fr', { ascending: true }),
+    supabase
+      .from('exercise_aliases')
+      .select('exercise_id, alias'),
+  ])
+
+  // Grouper les aliases par exercice
+  const aliasMap: Record<string, { alias: string }[]> = {}
+  for (const a of (aliasRows ?? [])) {
+    if (!aliasMap[a.exercise_id]) aliasMap[a.exercise_id] = []
+    aliasMap[a.exercise_id].push({ alias: a.alias })
+  }
+  const exercisesWithAliases = (exercises ?? []).map(ex => ({
+    ...ex,
+    aliases: aliasMap[ex.id] ?? [],
+  }))
 
   return (
     <div className="p-4 max-w-lg mx-auto">
@@ -22,7 +38,7 @@ export default async function CustomProgramPage() {
           Programme custom
         </h1>
       </div>
-      <CustomProgramBuilder exercises={exercises ?? []} />
+      <CustomProgramBuilder exercises={exercisesWithAliases} />
     </div>
   )
 }

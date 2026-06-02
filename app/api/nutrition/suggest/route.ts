@@ -33,9 +33,10 @@ export async function POST(req: NextRequest) {
       remaining_carbs_g: number
       remaining_fat_g: number
       meal_type: string // 'breakfast' | 'lunch' | 'dinner' | 'snack'
+      meal_budget?: { min: number; target: number; max: number }
     }
 
-    const { remaining_calories, remaining_protein_g, remaining_carbs_g, remaining_fat_g, meal_type } = body
+    const { remaining_calories, remaining_protein_g, remaining_carbs_g, remaining_fat_g, meal_type, meal_budget } = body
 
     // Enrichir le contexte avec le profil + dernier workout du jour
     const today = new Date().toISOString().split('T')[0]
@@ -66,19 +67,38 @@ export async function POST(req: NextRequest) {
       workoutContext = `L'utilisateur a fait une séance "${todayWorkout.session_name}" aujourd'hui${heavy ? ' (séance lourde — besoins glucidiques élevés)' : ''}.`
     }
 
-    const prompt = `Tu es un nutritionniste expert en fitness. Propose exactement 3 idées de ${mealLabel} adaptées aux macros restantes de l'utilisateur.
+    // Budget calorique pour CE repas spécifiquement
+    // Si le frontend a envoyé un budget calculé, on l'utilise.
+    // Sinon fallback sur 35% du restant (valeur raisonnable pour le déjeuner).
+    const budget = meal_budget ?? {
+      min:    Math.round(remaining_calories * 0.25),
+      target: Math.round(remaining_calories * 0.35),
+      max:    Math.round(remaining_calories * 0.45),
+    }
+
+    // Macros proportionnelles au budget de CE repas vs total restant
+    const ratio = remaining_calories > 0 ? budget.target / remaining_calories : 0.35
+    const protTarget = Math.round(remaining_protein_g * ratio)
+    const carbTarget = Math.round(remaining_carbs_g * ratio)
+    const fatTarget  = Math.round(remaining_fat_g * ratio)
+
+    const prompt = `Tu es un nutritionniste expert en fitness. Propose exactement 3 idées de ${mealLabel} adaptées au budget de CE repas.
 
 Contexte :
 - Objectif : ${goalLabel}
 - Il est ${hour}h (${mealLabel})
-- Macros restantes pour la journée : ${Math.round(remaining_calories)} kcal · ${Math.round(remaining_protein_g)}g protéines · ${Math.round(remaining_carbs_g)}g glucides · ${Math.round(remaining_fat_g)}g lipides
+- Budget POUR CE ${mealLabel.toUpperCase()} : ${budget.target} kcal (min ${budget.min} — max ${budget.max})
+- Macros cibles pour ce repas : ${protTarget}g protéines · ${carbTarget}g glucides · ${fatTarget}g lipides
+- Macros restantes pour TOUTE la journée : ${Math.round(remaining_calories)} kcal (pour info, ne pas tout utiliser)
 ${workoutContext ? `- ${workoutContext}` : ''}
 
-Règles :
-- Chaque suggestion doit utiliser environ 60-80% des macros restantes (pas tout, l'utilisateur peut encore manger)
+Règles STRICTES :
+- Chaque suggestion DOIT être entre ${budget.min} et ${budget.max} kcal — JAMAIS en dehors
+- Minimum ${Math.max(15, Math.round(protTarget * 0.8))}g de protéines
 - Aliments simples et accessibles en France
-- Pas de menu complet, juste des idées pratiques
-- Si macros restantes < 300 kcal → proposer des collations légères uniquement
+- Pas de menu complet, juste une idée pratique
+- Temps de préparation max 30 min
+- Si budget < 300 kcal → collations légères uniquement
 
 Retourne UNIQUEMENT ce JSON valide (sans markdown, sans texte avant/après) :
 {
@@ -99,7 +119,7 @@ Retourne UNIQUEMENT ce JSON valide (sans markdown, sans texte avant/après) :
 
     const res = await anthropic.messages.create({
       model: 'claude-haiku-4-5',
-      max_tokens: 1000,
+      max_tokens: 1200,
       messages: [{ role: 'user', content: prompt }],
     })
 

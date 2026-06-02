@@ -187,9 +187,18 @@
     padding: 0.75rem 1rem;
   }
 
-  /* Safe area pour bottom nav mobile */
+  /* Safe areas iOS (viewport-fit=cover) */
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* Utilisé par les headers sticky : au moins 12px même sans notch */
+  .pt-safe {
+    padding-top: max(env(safe-area-inset-top), 12px);
+  }
+  /* Mode paysage iPhone : marges latérales */
+  .px-safe {
+    padding-left: max(env(safe-area-inset-left), 16px);
+    padding-right: max(env(safe-area-inset-right), 16px);
   }
   .mb-nav {
     margin-bottom: calc(4rem + env(safe-area-inset-bottom));

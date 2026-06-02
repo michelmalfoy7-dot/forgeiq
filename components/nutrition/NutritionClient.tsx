@@ -2420,6 +2420,44 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
 
   // ── Suggestions IA ───────────────────────────────────────────
 
+  /**
+   * Calcule le budget calorique adapté au repas demandé,
+   * en répartissant les calories restantes sur les repas à venir dans la journée.
+   * Évite de suggérer un repas qui consomme tout le budget journalier restant.
+   */
+  function getMealBudget(remainingCalories: number, mealType: string): { min: number; target: number; max: number } {
+    const hour = new Date().getHours()
+
+    // Poids relatifs des repas sur la journée
+    const WEIGHTS: Record<string, number> = {
+      breakfast: 0.25,
+      lunch:     0.35,
+      dinner:    0.30,
+      snack:     0.10,
+    }
+
+    // Repas encore à venir selon l'heure (incluant le repas demandé)
+    const allMeals = ['breakfast', 'lunch', 'dinner', 'snack']
+    const upcoming = allMeals.filter(m => {
+      if (m === mealType) return true      // toujours inclure le repas cible
+      if (m === 'breakfast') return hour < 10
+      if (m === 'lunch')     return hour < 14
+      if (m === 'dinner')    return hour < 21
+      if (m === 'snack')     return hour < 22
+      return false
+    })
+
+    const totalWeight = upcoming.reduce((s, m) => s + (WEIGHTS[m] ?? 0.1), 0)
+    const mealRatio = (WEIGHTS[mealType] ?? 0.25) / Math.max(totalWeight, 0.1)
+    const target = Math.round(remainingCalories * mealRatio)
+
+    return {
+      min:    Math.round(target * 0.80),
+      target: Math.round(target),
+      max:    Math.round(target * 1.20),
+    }
+  }
+
   async function fetchSuggestions(mealType: string) {
     setSuggestLoading(true)
     setSuggestError(null)
@@ -2429,10 +2467,21 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
       const remaining_protein_g = Math.max(0, targets.protein_g - totals.protein_g)
       const remaining_carbs_g = Math.max(0, targets.carbs_g - totals.carbs_g)
       const remaining_fat_g = Math.max(0, targets.fat_g - totals.fat_g)
+
+      // Calculer le budget spécifique à ce repas (pas tout le restant journalier)
+      const meal_budget = getMealBudget(remaining_calories, mealType)
+
       const res = await fetch('/api/nutrition/suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ remaining_calories, remaining_protein_g, remaining_carbs_g, remaining_fat_g, meal_type: mealType }),
+        body: JSON.stringify({
+          remaining_calories,
+          remaining_protein_g,
+          remaining_carbs_g,
+          remaining_fat_g,
+          meal_type: mealType,
+          meal_budget,
+        }),
       })
       const { data, error } = await res.json()
       if (error || !data) {
@@ -2788,19 +2837,29 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>
-                  ✨ Suggestions repas
-                </h2>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
-                  Adapté à tes macros restantes · {Math.round(Math.max(0, targets.calories - totals.calories))} kcal disponibles
-                </p>
-              </div>
-              <button onClick={() => setShowSuggest(false)}>
-                <X className="w-5 h-5" style={{ color: 'var(--fiq-muted)' }} />
-              </button>
-            </div>
+            {(() => {
+              const remaining = Math.max(0, targets.calories - totals.calories)
+              const budget = getMealBudget(remaining, suggestMealType)
+              return (
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <h2 className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>
+                      ✨ Suggestions repas
+                    </h2>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                      🎯 Budget {MEAL_LABELS[suggestMealType]} :&nbsp;
+                      <span style={{ color: 'var(--fiq-accent)', fontWeight: 700 }}>
+                        ~{budget.target} kcal
+                      </span>
+                      &nbsp;· {Math.round(remaining)} kcal restantes/jour
+                    </p>
+                  </div>
+                  <button onClick={() => setShowSuggest(false)}>
+                    <X className="w-5 h-5" style={{ color: 'var(--fiq-muted)' }} />
+                  </button>
+                </div>
+              )
+            })()}
 
             {/* Sélecteur type de repas */}
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -2842,7 +2901,13 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
               </div>
             ) : (
               <div className="space-y-3">
-                {suggestions.map((s, i) => (
+                {(() => {
+                  const remaining = Math.max(0, targets.calories - totals.calories)
+                  const budget = getMealBudget(remaining, suggestMealType)
+                  return suggestions.map((s, i) => {
+                    const pct = budget.target > 0 ? Math.round((s.calories / budget.target) * 100) : 0
+                    const pctColor = pct > 110 ? 'var(--fiq-orange)' : pct < 70 ? 'var(--fiq-muted)' : 'var(--fiq-accent)'
+                    return (
                   <div key={i} className="rounded-2xl p-4 space-y-2"
                     style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
                     <div className="flex items-start gap-3">
@@ -2859,10 +2924,14 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
                       )}
                     </div>
 
-                    {/* Macros */}
+                    {/* Macros + % budget */}
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="text-sm font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
                         {s.calories} kcal
+                      </span>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                        style={{ background: pctColor + '20', color: pctColor, border: `1px solid ${pctColor}40` }}>
+                        {pct}% du budget
                       </span>
                       <span className="text-xs fiq-data" style={{ color: 'var(--fiq-blue)' }}>
                         P {s.protein_g}g
@@ -2888,7 +2957,10 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
                       </div>
                     )}
                   </div>
-                ))}
+                    )    // closes return (JSX)
+                  }      // closes (s, i) => { callback
+                )        // closes .map(
+              })()}
 
                 {/* Régénérer */}
                 <button

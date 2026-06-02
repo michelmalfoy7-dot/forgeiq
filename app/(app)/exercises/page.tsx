@@ -2,9 +2,22 @@ import { createClient } from '@/lib/supabase/server'
 import { ExerciseBrowser } from '@/components/ExerciseBrowser'
 import type { Metadata } from 'next'
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://getforgeiq.com'
+
 export const metadata: Metadata = {
-  title: 'Exercices — ForgeIQ',
-  description: 'Bibliothèque de 250+ exercices avec instructions, conseils et suivi de performance.',
+  title: 'Bibliothèque d\'exercices — 1000+ mouvements',
+  description: 'Explore plus de 1000 exercices de musculation, cardio et mobilité. Instructions détaillées, muscles ciblés, équipement requis. Recherche par groupe musculaire ou équipement.',
+  keywords: [
+    'exercices musculation', 'bibliothèque exercices fitness', 'squat technique',
+    'développé couché', 'exercices maison', 'exercices salle', 'programme musculation exercices',
+    'guide exercices musculation', 'muscles dos exercices', 'exercices jambes',
+  ],
+  alternates: { canonical: `${APP_URL}/exercises` },
+  openGraph: {
+    title: '1000+ exercices de musculation & fitness — ForgeIQ',
+    description: 'Bibliothèque complète : instructions, muscles ciblés, variantes. Tous les niveaux, tout l\'équipement.',
+    images: [{ url: '/opengraph-image', width: 1200, height: 630, alt: 'Bibliothèque exercices ForgeIQ' }],
+  },
 }
 
 export default async function ExercisesPage() {

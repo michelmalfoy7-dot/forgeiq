@@ -306,7 +306,7 @@ export function ExerciseBrowser({ exercises }: Props) {
 
       {/* ── Header sticky ── */}
       <div
-        className="sticky top-0 z-10 pt-4 px-4 pb-2"
+        className="sticky top-0 z-10 pt-safe px-4 pb-2"
         style={{ background: 'var(--bg)', borderBottom: '1px solid var(--fiq-border)' }}
       >
         {/* Titre */}

@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 
 type SetInput = {
-  exercise_id: string
+  exercise_id: string | null
   exercise_name: string
   set_number: number
   weight_kg: number

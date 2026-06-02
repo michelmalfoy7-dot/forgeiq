@@ -11,6 +11,7 @@ type Exercise = {
   muscle_primary: string[]
   equipment: string
   category: string
+  aliases?: { alias: string }[]
 }
 
 type Day = {
@@ -43,6 +44,7 @@ function ExerciseSearchModal({
     const q = query.toLowerCase()
     const matchQ = !q || e.name.toLowerCase().includes(q) || (e.name_fr ?? '').toLowerCase().includes(q)
       || e.muscle_primary.some(m => m.toLowerCase().includes(q))
+      || (e.aliases ?? []).some(a => a.alias.toLowerCase().includes(q))
     const matchE = filterEquip === 'all' || e.equipment === filterEquip
     return matchQ && matchE
   })

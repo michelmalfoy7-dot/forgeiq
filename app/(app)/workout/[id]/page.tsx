@@ -40,6 +40,7 @@ type Exercise = {
   equipment: string
   is_bilateral_dumbbell?: boolean
   is_unilateral?: boolean
+  aliases?: { alias: string }[]
 }
 
 type ExerciseGroup = {
@@ -205,9 +206,10 @@ export default function WorkoutSessionPage() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
 
-      const [{ data: exos }, { data: workout }] = await Promise.all([
+      const [{ data: exos }, { data: workout }, { data: aliasRows }] = await Promise.all([
         supabase.from('exercises_library').select('id,name,name_fr,slug,muscle_primary,equipment,is_bilateral_dumbbell,is_unilateral').order('name_fr'),
         supabase.from('workouts').select('session_name, completed_at').eq('id', workoutId).single(),
+        supabase.from('exercise_aliases').select('exercise_id, alias'),
       ])
 
       // Séance déjà terminée en base → rediriger immédiatement (évite le retour via back button)
@@ -216,7 +218,17 @@ export default function WorkoutSessionPage() {
         return
       }
 
-      const library: Exercise[] = (exos ?? []) as Exercise[]
+      // Grouper les aliases par exercice
+      const aliasMap: Record<string, { alias: string }[]> = {}
+      for (const a of (aliasRows ?? [])) {
+        if (!aliasMap[a.exercise_id]) aliasMap[a.exercise_id] = []
+        aliasMap[a.exercise_id].push({ alias: a.alias })
+      }
+
+      const library: Exercise[] = (exos ?? []).map(ex => ({
+        ...ex,
+        aliases: aliasMap[(ex as { id: string }).id] ?? [],
+      })) as Exercise[]
       setExercises(library)
       if (workout?.session_name) setSessionName(workout.session_name)
 
@@ -244,46 +256,52 @@ export default function WorkoutSessionPage() {
         try {
           const suggested: { name: string; slug?: string; sets: number; reps: string; weight_kg: number | null; note: string }[] = JSON.parse(stored)
 
-          const matches = suggested
-            .map((s) => ({
-              s,
-              // Priorité au slug (fiable même avec corruption UTF-8 dans name_fr)
-              match: library.find((e) =>
-                (s.slug && e.slug && e.slug === s.slug) ||
-                (e.name_fr ?? '').toLowerCase() === s.name.toLowerCase() ||
-                e.name.toLowerCase() === s.name.toLowerCase()
-              ),
-            }))
-            .filter((x): x is { s: typeof suggested[0]; match: Exercise } => x.match !== undefined)
+          // Pour chaque exercice suggéré, on cherche le match en bibliothèque.
+          // Si aucun match (ex: machine Hammer Strength non en bibliothèque, nom by_tier
+          // résolu différemment), on l'ajoute quand même sans données lastSession/PR.
+          // Avant : les exercices sans match étaient silencieusement supprimés → séance incomplète.
+          const withMatches = suggested.map((s) => ({
+            s,
+            match: library.find((e) =>
+              (s.slug && e.slug && e.slug === s.slug) ||
+              (e.name_fr ?? '').toLowerCase() === s.name.toLowerCase() ||
+              e.name.toLowerCase() === s.name.toLowerCase()
+            ) ?? null,
+          }))
 
-          if (matches.length > 0) {
-            const matchIds = matches.map((x) => x.match.id)
+          // Récupérer lastSession + PRs pour les exercices trouvés en bibliothèque
+          const matchedItems = withMatches.filter((x): x is { s: typeof suggested[0]; match: Exercise } => x.match !== null)
+          const matchIds = matchedItems.map((x) => x.match.id)
 
-            const [{ data: allLastSets }, { data: allPRs }] = await Promise.all([
-              supabase.from('workout_sets')
-                .select('weight_kg, reps, exercise_id, workouts!inner(user_id)')
-                .in('exercise_id', matchIds)
-                .eq('workouts.user_id', user.id)
-                .not('is_warmup', 'eq', true)
-                .order('created_at', { ascending: false })
-                .limit(matchIds.length * 5),
-              supabase.from('personal_records')
-                .select('exercise_id, value')
-                .in('exercise_id', matchIds)
-                .eq('user_id', user.id)
-                .eq('record_type', 'top_set'),
-            ])
+          const [{ data: allLastSets }, { data: allPRs }] = matchIds.length > 0
+            ? await Promise.all([
+                supabase.from('workout_sets')
+                  .select('weight_kg, reps, exercise_id, workouts!inner(user_id)')
+                  .in('exercise_id', matchIds)
+                  .eq('workouts.user_id', user.id)
+                  .not('is_warmup', 'eq', true)
+                  .order('created_at', { ascending: false })
+                  .limit(matchIds.length * 5),
+                supabase.from('personal_records')
+                  .select('exercise_id, value')
+                  .in('exercise_id', matchIds)
+                  .eq('user_id', user.id)
+                  .eq('record_type', 'top_set'),
+              ])
+            : [{ data: [] }, { data: [] }]
 
-            const lastSetsByEx: Record<string, { weight_kg: number; reps: number }[]> = {}
-            for (const s of allLastSets ?? []) {
-              const exId = (s as { exercise_id: string }).exercise_id
-              if (!lastSetsByEx[exId]) lastSetsByEx[exId] = []
-              if (lastSetsByEx[exId].length < 4) lastSetsByEx[exId].push({ weight_kg: s.weight_kg, reps: s.reps })
-            }
-            const prByEx: Record<string, number> = {}
-            for (const pr of allPRs ?? []) prByEx[pr.exercise_id] = pr.value
+          const lastSetsByEx: Record<string, { weight_kg: number; reps: number }[]> = {}
+          for (const s of allLastSets ?? []) {
+            const exId = (s as { exercise_id: string }).exercise_id
+            if (!lastSetsByEx[exId]) lastSetsByEx[exId] = []
+            if (lastSetsByEx[exId].length < 4) lastSetsByEx[exId].push({ weight_kg: s.weight_kg, reps: s.reps })
+          }
+          const prByEx: Record<string, number> = {}
+          for (const pr of allPRs ?? []) prByEx[pr.exercise_id] = pr.value
 
-            const preloaded: ExerciseGroup[] = matches.map(({ s, match }) => {
+          const preloaded: ExerciseGroup[] = withMatches.map(({ s, match }) => {
+            if (match) {
+              // Exercice trouvé en bibliothèque → données complètes (lastSession, PR)
               const lastSession = lastSetsByEx[match.id] ?? []
               const pr = prByEx[match.id]
               const count = s.sets ?? 3
@@ -302,10 +320,29 @@ export default function WorkoutSessionPage() {
                 unilateral_both_sides: true,
                 sets, lastSession, pr,
               }
-            })
+            } else {
+              // Exercice non trouvé en bibliothèque (nom résolu by_tier non indexé) →
+              // on l'ajoute quand même avec un ID fictif pour ne pas perdre la séance
+              const fallbackId = `suggested-${uid()}`
+              const count = s.sets ?? 3
+              const initWeight: number | '' = s.weight_kg ?? ''
+              const sets: SetRow[] = Array.from({ length: count }, (_, i) => ({
+                id: uid(), exercise_id: fallbackId, exercise_name: s.name,
+                set_number: i + 1, weight_kg: initWeight, reps: '', rpe: '', is_warmup: false,
+              }))
+              return {
+                exercise_id: fallbackId,
+                exercise_name: s.name,
+                exercise_equipment: undefined,
+                is_bilateral_dumbbell: false,
+                is_unilateral: false,
+                unilateral_both_sides: true,
+                sets, lastSession: [], pr: undefined,
+              }
+            }
+          })
 
-            if (preloaded.length > 0) setGroups(preloaded)
-          }
+          if (preloaded.length > 0) setGroups(preloaded)
         } catch { /* Silencieux si parsing échoue */ }
       }
 
@@ -507,7 +544,8 @@ export default function WorkoutSessionPage() {
       workout_id: workoutId,
       // Inclure is_bilateral_dumbbell par groupe pour le calcul correct du tonnage
       sets: groups.flatMap((g) => g.sets.map((s) => ({
-        exercise_id: s.exercise_id,
+        // Les IDs "suggested-..." sont fictifs (exercice non trouvé en bibliothèque) → null pour éviter la contrainte FK
+        exercise_id: s.exercise_id.startsWith('suggested-') ? null : s.exercise_id,
         exercise_name: s.exercise_name,
         set_number: s.set_number,
         weight_kg: parseFloat(String(s.weight_kg).replace(',', '.')) || 0,
@@ -612,7 +650,8 @@ export default function WorkoutSessionPage() {
       const matchQuery = rawQ.length < 1 ||
         normEx(e.name_fr ?? '').includes(q) ||
         normEx(e.name).includes(q) ||
-        (e.muscle_primary ?? []).some(m => normEx(m).includes(q))
+        (e.muscle_primary ?? []).some(m => normEx(m).includes(q)) ||
+        (e.aliases ?? []).some(a => normEx(a.alias).includes(q))
       // Filtre équipement
       const matchEquip = equipmentFilter === 'all' || e.equipment === equipmentFilter
       // Filtre groupe musculaire
@@ -642,7 +681,11 @@ export default function WorkoutSessionPage() {
 
   // ── Partage natif mobile ──────────────────────────────────
   async function handleNativeShare() {
-    const text = `${sessionName} · ${summary?.tonnage.toLocaleString('fr-FR')}kg soulevés · ${summary?.sets} séries`
+    const stats = `💪 ${sessionName} · ${summary?.tonnage.toLocaleString('fr-FR')} kg soulevés · ${summary?.sets} séries`
+      + (summary && summary.newPRs.length > 0 ? ` · 🏆 ${summary.newPRs.length} PR${summary.newPRs.length > 1 ? 's' : ''}` : '')
+    const caption = shareCaption.trim()
+    // Inclure le message utilisateur en tête si présent
+    const text = caption ? `${caption}\n\n${stats}` : stats
     try {
       if (navigator.share) {
         await navigator.share({
@@ -651,7 +694,7 @@ export default function WorkoutSessionPage() {
           url: 'https://getforgeiq.com',
         })
       } else {
-        await navigator.clipboard.writeText(`${text} — https://getforgeiq.com`)
+        await navigator.clipboard.writeText(`${text}\n\nhttps://getforgeiq.com`)
       }
     } catch { /* Annulé par l'utilisateur */ }
   }
@@ -765,6 +808,11 @@ export default function WorkoutSessionPage() {
               {/* Preview visuelle */}
               <div className="rounded-xl p-4 space-y-2" style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
                 <p className="text-xs font-black" style={{ color: 'var(--fiq-accent)' }}>💪 ForgeIQ</p>
+                {shareCaption.trim() && (
+                  <p className="text-xs italic leading-relaxed" style={{ color: 'var(--fiq-text)' }}>
+                    &ldquo;{shareCaption.trim()}&rdquo;
+                  </p>
+                )}
                 <p className="text-sm font-bold" style={{ color: 'var(--fiq-text)' }}>{sessionName} · {formatTime(elapsed)}</p>
                 <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
                   ⚡ {summary.tonnage.toLocaleString('fr-FR')} kg · {summary.sets} séries
@@ -772,18 +820,23 @@ export default function WorkoutSessionPage() {
                 </p>
               </div>
 
-              {/* Caption optionnelle */}
-              <textarea
-                placeholder="Ajoute un commentaire (optionnel)..."
-                value={shareCaption}
-                onChange={(e) => setShareCaption(e.target.value)}
-                rows={2}
-                style={{
-                  width: '100%', padding: '10px 12px', borderRadius: 10,
-                  background: 'var(--bg)', border: '1px solid var(--fiq-border)',
-                  color: 'var(--fiq-text)', fontSize: 13, resize: 'none', outline: 'none',
-                }}
-              />
+              {/* Caption avec compteur */}
+              <div className="space-y-1">
+                <textarea
+                  placeholder="Ressenti, contexte, note du jour..."
+                  value={shareCaption}
+                  onChange={(e) => setShareCaption(e.target.value.slice(0, 150))}
+                  rows={2}
+                  style={{
+                    width: '100%', padding: '10px 12px', borderRadius: 10,
+                    background: 'var(--bg)', border: '1px solid var(--fiq-border)',
+                    color: 'var(--fiq-text)', fontSize: 13, resize: 'none', outline: 'none',
+                  }}
+                />
+                <p className="text-right text-[10px]" style={{ color: shareCaption.length >= 140 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+                  {shareCaption.length}/150
+                </p>
+              </div>
 
               <div className="flex gap-2">
                 {/* Partage natif mobile */}
@@ -865,8 +918,8 @@ export default function WorkoutSessionPage() {
 
       {/* Header sticky */}
       <div
-        className="sticky top-0 z-40 px-4 py-3 flex items-center justify-between"
-        style={{ background: 'var(--surface)', borderBottom: '1px solid var(--fiq-border)', backdropFilter: 'blur(12px)' }}
+        className="sticky top-0 z-40 px-4 pb-3 pt-safe flex items-center justify-between"
+        style={{ background: 'var(--surface)', borderBottom: '1px solid var(--fiq-border)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
       >
         <div>
           <p className="font-bold text-sm" style={{ color: 'var(--fiq-text)' }}>{sessionName}</p>

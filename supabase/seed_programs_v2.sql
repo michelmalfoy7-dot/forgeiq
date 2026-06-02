@@ -52,8 +52,8 @@ VALUES (
             "sets": 3, "reps": "8-12", "rest_sec": 120,
             "note": "Descendre sous le parallèle, genoux dans l'axe des pieds. Progression : +2.5 kg si 3×12 réussis.",
             "by_tier": {
-              "premium":  {"slug": "squat", "name_fr": "Squat barre"},
-              "standard": {"slug": "squat", "name_fr": "Squat barre"},
+              "premium":  {"slug": "barbell-back-squat", "name_fr": "Squat barre"},
+              "standard": {"slug": "barbell-back-squat", "name_fr": "Squat barre"},
               "home":     {"slug": "goblet-squat", "name_fr": "Goblet Squat haltère"}
             }
           },
@@ -62,8 +62,8 @@ VALUES (
             "sets": 3, "reps": "10-15", "rest_sec": 120,
             "note": "Amplitude complète, étirement pectoral en bas. Pause légère en bas du mouvement.",
             "by_tier": {
-              "premium":  {"slug": "chest-press-hammer-strength", "name_fr": "Chest Press Hammer Strength"},
-              "standard": {"slug": "chest-press-machine", "name_fr": "Chest Press Machine"},
+              "premium":  {"slug": "machine-chest-press", "name_fr": "Chest Press Hammer Strength"},
+              "standard": {"slug": "machine-chest-press", "name_fr": "Chest Press Machine"},
               "home":     {"slug": "dumbbell-bench-press", "name_fr": "Développé couché haltères"}
             }
           },
@@ -82,8 +82,8 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Coudes légèrement devant le corps, ne pas bloquer en haut.",
             "by_tier": {
-              "premium":  {"slug": "shoulder-press-hammer-strength", "name_fr": "Shoulder Press Hammer Strength"},
-              "standard": {"slug": "shoulder-press-machine", "name_fr": "Presse épaules machine"},
+              "premium":  {"slug": "machine-shoulder-press", "name_fr": "Shoulder Press Hammer Strength"},
+              "standard": {"slug": "machine-shoulder-press", "name_fr": "Presse épaules machine"},
               "home":     {"slug": "dumbbell-shoulder-press", "name_fr": "Développé épaules haltères"}
             }
           },
@@ -118,9 +118,9 @@ VALUES (
             "sets": 3, "reps": "10-15", "rest_sec": 120,
             "note": "Angle 30-45°, focus pectoral haut. Descendre haltères à hauteur d'épaule.",
             "by_tier": {
-              "premium":  {"slug": "incline-chest-press-hammer-strength", "name_fr": "Incline Chest Press Hammer Strength"},
-              "standard": {"slug": "incline-dumbbell-press", "name_fr": "Développé incliné haltères"},
-              "home":     {"slug": "incline-dumbbell-press", "name_fr": "Développé incliné haltères"}
+              "premium":  {"slug": "incline-barbell-bench-press", "name_fr": "Incline Chest Press Hammer Strength"},
+              "standard": {"slug": "incline-barbell-bench-press", "name_fr": "Développé incliné haltères"},
+              "home":     {"slug": "incline-barbell-bench-press", "name_fr": "Développé incliné haltères"}
             }
           },
           {
@@ -128,7 +128,7 @@ VALUES (
             "sets": 3, "reps": "10-15", "rest_sec": 120,
             "note": "Dos droit, tirer le coude vers la hanche, pause d'une seconde en contraction.",
             "by_tier": {
-              "premium":  {"slug": "iso-lateral-row-hammer-strength", "name_fr": "Iso-Lateral Row Hammer Strength"},
+              "premium":  {"slug": "seated-cable-row", "name_fr": "Iso-Lateral Row Hammer Strength"},
               "standard": {"slug": "seated-cable-row", "name_fr": "Tirage horizontal câble"},
               "home":     {"slug": "dumbbell-row", "name_fr": "Rowing haltère unilatéral"}
             }
@@ -148,9 +148,9 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Extension complète des hanches en haut, serrer les fessiers. Dos appuyé sur banc.",
             "by_tier": {
-              "premium":  {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
-              "standard": {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
-              "home":     {"slug": "hip-thrust", "name_fr": "Hip Thrust haltère"}
+              "premium":  {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
+              "standard": {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
+              "home":     {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust haltère"}
             }
           }
         ]
@@ -164,8 +164,8 @@ VALUES (
             "sets": 3, "reps": "8-12", "rest_sec": 120,
             "note": "Même séance que J1 — augmenter la charge si 3×12 la dernière fois.",
             "by_tier": {
-              "premium":  {"slug": "squat", "name_fr": "Squat barre"},
-              "standard": {"slug": "squat", "name_fr": "Squat barre"},
+              "premium":  {"slug": "barbell-back-squat", "name_fr": "Squat barre"},
+              "standard": {"slug": "barbell-back-squat", "name_fr": "Squat barre"},
               "home":     {"slug": "goblet-squat", "name_fr": "Goblet Squat haltère"}
             }
           },
@@ -174,8 +174,8 @@ VALUES (
             "sets": 3, "reps": "10-15", "rest_sec": 120,
             "note": "Amplitude complète, étirement pectoral en bas.",
             "by_tier": {
-              "premium":  {"slug": "chest-press-hammer-strength", "name_fr": "Chest Press Hammer Strength"},
-              "standard": {"slug": "chest-press-machine", "name_fr": "Chest Press Machine"},
+              "premium":  {"slug": "machine-chest-press", "name_fr": "Chest Press Hammer Strength"},
+              "standard": {"slug": "machine-chest-press", "name_fr": "Chest Press Machine"},
               "home":     {"slug": "dumbbell-bench-press", "name_fr": "Développé couché haltères"}
             }
           },
@@ -194,8 +194,8 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Coudes légèrement devant, pousser fort.",
             "by_tier": {
-              "premium":  {"slug": "shoulder-press-hammer-strength", "name_fr": "Shoulder Press Hammer Strength"},
-              "standard": {"slug": "shoulder-press-machine", "name_fr": "Presse épaules machine"},
+              "premium":  {"slug": "machine-shoulder-press", "name_fr": "Shoulder Press Hammer Strength"},
+              "standard": {"slug": "machine-shoulder-press", "name_fr": "Presse épaules machine"},
               "home":     {"slug": "dumbbell-shoulder-press", "name_fr": "Développé épaules haltères"}
             }
           },
@@ -239,9 +239,9 @@ VALUES (
             "sets": 4, "reps": "6-10", "rest_sec": 180,
             "note": "Mouvement principal — progressivité obligatoire. Tester une charge max sur 6 reps.",
             "by_tier": {
-              "premium":  {"slug": "chest-press-hammer-strength", "name_fr": "Chest Press Hammer Strength"},
-              "standard": {"slug": "chest-press-machine", "name_fr": "Chest Press Machine"},
-              "home":     {"slug": "bench-press", "name_fr": "Développé couché barre"}
+              "premium":  {"slug": "machine-chest-press", "name_fr": "Chest Press Hammer Strength"},
+              "standard": {"slug": "machine-chest-press", "name_fr": "Chest Press Machine"},
+              "home":     {"slug": "barbell-bench-press", "name_fr": "Développé couché barre"}
             }
           },
           {
@@ -259,9 +259,9 @@ VALUES (
             "sets": 3, "reps": "10-15", "rest_sec": 120,
             "note": "Angle 30-45°, focus faisceau claviculaire du pectoral.",
             "by_tier": {
-              "premium":  {"slug": "incline-chest-press-hammer-strength", "name_fr": "Incline Chest Press Hammer Strength"},
-              "standard": {"slug": "incline-dumbbell-press", "name_fr": "Développé incliné haltères"},
-              "home":     {"slug": "incline-dumbbell-press", "name_fr": "Développé incliné haltères"}
+              "premium":  {"slug": "incline-barbell-bench-press", "name_fr": "Incline Chest Press Hammer Strength"},
+              "standard": {"slug": "incline-barbell-bench-press", "name_fr": "Développé incliné haltères"},
+              "home":     {"slug": "incline-barbell-bench-press", "name_fr": "Développé incliné haltères"}
             }
           },
           {
@@ -269,7 +269,7 @@ VALUES (
             "sets": 3, "reps": "10-15", "rest_sec": 120,
             "note": "Dos droit, tirer le coude vers la hanche. Volume dosé pour préserver le dos.",
             "by_tier": {
-              "premium":  {"slug": "iso-lateral-row-hammer-strength", "name_fr": "Iso-Lateral Row Hammer Strength"},
+              "premium":  {"slug": "seated-cable-row", "name_fr": "Iso-Lateral Row Hammer Strength"},
               "standard": {"slug": "seated-cable-row", "name_fr": "Tirage horizontal câble"},
               "home":     {"slug": "barbell-row", "name_fr": "Rowing barre"}
             }
@@ -289,7 +289,7 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Coudes fixes, extension complète en bas, contrôler la remontée.",
             "by_tier": {
-              "premium":  {"slug": "cable-tricep-pushdown", "name_fr": "Extension triceps câble"},
+              "premium":  {"slug": "tricep-pushdown", "name_fr": "Extension triceps câble"},
               "standard": {"slug": "tricep-pushdown", "name_fr": "Extension triceps poulie"},
               "home":     {"slug": "skull-crusher", "name_fr": "Skull Crusher haltères"}
             }
@@ -305,9 +305,9 @@ VALUES (
             "sets": 4, "reps": "6-10", "rest_sec": 240,
             "note": "Roi des exercices jambes. Descendre sous le parallèle, dos neutre. Ceinture recommandée > 100 kg.",
             "by_tier": {
-              "premium":  {"slug": "squat", "name_fr": "Squat barre"},
-              "standard": {"slug": "squat", "name_fr": "Squat barre"},
-              "home":     {"slug": "squat", "name_fr": "Squat barre"}
+              "premium":  {"slug": "barbell-back-squat", "name_fr": "Squat barre"},
+              "standard": {"slug": "barbell-back-squat", "name_fr": "Squat barre"},
+              "home":     {"slug": "barbell-back-squat", "name_fr": "Squat barre"}
             }
           },
           {
@@ -335,9 +335,9 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Curl complet — ne pas soulever les hanches. Pied fléchi en haut.",
             "by_tier": {
-              "premium":  {"slug": "lying-leg-curl", "name_fr": "Leg Curl allongé"},
-              "standard": {"slug": "lying-leg-curl", "name_fr": "Leg Curl allongé"},
-              "home":     {"slug": "nordic-hamstring", "name_fr": "Nordic Hamstring Curl"}
+              "premium":  {"slug": "leg-curl", "name_fr": "Leg Curl allongé"},
+              "standard": {"slug": "leg-curl", "name_fr": "Leg Curl allongé"},
+              "home":     {"slug": "nordic-curl", "name_fr": "Nordic Hamstring Curl"}
             }
           },
           {
@@ -345,9 +345,9 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Extension complète des hanches en haut, serrer 1 seconde.",
             "by_tier": {
-              "premium":  {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
-              "standard": {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
-              "home":     {"slug": "hip-thrust", "name_fr": "Hip Thrust haltère"}
+              "premium":  {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
+              "standard": {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
+              "home":     {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust haltère"}
             }
           },
           {
@@ -355,8 +355,8 @@ VALUES (
             "sets": 4, "reps": "15-20", "rest_sec": 60,
             "note": "Amplitude complète : descendre talon sous la marche, monter sur la pointe.",
             "by_tier": {
-              "premium":  {"slug": "standing-calf-raise", "name_fr": "Mollets debout machine"},
-              "standard": {"slug": "standing-calf-raise", "name_fr": "Mollets debout machine"},
+              "premium":  {"slug": "calf-raise", "name_fr": "Mollets debout machine"},
+              "standard": {"slug": "calf-raise", "name_fr": "Mollets debout machine"},
               "home":     {"slug": "calf-raise", "name_fr": "Mollets debout marche"}
             }
           }
@@ -371,8 +371,8 @@ VALUES (
             "sets": 4, "reps": "8-12", "rest_sec": 180,
             "note": "Mouvement principal deltoïdes — coudes légèrement devant le corps.",
             "by_tier": {
-              "premium":  {"slug": "shoulder-press-hammer-strength", "name_fr": "Shoulder Press Hammer Strength"},
-              "standard": {"slug": "shoulder-press-machine", "name_fr": "Presse épaules machine"},
+              "premium":  {"slug": "machine-shoulder-press", "name_fr": "Shoulder Press Hammer Strength"},
+              "standard": {"slug": "machine-shoulder-press", "name_fr": "Presse épaules machine"},
               "home":     {"slug": "dumbbell-shoulder-press", "name_fr": "Développé épaules haltères"}
             }
           },
@@ -381,7 +381,7 @@ VALUES (
             "sets": 4, "reps": "8-12", "rest_sec": 150,
             "note": "Mouvement principal dos — compression maximale des scapulas.",
             "by_tier": {
-              "premium":  {"slug": "iso-lateral-row-hammer-strength", "name_fr": "Iso-Lateral Row Hammer Strength"},
+              "premium":  {"slug": "seated-cable-row", "name_fr": "Iso-Lateral Row Hammer Strength"},
               "standard": {"slug": "seated-cable-row", "name_fr": "Tirage horizontal câble"},
               "home":     {"slug": "barbell-row", "name_fr": "Rowing barre"}
             }
@@ -447,9 +447,9 @@ VALUES (
             "sets": 4, "reps": "10-15", "rest_sec": 120,
             "note": "Curl allongé : excellente tension en étirement. Contrôler la descente sur 2 secondes.",
             "by_tier": {
-              "premium":  {"slug": "lying-leg-curl", "name_fr": "Leg Curl allongé"},
-              "standard": {"slug": "lying-leg-curl", "name_fr": "Leg Curl allongé"},
-              "home":     {"slug": "nordic-hamstring", "name_fr": "Nordic Hamstring Curl"}
+              "premium":  {"slug": "leg-curl", "name_fr": "Leg Curl allongé"},
+              "standard": {"slug": "leg-curl", "name_fr": "Leg Curl allongé"},
+              "home":     {"slug": "nordic-curl", "name_fr": "Nordic Hamstring Curl"}
             }
           },
           {
@@ -457,9 +457,9 @@ VALUES (
             "sets": 4, "reps": "12-15", "rest_sec": 120,
             "note": "Hip Thrust : isolation fessière optimale. Poser les omoplates sur le banc.",
             "by_tier": {
-              "premium":  {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
-              "standard": {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
-              "home":     {"slug": "hip-thrust", "name_fr": "Hip Thrust haltère"}
+              "premium":  {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
+              "standard": {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
+              "home":     {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust haltère"}
             }
           },
           {
@@ -477,8 +477,8 @@ VALUES (
             "sets": 4, "reps": "15-20", "rest_sec": 60,
             "note": "Mollets assis = chef sural (gastrocnémien médial). Amplitude maximale, pause en bas.",
             "by_tier": {
-              "premium":  {"slug": "seated-calf-raise", "name_fr": "Mollets assis machine"},
-              "standard": {"slug": "seated-calf-raise", "name_fr": "Mollets assis machine"},
+              "premium":  {"slug": "seated-calf-raise-machine", "name_fr": "Mollets assis machine"},
+              "standard": {"slug": "seated-calf-raise-machine", "name_fr": "Mollets assis machine"},
               "home":     {"slug": "calf-raise", "name_fr": "Mollets debout marche"}
             }
           }
@@ -512,9 +512,9 @@ VALUES (
             "sets": 4, "reps": "6-10", "rest_sec": 180,
             "note": "Mouvement principal pectoral. Progressivité obligatoire : +2.5 kg si 4×10 réussis.",
             "by_tier": {
-              "premium":  {"slug": "chest-press-hammer-strength", "name_fr": "Chest Press Hammer Strength"},
-              "standard": {"slug": "chest-press-machine", "name_fr": "Chest Press Machine"},
-              "home":     {"slug": "bench-press", "name_fr": "Développé couché barre"}
+              "premium":  {"slug": "machine-chest-press", "name_fr": "Chest Press Hammer Strength"},
+              "standard": {"slug": "machine-chest-press", "name_fr": "Chest Press Machine"},
+              "home":     {"slug": "barbell-bench-press", "name_fr": "Développé couché barre"}
             }
           },
           {
@@ -522,9 +522,9 @@ VALUES (
             "sets": 3, "reps": "10-15", "rest_sec": 120,
             "note": "Angle 30-40°, étirement maximal en bas. Faisceau claviculaire du pectoral.",
             "by_tier": {
-              "premium":  {"slug": "incline-chest-press-hammer-strength", "name_fr": "Incline Chest Press Hammer Strength"},
-              "standard": {"slug": "incline-dumbbell-press", "name_fr": "Développé incliné haltères"},
-              "home":     {"slug": "incline-dumbbell-press", "name_fr": "Développé incliné haltères"}
+              "premium":  {"slug": "incline-barbell-bench-press", "name_fr": "Incline Chest Press Hammer Strength"},
+              "standard": {"slug": "incline-barbell-bench-press", "name_fr": "Développé incliné haltères"},
+              "home":     {"slug": "incline-barbell-bench-press", "name_fr": "Développé incliné haltères"}
             }
           },
           {
@@ -532,8 +532,8 @@ VALUES (
             "sets": 3, "reps": "10-15", "rest_sec": 120,
             "note": "Presse épaules en complément pectoral. Volume modéré (épaules déjà pré-fatiguées).",
             "by_tier": {
-              "premium":  {"slug": "shoulder-press-hammer-strength", "name_fr": "Shoulder Press Hammer Strength"},
-              "standard": {"slug": "shoulder-press-machine", "name_fr": "Presse épaules machine"},
+              "premium":  {"slug": "machine-shoulder-press", "name_fr": "Shoulder Press Hammer Strength"},
+              "standard": {"slug": "machine-shoulder-press", "name_fr": "Presse épaules machine"},
               "home":     {"slug": "dumbbell-shoulder-press", "name_fr": "Développé épaules haltères"}
             }
           },
@@ -552,8 +552,8 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Extension au-dessus de la tête = longue portion triceps en étirement.",
             "by_tier": {
-              "premium":  {"slug": "overhead-tricep-extension", "name_fr": "Extension triceps tête câble"},
-              "standard": {"slug": "overhead-tricep-extension", "name_fr": "Extension triceps tête câble"},
+              "premium":  {"slug": "cable-overhead-tricep-extension", "name_fr": "Extension triceps tête câble"},
+              "standard": {"slug": "cable-overhead-tricep-extension", "name_fr": "Extension triceps tête câble"},
               "home":     {"slug": "skull-crusher", "name_fr": "Skull Crusher haltères"}
             }
           }
@@ -578,7 +578,7 @@ VALUES (
             "sets": 3, "reps": "10-15", "rest_sec": 120,
             "note": "Rowing horizontal — compression scapulas en fin de mouvement.",
             "by_tier": {
-              "premium":  {"slug": "iso-lateral-row-hammer-strength", "name_fr": "Iso-Lateral Row Hammer Strength"},
+              "premium":  {"slug": "seated-cable-row", "name_fr": "Iso-Lateral Row Hammer Strength"},
               "standard": {"slug": "seated-cable-row", "name_fr": "Tirage horizontal câble"},
               "home":     {"slug": "barbell-row", "name_fr": "Rowing barre"}
             }
@@ -624,9 +624,9 @@ VALUES (
             "sets": 4, "reps": "6-10", "rest_sec": 240,
             "note": "Squat : exception à la règle machine>barre pour l'hypertrophie. ROM complet essentiel.",
             "by_tier": {
-              "premium":  {"slug": "squat", "name_fr": "Squat barre"},
-              "standard": {"slug": "squat", "name_fr": "Squat barre"},
-              "home":     {"slug": "squat", "name_fr": "Squat barre"}
+              "premium":  {"slug": "barbell-back-squat", "name_fr": "Squat barre"},
+              "standard": {"slug": "barbell-back-squat", "name_fr": "Squat barre"},
+              "home":     {"slug": "barbell-back-squat", "name_fr": "Squat barre"}
             }
           },
           {
@@ -664,8 +664,8 @@ VALUES (
             "sets": 4, "reps": "15-20", "rest_sec": 60,
             "note": "Mollets debout (gastrocnémien) — amplitude totale, pause 1s en bas.",
             "by_tier": {
-              "premium":  {"slug": "standing-calf-raise", "name_fr": "Mollets debout machine"},
-              "standard": {"slug": "standing-calf-raise", "name_fr": "Mollets debout machine"},
+              "premium":  {"slug": "calf-raise", "name_fr": "Mollets debout machine"},
+              "standard": {"slug": "calf-raise", "name_fr": "Mollets debout machine"},
               "home":     {"slug": "calf-raise", "name_fr": "Mollets debout marche"}
             }
           }
@@ -680,8 +680,8 @@ VALUES (
             "sets": 4, "reps": "8-12", "rest_sec": 180,
             "note": "Journée épaules heavy — mouvement principal. Dépasser la charge de Push A.",
             "by_tier": {
-              "premium":  {"slug": "shoulder-press-hammer-strength", "name_fr": "Shoulder Press Hammer Strength"},
-              "standard": {"slug": "shoulder-press-machine", "name_fr": "Presse épaules machine"},
+              "premium":  {"slug": "machine-shoulder-press", "name_fr": "Shoulder Press Hammer Strength"},
+              "standard": {"slug": "machine-shoulder-press", "name_fr": "Presse épaules machine"},
               "home":     {"slug": "dumbbell-shoulder-press", "name_fr": "Développé épaules haltères"}
             }
           },
@@ -710,7 +710,7 @@ VALUES (
             "sets": 3, "reps": "15-20", "rest_sec": 60,
             "note": "Delt postérieur = équilibre de l'épaule. Ne jamais négliger.",
             "by_tier": {
-              "premium":  {"slug": "cable-rear-delt-fly", "name_fr": "Oiseau câble"},
+              "premium":  {"slug": "rear-delt-fly", "name_fr": "Oiseau câble"},
               "standard": {"slug": "face-pull", "name_fr": "Face Pull câble"},
               "home":     {"slug": "rear-delt-fly", "name_fr": "Oiseau haltères"}
             }
@@ -720,7 +720,7 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Triceps en fin — concentration pure, coudes fixes, extension totale.",
             "by_tier": {
-              "premium":  {"slug": "cable-tricep-pushdown", "name_fr": "Extension triceps câble corde"},
+              "premium":  {"slug": "tricep-pushdown", "name_fr": "Extension triceps câble corde"},
               "standard": {"slug": "tricep-pushdown", "name_fr": "Extension triceps poulie"},
               "home":     {"slug": "tricep-dip", "name_fr": "Dips barre parallèles"}
             }
@@ -736,7 +736,7 @@ VALUES (
             "sets": 4, "reps": "8-12", "rest_sec": 180,
             "note": "Rowing horizontal heavy — dos droit, coude vers hanche, compression 1s.",
             "by_tier": {
-              "premium":  {"slug": "iso-lateral-row-hammer-strength", "name_fr": "Iso-Lateral Row Hammer Strength"},
+              "premium":  {"slug": "seated-cable-row", "name_fr": "Iso-Lateral Row Hammer Strength"},
               "standard": {"slug": "seated-cable-row", "name_fr": "Tirage horizontal câble"},
               "home":     {"slug": "barbell-row", "name_fr": "Rowing barre Pendlay"}
             }
@@ -748,7 +748,7 @@ VALUES (
             "by_tier": {
               "premium":  {"slug": "chest-supported-row", "name_fr": "Rowing poitrine appuyée machine"},
               "standard": {"slug": "chest-supported-row", "name_fr": "Rowing poitrine appuyée"},
-              "home":     {"slug": "incline-dumbbell-row", "name_fr": "Rowing haltères incliné"}
+              "home":     {"slug": "incline-barbell-row", "name_fr": "Rowing haltères incliné"}
             }
           },
           {
@@ -776,9 +776,9 @@ VALUES (
             "sets": 3, "reps": "15-20", "rest_sec": 60,
             "note": "Curl câble : tension constante en bas du mouvement, meilleure pour l'hypertrophie.",
             "by_tier": {
-              "premium":  {"slug": "cable-curl", "name_fr": "Curl câble barre droite"},
-              "standard": {"slug": "cable-curl", "name_fr": "Curl câble barre droite"},
-              "home":     {"slug": "concentration-curl", "name_fr": "Curl concentré haltère"}
+              "premium":  {"slug": "barbell-curl", "name_fr": "Curl câble barre droite"},
+              "standard": {"slug": "barbell-curl", "name_fr": "Curl câble barre droite"},
+              "home":     {"slug": "dumbbell-curl", "name_fr": "Curl concentré haltère"}
             }
           }
         ]
@@ -802,9 +802,9 @@ VALUES (
             "sets": 4, "reps": "10-15", "rest_sec": 120,
             "note": "Leg curl allongé : excellente tension en étirement. Pied fléchi en haut du mouvement.",
             "by_tier": {
-              "premium":  {"slug": "lying-leg-curl", "name_fr": "Leg Curl allongé"},
-              "standard": {"slug": "lying-leg-curl", "name_fr": "Leg Curl allongé"},
-              "home":     {"slug": "nordic-hamstring", "name_fr": "Nordic Hamstring Curl"}
+              "premium":  {"slug": "leg-curl", "name_fr": "Leg Curl allongé"},
+              "standard": {"slug": "leg-curl", "name_fr": "Leg Curl allongé"},
+              "home":     {"slug": "nordic-curl", "name_fr": "Nordic Hamstring Curl"}
             }
           },
           {
@@ -812,9 +812,9 @@ VALUES (
             "sets": 4, "reps": "12-15", "rest_sec": 120,
             "note": "Hip Thrust : reine des exercices fessiers. Poser les omoplates sur le banc, pieds à 90°.",
             "by_tier": {
-              "premium":  {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
-              "standard": {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
-              "home":     {"slug": "hip-thrust", "name_fr": "Hip Thrust haltère"}
+              "premium":  {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
+              "standard": {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
+              "home":     {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust haltère"}
             }
           },
           {
@@ -832,8 +832,8 @@ VALUES (
             "sets": 4, "reps": "15-20", "rest_sec": 60,
             "note": "Mollets assis : chef sural (profond). Descendre le talon jusqu'en bas, pause 1s.",
             "by_tier": {
-              "premium":  {"slug": "seated-calf-raise", "name_fr": "Mollets assis machine"},
-              "standard": {"slug": "seated-calf-raise", "name_fr": "Mollets assis machine"},
+              "premium":  {"slug": "seated-calf-raise-machine", "name_fr": "Mollets assis machine"},
+              "standard": {"slug": "seated-calf-raise-machine", "name_fr": "Mollets assis machine"},
               "home":     {"slug": "calf-raise", "name_fr": "Mollets debout marche"}
             }
           }
@@ -867,9 +867,9 @@ VALUES (
             "sets": 5, "reps": "5", "rest_sec": 240,
             "note": "5×5 strict — même charge sur les 5 séries. +2.5 kg si toutes les reps réussies.",
             "by_tier": {
-              "premium":  {"slug": "squat", "name_fr": "Squat barre"},
-              "standard": {"slug": "squat", "name_fr": "Squat barre"},
-              "home":     {"slug": "squat", "name_fr": "Squat barre"}
+              "premium":  {"slug": "barbell-back-squat", "name_fr": "Squat barre"},
+              "standard": {"slug": "barbell-back-squat", "name_fr": "Squat barre"},
+              "home":     {"slug": "barbell-back-squat", "name_fr": "Squat barre"}
             }
           },
           {
@@ -877,9 +877,9 @@ VALUES (
             "sets": 5, "reps": "5", "rest_sec": 240,
             "note": "Développé couché : barre (pas machine) pour la force neuromusculaire. Prise légèrement plus large que l'épaule.",
             "by_tier": {
-              "premium":  {"slug": "bench-press", "name_fr": "Développé couché barre"},
-              "standard": {"slug": "bench-press", "name_fr": "Développé couché barre"},
-              "home":     {"slug": "bench-press", "name_fr": "Développé couché barre"}
+              "premium":  {"slug": "barbell-bench-press", "name_fr": "Développé couché barre"},
+              "standard": {"slug": "barbell-bench-press", "name_fr": "Développé couché barre"},
+              "home":     {"slug": "barbell-bench-press", "name_fr": "Développé couché barre"}
             }
           },
           {
@@ -903,9 +903,9 @@ VALUES (
             "sets": 5, "reps": "5", "rest_sec": 240,
             "note": "Squat : même protocole, charge légèrement différente de Jour A ou identique.",
             "by_tier": {
-              "premium":  {"slug": "squat", "name_fr": "Squat barre"},
-              "standard": {"slug": "squat", "name_fr": "Squat barre"},
-              "home":     {"slug": "squat", "name_fr": "Squat barre"}
+              "premium":  {"slug": "barbell-back-squat", "name_fr": "Squat barre"},
+              "standard": {"slug": "barbell-back-squat", "name_fr": "Squat barre"},
+              "home":     {"slug": "barbell-back-squat", "name_fr": "Squat barre"}
             }
           },
           {
@@ -913,9 +913,9 @@ VALUES (
             "sets": 5, "reps": "5", "rest_sec": 240,
             "note": "Press militaire debout : build épaules + gainage complet. Serrer fessiers et abdos.",
             "by_tier": {
-              "premium":  {"slug": "overhead-press", "name_fr": "Press militaire barre debout"},
-              "standard": {"slug": "overhead-press", "name_fr": "Press militaire barre debout"},
-              "home":     {"slug": "overhead-press", "name_fr": "Press militaire barre debout"}
+              "premium":  {"slug": "barbell-overhead-press", "name_fr": "Press militaire barre debout"},
+              "standard": {"slug": "barbell-overhead-press", "name_fr": "Press militaire barre debout"},
+              "home":     {"slug": "barbell-overhead-press", "name_fr": "Press militaire barre debout"}
             }
           },
           {
@@ -939,9 +939,9 @@ VALUES (
             "sets": 5, "reps": "5", "rest_sec": 240,
             "note": "Progresser depuis la dernière session Jour A (+2.5 kg si réussi).",
             "by_tier": {
-              "premium":  {"slug": "squat", "name_fr": "Squat barre"},
-              "standard": {"slug": "squat", "name_fr": "Squat barre"},
-              "home":     {"slug": "squat", "name_fr": "Squat barre"}
+              "premium":  {"slug": "barbell-back-squat", "name_fr": "Squat barre"},
+              "standard": {"slug": "barbell-back-squat", "name_fr": "Squat barre"},
+              "home":     {"slug": "barbell-back-squat", "name_fr": "Squat barre"}
             }
           },
           {
@@ -949,9 +949,9 @@ VALUES (
             "sets": 5, "reps": "5", "rest_sec": 240,
             "note": "Développé couché : toujours +2.5 kg si 5×5 réussi.",
             "by_tier": {
-              "premium":  {"slug": "bench-press", "name_fr": "Développé couché barre"},
-              "standard": {"slug": "bench-press", "name_fr": "Développé couché barre"},
-              "home":     {"slug": "bench-press", "name_fr": "Développé couché barre"}
+              "premium":  {"slug": "barbell-bench-press", "name_fr": "Développé couché barre"},
+              "standard": {"slug": "barbell-bench-press", "name_fr": "Développé couché barre"},
+              "home":     {"slug": "barbell-bench-press", "name_fr": "Développé couché barre"}
             }
           },
           {
@@ -994,9 +994,9 @@ VALUES (
             "sets": 4, "reps": "10-15", "rest_sec": 120,
             "note": "Hip Thrust : mouvement principal fessiers. Charge maximale avec forme parfaite.",
             "by_tier": {
-              "premium":  {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
-              "standard": {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
-              "home":     {"slug": "hip-thrust", "name_fr": "Hip Thrust haltère"}
+              "premium":  {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
+              "standard": {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
+              "home":     {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust haltère"}
             }
           },
           {
@@ -1014,9 +1014,9 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Leg curl allongé : tension ischios en position courte. Pied fléchi.",
             "by_tier": {
-              "premium":  {"slug": "lying-leg-curl", "name_fr": "Leg Curl allongé"},
-              "standard": {"slug": "lying-leg-curl", "name_fr": "Leg Curl allongé"},
-              "home":     {"slug": "nordic-hamstring", "name_fr": "Nordic Hamstring Curl"}
+              "premium":  {"slug": "leg-curl", "name_fr": "Leg Curl allongé"},
+              "standard": {"slug": "leg-curl", "name_fr": "Leg Curl allongé"},
+              "home":     {"slug": "nordic-curl", "name_fr": "Nordic Hamstring Curl"}
             }
           },
           {
@@ -1034,8 +1034,8 @@ VALUES (
             "sets": 3, "reps": "15-20", "rest_sec": 60,
             "note": "Mollets debout : finir la séance avec cette isolation.",
             "by_tier": {
-              "premium":  {"slug": "standing-calf-raise", "name_fr": "Mollets debout machine"},
-              "standard": {"slug": "standing-calf-raise", "name_fr": "Mollets debout machine"},
+              "premium":  {"slug": "calf-raise", "name_fr": "Mollets debout machine"},
+              "standard": {"slug": "calf-raise", "name_fr": "Mollets debout machine"},
               "home":     {"slug": "calf-raise", "name_fr": "Mollets debout marche"}
             }
           }
@@ -1060,8 +1060,8 @@ VALUES (
             "sets": 3, "reps": "10-15", "rest_sec": 120,
             "note": "Développé pectoral : amplitude complète, étirement en bas.",
             "by_tier": {
-              "premium":  {"slug": "chest-press-hammer-strength", "name_fr": "Chest Press Hammer Strength"},
-              "standard": {"slug": "chest-press-machine", "name_fr": "Chest Press Machine"},
+              "premium":  {"slug": "machine-chest-press", "name_fr": "Chest Press Hammer Strength"},
+              "standard": {"slug": "machine-chest-press", "name_fr": "Chest Press Machine"},
               "home":     {"slug": "dumbbell-bench-press", "name_fr": "Développé couché haltères"}
             }
           },
@@ -1090,8 +1090,8 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Curl : volume modéré. Bras toniques, pas imposants.",
             "by_tier": {
-              "premium":  {"slug": "cable-curl", "name_fr": "Curl câble"},
-              "standard": {"slug": "cable-curl", "name_fr": "Curl câble"},
+              "premium":  {"slug": "barbell-curl", "name_fr": "Curl câble"},
+              "standard": {"slug": "barbell-curl", "name_fr": "Curl câble"},
               "home":     {"slug": "dumbbell-curl", "name_fr": "Curl haltères alterné"}
             }
           }
@@ -1116,9 +1116,9 @@ VALUES (
             "sets": 4, "reps": "12-15", "rest_sec": 120,
             "note": "2e séance Hip Thrust de la semaine — progression sur la charge ou les reps.",
             "by_tier": {
-              "premium":  {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
-              "standard": {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
-              "home":     {"slug": "hip-thrust", "name_fr": "Hip Thrust haltère"}
+              "premium":  {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
+              "standard": {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
+              "home":     {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust haltère"}
             }
           },
           {
@@ -1146,8 +1146,8 @@ VALUES (
             "sets": 3, "reps": "15-20", "rest_sec": 60,
             "note": "Mollets assis : chef sural profond.",
             "by_tier": {
-              "premium":  {"slug": "seated-calf-raise", "name_fr": "Mollets assis machine"},
-              "standard": {"slug": "seated-calf-raise", "name_fr": "Mollets assis machine"},
+              "premium":  {"slug": "seated-calf-raise-machine", "name_fr": "Mollets assis machine"},
+              "standard": {"slug": "seated-calf-raise-machine", "name_fr": "Mollets assis machine"},
               "home":     {"slug": "calf-raise", "name_fr": "Mollets debout marche"}
             }
           }
@@ -1182,8 +1182,8 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Press épaules léger pour volume complémentaire.",
             "by_tier": {
-              "premium":  {"slug": "shoulder-press-machine", "name_fr": "Presse épaules machine"},
-              "standard": {"slug": "shoulder-press-machine", "name_fr": "Presse épaules machine"},
+              "premium":  {"slug": "machine-shoulder-press", "name_fr": "Presse épaules machine"},
+              "standard": {"slug": "machine-shoulder-press", "name_fr": "Presse épaules machine"},
               "home":     {"slug": "dumbbell-shoulder-press", "name_fr": "Développé épaules haltères"}
             }
           },
@@ -1237,8 +1237,8 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Hip Thrust : exercice #1 pour les fessiers. Commencer avec le poids du corps, ajouter une charge progressivement.",
             "by_tier": {
-              "premium":  {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
-              "standard": {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
+              "premium":  {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
+              "standard": {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
               "home":     {"slug": "glute-bridge", "name_fr": "Glute Bridge au sol"}
             }
           },
@@ -1257,8 +1257,8 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Épaules légères — développer la stabilité de l'épaule d'abord.",
             "by_tier": {
-              "premium":  {"slug": "shoulder-press-machine", "name_fr": "Presse épaules machine"},
-              "standard": {"slug": "shoulder-press-machine", "name_fr": "Presse épaules machine"},
+              "premium":  {"slug": "machine-shoulder-press", "name_fr": "Presse épaules machine"},
+              "standard": {"slug": "machine-shoulder-press", "name_fr": "Presse épaules machine"},
               "home":     {"slug": "dumbbell-shoulder-press", "name_fr": "Développé épaules haltères"}
             }
           },
@@ -1313,8 +1313,8 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Pecto : machine recommandée pour débuter, amplitude et sécurité.",
             "by_tier": {
-              "premium":  {"slug": "chest-press-machine", "name_fr": "Chest Press Machine"},
-              "standard": {"slug": "chest-press-machine", "name_fr": "Chest Press Machine"},
+              "premium":  {"slug": "machine-chest-press", "name_fr": "Chest Press Machine"},
+              "standard": {"slug": "machine-chest-press", "name_fr": "Chest Press Machine"},
               "home":     {"slug": "push-up", "name_fr": "Pompes"}
             }
           },
@@ -1349,8 +1349,8 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Hip Thrust : progresser depuis la dernière Séance A.",
             "by_tier": {
-              "premium":  {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
-              "standard": {"slug": "hip-thrust", "name_fr": "Hip Thrust barre"},
+              "premium":  {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
+              "standard": {"slug": "barbell-hip-thrust", "name_fr": "Hip Thrust barre"},
               "home":     {"slug": "glute-bridge", "name_fr": "Glute Bridge au sol"}
             }
           },
@@ -1369,8 +1369,8 @@ VALUES (
             "sets": 3, "reps": "12-15", "rest_sec": 90,
             "note": "Épaules avec légère progression.",
             "by_tier": {
-              "premium":  {"slug": "shoulder-press-machine", "name_fr": "Presse épaules machine"},
-              "standard": {"slug": "shoulder-press-machine", "name_fr": "Presse épaules machine"},
+              "premium":  {"slug": "machine-shoulder-press", "name_fr": "Presse épaules machine"},
+              "standard": {"slug": "machine-shoulder-press", "name_fr": "Presse épaules machine"},
               "home":     {"slug": "dumbbell-shoulder-press", "name_fr": "Développé épaules haltères"}
             }
           },

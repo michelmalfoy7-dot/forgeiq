@@ -139,7 +139,7 @@ export function ExerciseDetailClient({ exercise, aliases, lastPerformance }: Pro
     <div className="min-h-screen pb-nav" style={{ background: 'var(--bg)' }}>
 
       {/* ── Header ── */}
-      <div className="sticky top-0 z-10 px-4 pt-4 pb-3" style={{ background: 'var(--bg)', borderBottom: '1px solid var(--fiq-border)' }}>
+      <div className="sticky top-0 z-10 px-4 pt-safe pb-3" style={{ background: 'var(--bg)', borderBottom: '1px solid var(--fiq-border)' }}>
         <button
           onClick={() => router.back()}
           className="flex items-center gap-2 text-sm font-semibold mb-3"
