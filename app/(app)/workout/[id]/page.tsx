@@ -9,7 +9,7 @@ import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, Ch
 import { Confetti } from '@/components/ui/Confetti'
 
 // ── Types ─────────────────────────────────────────────────────
-type SetType = 'work' | 'dropset' | 'failure'
+type SetType = 'work' | 'top_set' | 'backoff' | 'dropset' | 'failure'
 
 type SetRow = {
   id: string
@@ -554,7 +554,7 @@ export default function WorkoutSessionPage() {
         ...updated[groupIdx],
         sets: updated[groupIdx].sets.map((s) => {
           if (s.id !== setId || s.is_warmup) return s
-          const order: SetType[] = ['work', 'dropset', 'failure']
+          const order: SetType[] = ['work', 'top_set', 'backoff', 'dropset', 'failure']
           const cur = s.set_type ?? 'work'
           const next = order[(order.indexOf(cur) + 1) % order.length]
           return { ...s, set_type: next }
@@ -1503,8 +1503,10 @@ export default function WorkoutSessionPage() {
 // Libellés et couleurs des types de série
 const SET_TYPE_CONFIG: Record<SetType, { label: string; color: string; bg: string }> = {
   work:    { label: '',   color: 'var(--fiq-muted)',   bg: 'transparent' },
-  dropset: { label: '⬇', color: 'var(--fiq-orange)',  bg: '#FF6B3522' },
-  failure: { label: '💥', color: 'var(--fiq-red)',     bg: '#EF444422' },
+  top_set: { label: '★',  color: '#F59E0B',            bg: '#F59E0B22' },  // Top set — charge maximale
+  backoff: { label: 'B',  color: 'var(--fiq-blue)',    bg: '#3D8BFF22' },  // Back-off — charge réduite, volume
+  dropset: { label: '⬇', color: 'var(--fiq-orange)',  bg: '#FF6B3522' },  // Drop set — enchaîné sans repos
+  failure: { label: '💥', color: 'var(--fiq-red)',     bg: '#EF444422' },  // Echec musculaire
 }
 
 // ── Composant exercice avec sets ──────────────────────────────
@@ -1676,13 +1678,11 @@ function ExerciseCard({
                 ? <span className="text-xs font-black" style={{ color: 'var(--fiq-accent)' }}>PR</span>
                 : s.is_warmup
                   ? <span className="text-xs font-bold" style={{ color: '#F59E0B' }}>C</span>
-                  : setType === 'dropset'
-                    ? <span className="text-xs font-black" style={{ color: typeCfg.color }}>⬇</span>
-                    : setType === 'failure'
-                      ? <span className="text-xs font-black" style={{ color: typeCfg.color }}>💥</span>
-                      : isTopSet && group.sets.filter(x => !x.is_warmup && x.weight_kg !== '').length > 1
-                        ? <span className="text-xs" style={{ color: 'var(--fiq-accent)' }}>★</span>
-                        : <span className="text-xs" style={{ color: 'var(--fiq-text)' }}>{s.set_number}</span>
+                  : setType !== 'work'
+                    ? <span className="text-xs font-black" style={{ color: typeCfg.color }}>{typeCfg.label}</span>
+                    : isTopSet && group.sets.filter(x => !x.is_warmup && x.weight_kg !== '').length > 1
+                      ? <span className="text-xs" style={{ color: 'var(--fiq-accent)' }}>★</span>
+                      : <span className="text-xs" style={{ color: 'var(--fiq-text)' }}>{s.set_number}</span>
               }
             </button>
             <Input
@@ -1694,7 +1694,7 @@ function ExerciseCard({
               className="text-center text-sm h-9"
               style={{
                 background: 'var(--surface)',
-                borderColor: isPR ? 'var(--fiq-accent)' : setType === 'dropset' ? '#FF6B3544' : setType === 'failure' ? '#EF444444' : 'var(--fiq-border)',
+                borderColor: isPR ? 'var(--fiq-accent)' : setType === 'top_set' ? '#F59E0B44' : setType === 'backoff' ? '#3D8BFF44' : setType === 'dropset' ? '#FF6B3544' : setType === 'failure' ? '#EF444444' : 'var(--fiq-border)',
                 color: 'var(--fiq-text)',
               }}
             />

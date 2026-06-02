@@ -11,6 +11,7 @@ type SetInput = {
   reps: number
   rpe?: number | null
   is_warmup?: boolean
+  set_type?: string   // work | top_set | backoff | dropset | failure | warmup
   is_bilateral_dumbbell?: boolean
   is_unilateral?: boolean
   unilateral_both_sides?: boolean
@@ -113,8 +114,11 @@ export async function POST(request: Request) {
       const existing = prMap.get(exerciseId) ?? {}
       const exerciseName = exSets[0].exercise_name
 
-      // PR = charge la plus lourde soulevée (à égalité → plus de reps gagne)
-      const heaviestSet = exSets.reduce((best, s) =>
+      // PR = charge la plus lourde du top set explicite, sinon de tous les sets (à égalité → plus de reps)
+      // Les back-off sets et drop sets sont des sets de volume, pas des PRs — priorité au top_set tagué
+      const taggedTopSets = exSets.filter(s => s.set_type === 'top_set')
+      const prCandidates = taggedTopSets.length > 0 ? taggedTopSets : exSets.filter(s => s.set_type !== 'backoff')
+      const heaviestSet = prCandidates.reduce((best, s) =>
         s.weight_kg > best.weight_kg
           ? s
           : s.weight_kg === best.weight_kg && s.reps > best.reps
