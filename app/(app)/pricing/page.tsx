@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Tarifs ForgeIQ — Coach IA Fitness',
     description: 'Plan gratuit, Pro mensuel ou annuel. Coaching IA complet, nutrition, programmes personnalisés.',
-    images: [{ url: '/og-image.png', width: 1200, height: 630 }],
+    images: [{ url: '/opengraph-image', width: 1200, height: 630 }],
   },
 }
 

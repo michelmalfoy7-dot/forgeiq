@@ -35,7 +35,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const description = profile.bio
     ? profile.bio
     : `Découvre les entraînements et records de ${name} sur ForgeIQ.`
-  const image = profile.avatar_url ?? '/og-image.png'
+  const image = profile.avatar_url ?? '/opengraph-image'
   const url = `${APP_URL}/u/${username}`
 
   return {

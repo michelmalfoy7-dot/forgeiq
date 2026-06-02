@@ -1,8 +1,27 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { ProgramsClient } from '@/components/programs/ProgramsClient'
+import type { Metadata } from 'next'
 
 export const dynamic = 'force-dynamic'
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://getforgeiq.com'
+
+export const metadata: Metadata = {
+  title: 'Programmes d\'entraînement — PPL, Full Body, Powerlifting',
+  description: '19 programmes scientifiques pour tous les niveaux : Full Body, Push Pull Legs, Upper/Lower, Powerlifting, programmes femme. Adaptés à ton équipement et tes objectifs.',
+  keywords: [
+    'programme musculation', 'programme PPL', 'programme full body', 'programme powerlifting',
+    'programme musculation débutant', 'programme musculation avancé', 'programme femme musculation',
+    'programme upper lower', 'programme 3 jours', 'programme 6 jours musculation',
+  ],
+  alternates: { canonical: `${APP_URL}/programs` },
+  openGraph: {
+    title: '19 programmes de musculation — ForgeIQ',
+    description: 'Full Body, PPL, Powerlifting, programmes femme. Tous adaptés à ton niveau, équipement et objectif.',
+    images: [{ url: '/opengraph-image', width: 1200, height: 630, alt: 'Programmes ForgeIQ' }],
+  },
+}
 
 export default async function ProgramsPage() {
   const supabase = await createClient()

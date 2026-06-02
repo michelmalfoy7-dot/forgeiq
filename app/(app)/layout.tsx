@@ -5,8 +5,13 @@ import { ToastProvider } from '@/components/ui/Toast'
 import { InstallBanner } from '@/components/pwa/InstallBanner'
 
 export const metadata: Metadata = {
-  title: 'ForgeIQ — Build smarter. Lift harder.',
+  title: {
+    default: 'ForgeIQ — Build smarter. Lift harder.',
+    template: '%s | ForgeIQ',
+  },
   description: 'Ton coach IA fitness. Entraînement, nutrition, progression.',
+  // Pages privées (authentifiées) : pas d'indexation, les robots sont bloqués dans robots.ts
+  robots: { index: false, follow: false },
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

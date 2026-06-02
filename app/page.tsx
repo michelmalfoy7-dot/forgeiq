@@ -22,13 +22,13 @@ export const metadata: Metadata = {
     description: 'Ton coach IA fitness qui connecte entraînement, nutrition et biométrie. Programmes adaptatifs, PRs automatiques, nutrition intelligente.',
     url: APP_URL,
     type: 'website',
-    images: [{ url: '/og-image.png', width: 1200, height: 630, alt: 'ForgeIQ — Coach IA fitness' }],
+    images: [{ url: '/opengraph-image', width: 1200, height: 630, alt: 'ForgeIQ — Coach IA fitness' }],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'ForgeIQ — Coach IA Fitness',
     description: 'Ton coach IA fitness qui connecte entraînement, nutrition et biométrie.',
-    images: ['/og-image.png'],
+    images: ['/opengraph-image'],
   },
 }
 

@@ -32,15 +32,27 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ]
 
-  // Pages dynamiques : profils publics (/u/username)
+  // Pages dynamiques : profils publics + programmes publics
   try {
     const supabase = await createClient()
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('username, updated_at')
-      .eq('is_public', true)
-      .not('username', 'is', null)
-      .limit(5000)
+    const [
+      { data: profiles },
+      { data: programs },
+    ] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('username, updated_at')
+        .eq('is_public', true)
+        .not('username', 'is', null)
+        .limit(5000),
+      supabase
+        .from('programs')
+        .select('slug, updated_at')
+        .eq('is_public', true)
+        .eq('is_custom', false)
+        .not('slug', 'is', null)
+        .limit(200),
+    ])
 
     const profilePages: MetadataRoute.Sitemap = (profiles ?? []).map((p) => ({
       url: `${APP_URL}/u/${p.username}`,
@@ -49,7 +61,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.7,
     }))
 
-    return [...staticPages, ...profilePages]
+    const programPages: MetadataRoute.Sitemap = (programs ?? []).map((p) => ({
+      url: `${APP_URL}/programs/${p.slug}`,
+      lastModified: p.updated_at ? new Date(p.updated_at) : new Date(),
+      changeFrequency: 'monthly' as const,
+      priority: 0.6,
+    }))
+
+    return [...staticPages, ...programPages, ...profilePages]
   } catch {
     // En cas d'erreur DB, on retourne au moins les pages statiques
     return staticPages

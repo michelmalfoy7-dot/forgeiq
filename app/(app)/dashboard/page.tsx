@@ -75,7 +75,7 @@ export default async function DashboardPage() {
 
     // Macros réelles du jour depuis food_logs (nutrition tracker)
     supabase.from('food_logs')
-      .select('protein_g, calories, carbs_g, fat_g')
+      .select('protein_g, calories, carbs_g, fat_g, meal_type')
       .eq('user_id', user.id)
       .eq('log_date', today),
   ])
@@ -110,6 +110,9 @@ export default async function DashboardPage() {
   )
   const hasFoodLogs = (todayFoodLogs ?? []).length > 0
   const proteinToday = hasFoodLogs ? Math.round(foodLogTotals.protein_g) : (todayLog?.protein_g ?? null)
+
+  // Types de repas logués aujourd'hui — pour les indicateurs du widget nutrition
+  const loggedMealTypes = new Set((todayFoodLogs ?? []).map(l => (l as { meal_type?: string }).meal_type).filter(Boolean))
 
   // ── État séance du jour (4 cas) ──────────────────────────────
   const latestTodayWorkout = todayWorkouts?.[0] ?? null
@@ -354,17 +357,39 @@ export default async function DashboardPage() {
 
       {/* Widget Nutrition rapide */}
       <Link href="/nutrition" className="fiq-card block space-y-3">
+
+        {/* Header : titre + indicateurs repas + lien */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Utensils className="w-4 h-4" style={{ color: 'var(--fiq-orange)' }} />
             <p className="font-bold text-sm" style={{ color: 'var(--fiq-text)' }}>Nutrition</p>
           </div>
-          <span className="text-xs font-semibold" style={{ color: 'var(--fiq-muted)' }}>Voir tout →</span>
+          <div className="flex items-center gap-2">
+            {/* Indicateurs repas — actif = coloré, non loggé = grisé */}
+            <div className="flex items-center gap-0.5">
+              {[
+                { type: 'breakfast', icon: '🌅', label: 'Petit-déj' },
+                { type: 'lunch',     icon: '☀️', label: 'Déjeuner' },
+                { type: 'dinner',    icon: '🌙', label: 'Dîner' },
+                { type: 'snack',     icon: '🍎', label: 'Collation' },
+              ].map(({ type, icon }) => (
+                <span
+                  key={type}
+                  className="text-sm leading-none"
+                  style={{ opacity: loggedMealTypes.has(type) ? 1 : 0.2 }}
+                  title={type}
+                >
+                  {icon}
+                </span>
+              ))}
+            </div>
+            <span className="text-xs font-semibold" style={{ color: 'var(--fiq-muted)' }}>Voir tout →</span>
+          </div>
         </div>
 
         {hasFoodLogs ? (
           <>
-            {/* Calories */}
+            {/* Calories restantes */}
             <div className="flex items-end justify-between">
               <div>
                 <p className="text-2xl font-black fiq-data" style={{ color: calRemaining < 0 ? 'var(--fiq-orange)' : 'var(--fiq-accent)' }}>
@@ -377,7 +402,13 @@ export default async function DashboardPage() {
                   {calConsumed.toLocaleString('fr-FR')} / {calTarget.toLocaleString('fr-FR')} kcal
                 </p>
               </div>
-              <span className="text-sm font-black" style={{ color: calPct >= 100 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+              <span
+                className="text-sm font-black px-2 py-0.5 rounded-lg"
+                style={{
+                  background: calPct >= 100 ? '#FF6B3520' : '#B4FF4A15',
+                  color: calPct >= 100 ? 'var(--fiq-orange)' : 'var(--fiq-accent)',
+                }}
+              >
                 {calPct}%
               </span>
             </div>
@@ -393,81 +424,73 @@ export default async function DashboardPage() {
               />
             </div>
 
-            {/* Dépenses variables vs déficit fixe — argument clé ForgeIQ */}
-            {!dailyTarget.isCustom && (
-              <div className="space-y-0.5 pt-0.5">
-                {!dailyTarget.usedFallback ? (
-                  <>
-                    {/* Ligne 1 : TDEE réel du jour (variable selon activité + groupe musculaire) */}
-                    <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
-                      {'📊 '}
-                      {dailyTarget.bmr.toLocaleString('fr-FR')} BMR
-                      {dailyTarget.stepsKcal > 0 && ` + ${dailyTarget.stepsKcal} (${dailyTarget.usedYesterdaySteps ? 'pas hier' : 'pas'})`}
-                      {dailyTarget.workoutKcal > 0 && ` + ${dailyTarget.workoutKcal} (${
-                        dailyTarget.workoutMuscleGroup === 'legs'      ? 'jambes' :
-                        dailyTarget.workoutMuscleGroup === 'back'      ? 'dos' :
-                        dailyTarget.workoutMuscleGroup === 'push'      ? 'push' :
-                        dailyTarget.workoutMuscleGroup === 'full_body' ? 'full body' :
-                        dailyTarget.workoutMuscleGroup === 'arms'      ? 'bras' :
-                        dailyTarget.workoutMuscleGroup === 'core'      ? 'core' :
-                        'séance'
-                      })`}
-                      {' = '}
-                      <span className="font-semibold">{dailyTarget.tdee.toLocaleString('fr-FR')} kcal brûlées</span>
-                    </p>
-                    {/* Ligne 2 : ajustement FIXE — déficit/surplus constant quoi qu'il arrive */}
-                    {dailyTarget.adjustment !== 0 ? (
-                      <p className="text-[10px] font-semibold" style={{ color: dailyTarget.adjustment > 0 ? 'var(--fiq-blue)' : 'var(--fiq-orange)' }}>
-                        {dailyTarget.adjustment > 0 ? '📈 Surplus' : '📉 Déficit'}{' '}
-                        {dailyTarget.adjustment > 0
-                          ? `+${dailyTarget.adjustment}`
-                          : `−${Math.abs(dailyTarget.adjustment)}`
-                        }{' kcal fixe → Cible : '}
-                        <span className="font-black">{dailyTarget.targetCalories.toLocaleString('fr-FR')} kcal</span>
-                      </p>
-                    ) : (
-                      <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
-                        {'🎯 Maintien · Cible : '}<span className="font-semibold">{dailyTarget.targetCalories.toLocaleString('fr-FR')} kcal</span>
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  /* Fallback : aucune activité renseignée aujourd'hui */
-                  <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
-                    {'📊 Estimé (check-in manquant) : '}
-                    <span className="font-semibold">{dailyTarget.tdee.toLocaleString('fr-FR')} kcal</span>
-                    {dailyTarget.adjustment !== 0 && (
-                      <span style={{ color: dailyTarget.adjustment > 0 ? 'var(--fiq-blue)' : 'var(--fiq-orange)' }}>
-                        {dailyTarget.adjustment > 0 ? ` +${dailyTarget.adjustment}` : ` −${Math.abs(dailyTarget.adjustment)}`}
+            {/* Barres macro P / G / L */}
+            <div className="space-y-2">
+              {([
+                { label: 'Protéines', consumed: Math.round(foodLogTotals.protein_g), target: dailyTarget.macros.protein_g, color: 'var(--fiq-accent)' },
+                { label: 'Glucides',  consumed: Math.round(foodLogTotals.carbs_g),   target: dailyTarget.macros.carbs_g,   color: '#A855F7' },
+                { label: 'Lipides',   consumed: Math.round(foodLogTotals.fat_g),      target: dailyTarget.macros.fat_g,     color: 'var(--fiq-orange)' },
+              ] as const).map(({ label, consumed, target, color }) => {
+                const pct = Math.min(100, target > 0 ? Math.round((consumed / target) * 100) : 0)
+                return (
+                  <div key={label}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--fiq-muted)' }}>
+                        {label}
                       </span>
-                    )}
-                    {' → '}<span className="font-semibold">{dailyTarget.targetCalories.toLocaleString('fr-FR')} kcal</span>
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Mini macros */}
-            <div className="flex gap-3">
-              {[
-                { label: 'P', value: Math.round(foodLogTotals.protein_g), color: 'var(--fiq-accent)' },
-                { label: 'G', value: Math.round(foodLogTotals.carbs_g), color: '#A855F7' },
-                { label: 'L', value: Math.round(foodLogTotals.fat_g), color: 'var(--fiq-orange)' },
-              ].map(({ label, value, color }) => (
-                <div key={label} className="flex items-center gap-1">
-                  <span className="text-xs font-black" style={{ color }}>{label}</span>
-                  <span className="text-xs font-semibold fiq-data" style={{ color: 'var(--fiq-muted)' }}>{value}g</span>
-                </div>
-              ))}
+                      <span className="text-[11px] font-bold fiq-data" style={{ color: pct >= 100 ? color : 'var(--fiq-muted)' }}>
+                        {consumed}<span className="font-normal">/{target}g</span>
+                      </span>
+                    </div>
+                    <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'var(--fiq-faint)' }}>
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${pct}%`, background: color, opacity: pct >= 100 ? 1 : 0.65 }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
             </div>
+
+            {/* TDEE compact — une seule ligne */}
+            {!dailyTarget.isCustom && (
+              <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+                {'📊 '}
+                {dailyTarget.usedFallback
+                  ? `Estimé : ${dailyTarget.tdee.toLocaleString('fr-FR')} kcal`
+                  : (
+                    <>
+                      {dailyTarget.bmr} BMR
+                      {dailyTarget.stepsKcal > 0 && ` + ${dailyTarget.stepsKcal} pas`}
+                      {dailyTarget.workoutKcal > 0 && ` + ${dailyTarget.workoutKcal} séance`}
+                      {' = '}<span className="font-semibold">{dailyTarget.tdee.toLocaleString('fr-FR')} kcal</span>
+                    </>
+                  )
+                }
+                {dailyTarget.adjustment !== 0 && (
+                  <span style={{ color: dailyTarget.adjustment > 0 ? 'var(--fiq-blue)' : 'var(--fiq-orange)' }}>
+                    {dailyTarget.adjustment > 0 ? ` +${dailyTarget.adjustment}` : ` −${Math.abs(dailyTarget.adjustment)}`}
+                  </span>
+                )}
+                {' → '}<span className="font-semibold">{dailyTarget.targetCalories.toLocaleString('fr-FR')} kcal cibles</span>
+              </p>
+            )}
           </>
         ) : (
-          <div className="flex items-center justify-between">
-            <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>Aucun repas enregistré</p>
-            <span className="text-xs font-black px-3 py-1.5 rounded-lg"
-              style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
-              + Ajouter
-            </span>
+          /* État vide — aucun repas loggé */
+          <div className="space-y-2">
+            <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>
+              Objectif : <span className="font-bold" style={{ color: 'var(--fiq-text)' }}>{calTarget.toLocaleString('fr-FR')} kcal</span>
+              {' · '}{dailyTarget.macros.protein_g}g P · {dailyTarget.macros.carbs_g}g G · {dailyTarget.macros.fat_g}g L
+            </p>
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Aucun repas enregistré</span>
+              <span className="text-xs font-black px-3 py-1.5 rounded-lg"
+                style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
+                + Ajouter
+              </span>
+            </div>
           </div>
         )}
       </Link>

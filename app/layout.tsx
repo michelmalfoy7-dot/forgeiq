@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     description: 'Coach IA fitness : entraînement, nutrition, suivi biométrique. Personnalisé. Instantané.',
     images: [
       {
-        url: '/og-image.png',
+        url: '/opengraph-image',
         width: 1200,
         height: 630,
         alt: 'ForgeIQ — Coach IA fitness',
@@ -53,7 +53,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'ForgeIQ — Build smarter. Lift harder.',
     description: 'Coach IA fitness : entraînement, nutrition, suivi biométrique. Personnalisé. Instantané.',
-    images: ['/og-image.png'],
+    images: ['/opengraph-image'],
     creator: '@forgeiq',
   },
   appleWebApp: {
