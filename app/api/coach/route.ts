@@ -265,9 +265,10 @@ export async function POST(req: NextRequest) {
       }, { status: 429 })
     }
 
-    const today     = new Date().toISOString().split('T')[0]
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
-    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
+    const today         = new Date().toISOString().split('T')[0]
+    const yesterday     = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+    const sevenDaysAgo  = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]
 
     // Charger le contexte utilisateur en parallèle
     const [
@@ -277,6 +278,7 @@ export async function POST(req: NextRequest) {
       { data: recentWorkouts },
       { data: topPRs },
       { data: todayFoodLogs },
+      { data: steps30dLogs },
     ] = await Promise.all([
       supabase.from('profiles')
         .select('display_name, goal, level, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g')
@@ -284,7 +286,7 @@ export async function POST(req: NextRequest) {
       supabase.from('daily_logs')
         .select('weight_kg, weight_trend, sleep_deep_min, sleep_total_min, fatigue_score, protein_g, steps, sys_bp')
         .eq('user_id', user.id).eq('log_date', today).maybeSingle(),
-      // Steps d'hier — journée complète → TDEE NEAT plus précis
+      // Steps d'hier — fallback si pas assez de données 30j
       supabase.from('daily_logs')
         .select('steps')
         .eq('user_id', user.id).eq('log_date', yesterday).maybeSingle(),
@@ -301,6 +303,13 @@ export async function POST(req: NextRequest) {
       supabase.from('food_logs')
         .select('calories, protein_g, carbs_g, fat_g')
         .eq('user_id', user.id).eq('log_date', today),
+      // Moyenne steps 30j (journées complètes = exclut aujourd'hui + zéros)
+      supabase.from('daily_logs')
+        .select('steps')
+        .eq('user_id', user.id)
+        .gte('log_date', thirtyDaysAgo)
+        .lt('log_date', today)
+        .gt('steps', 0),
     ])
 
     // Poids lissé le plus récent (fallback si pas de check-in aujourd'hui)
@@ -339,8 +348,14 @@ export async function POST(req: NextRequest) {
     )
     const hasFoodLogs = (todayFoodLogs ?? []).length > 0
 
+    // Moyenne 30j steps — source stable (journées complètes, zéros exclus)
+    const avgSteps30d = (steps30dLogs ?? []).length >= 3
+      ? Math.round((steps30dLogs ?? []).reduce((acc, l) => acc + (l.steps ?? 0), 0) / (steps30dLogs ?? []).length)
+      : null
+
     // TDEE dynamique du jour — même source de vérité que dashboard/nutrition
     const todayWorkoutInRecent = (recentWorkouts ?? []).find(w => w.session_date === today)
+    const isRestDay = !todayWorkoutInRecent
     const coachDailyTarget = calcDailyTarget({
       weight_kg:         profile?.weight_kg,
       height_cm:         profile?.height_cm,
@@ -353,11 +368,13 @@ export async function POST(req: NextRequest) {
       custom_protein_g:  profile?.custom_protein_g,
       custom_carbs_g:    profile?.custom_carbs_g,
       custom_fat_g:      profile?.custom_fat_g,
+      avgSteps30d,
       todaySteps:          todayLog?.steps                              ?? null,
       yesterdaySteps:      yesterdayLog?.steps                         ?? null,
       todayWorkoutTonnage: todayWorkoutInRecent?.total_tonnage_kg       ?? null,
       todayWorkoutSets:    todayWorkoutInRecent?.total_sets             ?? null,
       todayWorkoutName:    todayWorkoutInRecent?.session_name           ?? null,
+      isRestDay,
     })
 
     const systemPrompt = buildSystemPrompt({

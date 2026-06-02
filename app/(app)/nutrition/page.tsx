@@ -10,16 +10,18 @@ export default async function NutritionPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const today     = new Date().toISOString().split('T')[0]
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+  const today          = new Date().toISOString().split('T')[0]
+  const yesterday      = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+  const thirtyDaysAgo  = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]
 
-  // Charger logs, profil, steps du jour, steps d'hier (TDEE NEAT), séance du jour en parallèle
+  // Charger logs, profil, steps, séance du jour + moyenne steps 30j en parallèle
   const [
     { data: logs },
     { data: profile },
     { data: todayLog },
     { data: yesterdayLog },
     { data: todayWorkout },
+    { data: steps30dLogs },
   ] = await Promise.all([
     supabase
       .from('food_logs')
@@ -39,7 +41,7 @@ export default async function NutritionPage() {
       .eq('user_id', user.id)
       .eq('log_date', today)
       .maybeSingle(),
-    // Steps d'hier — journée complète → TDEE NEAT plus précis
+    // Steps d'hier — fallback si pas assez de données 30j
     supabase
       .from('daily_logs')
       .select('steps')
@@ -56,10 +58,25 @@ export default async function NutritionPage() {
       .order('completed_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    // Moyenne steps 30j (journées COMPLÈTES = exclut aujourd'hui + zéros)
+    // Source stable — évite le biais des steps partiels du matin
+    supabase
+      .from('daily_logs')
+      .select('steps')
+      .eq('user_id', user.id)
+      .gte('log_date', thirtyDaysAgo)
+      .lt('log_date', today)
+      .gt('steps', 0),
   ])
 
+  // Calcul moyenne 30j (minimum 3 jours de données pour être significatif)
+  const avgSteps30d = (steps30dLogs ?? []).length >= 3
+    ? Math.round((steps30dLogs ?? []).reduce((acc, l) => acc + (l.steps ?? 0), 0) / (steps30dLogs ?? []).length)
+    : null
+
   // Source unique de vérité : calcDailyTarget avec données réelles du jour
-  // Steps : hier (complets) > aujourd'hui (partiels). Tonnage + séries + nom séance.
+  // Steps : moy 30j (stable) > hier (complet) > aujourd'hui (partiel)
+  const isRestDay = !todayWorkout
   const dailyTarget = calcDailyTarget({
     weight_kg:         profile?.weight_kg,
     height_cm:         profile?.height_cm,
@@ -72,11 +89,13 @@ export default async function NutritionPage() {
     custom_protein_g:  profile?.custom_protein_g,
     custom_carbs_g:    profile?.custom_carbs_g,
     custom_fat_g:      profile?.custom_fat_g,
+    avgSteps30d,
     todaySteps:          todayLog?.steps                  ?? null,
     yesterdaySteps:      yesterdayLog?.steps              ?? null,
     todayWorkoutTonnage: todayWorkout?.total_tonnage_kg   ?? null,
     todayWorkoutSets:    todayWorkout?.total_sets          ?? null,
     todayWorkoutName:    todayWorkout?.session_name        ?? null,
+    isRestDay,
   })
 
   const targets = {
