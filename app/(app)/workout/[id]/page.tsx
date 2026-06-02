@@ -183,10 +183,26 @@ export default function WorkoutSessionPage() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [groups.length, completed])
 
+  // ── Auto-save serveur toutes les 30s ─────────────────────
+  useEffect(() => {
+    if (!loadedRef.current || groups.length === 0 || completed) return
+    const saveDraft = () => {
+      fetch('/api/workout/save-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workout_id: workoutId, groups, session_name: sessionName }),
+      }).catch(() => { /* silencieux */ })
+    }
+    const interval = setInterval(saveDraft, 30000)
+    return () => clearInterval(interval)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups, sessionName, completed])
+
   // ── Auto-save Supabase au changement de visibilité ────────
   useEffect(() => {
     const handleVisibility = () => {
-      if (document.visibilityState === 'hidden' && groups.length > 0) {
+      if (document.visibilityState === 'hidden' && groups.length > 0 && !completed) {
+        // LocalStorage
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify({
             groups,
@@ -194,6 +210,12 @@ export default function WorkoutSessionPage() {
             savedAt: Date.now(),
           }))
         } catch { /* ignore */ }
+        // Serveur (fire-and-forget)
+        fetch('/api/workout/save-draft', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workout_id: workoutId, groups, session_name: sessionName }),
+        }).catch(() => { /* silencieux */ })
       }
     }
     document.addEventListener('visibilitychange', handleVisibility)
@@ -232,12 +254,11 @@ export default function WorkoutSessionPage() {
       setExercises(library)
       if (workout?.session_name) setSessionName(workout.session_name)
 
-      // Essayer de restaurer depuis localStorage d'abord
+      // 1. Essayer de restaurer depuis localStorage d'abord (le plus rapide)
       try {
         const stored = localStorage.getItem(STORAGE_KEY)
         if (stored) {
           const parsed = JSON.parse(stored) as { groups: ExerciseGroup[]; sessionName: string; savedAt: number }
-          // Données valides et récentes (< 24h)
           if (parsed.groups?.length > 0 && Date.now() - parsed.savedAt < 86400000) {
             setGroups(parsed.groups)
             if (parsed.sessionName) setSessionName(parsed.sessionName)
@@ -246,6 +267,26 @@ export default function WorkoutSessionPage() {
             setTimeout(() => setRestoredFromStorage(false), 4000)
             return
           }
+        }
+      } catch { /* ignore */ }
+
+      // 2. Fallback : restaurer depuis le draft Supabase (autre appareil / cache vidé)
+      try {
+        const draftRes = await fetch(`/api/workout/save-draft?workout_id=${workoutId}`)
+        const { data: draft } = await draftRes.json()
+        if (draft?.groups?.length > 0) {
+          setGroups(draft.groups)
+          if (draft.session_name) setSessionName(draft.session_name)
+          // Ré-hydrater localStorage pour les prochains accès
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            groups: draft.groups,
+            sessionName: draft.session_name,
+            savedAt: Date.now(),
+          }))
+          loadedRef.current = true
+          setRestoredFromStorage(true)
+          setTimeout(() => setRestoredFromStorage(false), 4000)
+          return
         }
       } catch { /* ignore */ }
 
@@ -582,9 +623,14 @@ export default function WorkoutSessionPage() {
         try {
           localStorage.removeItem(STORAGE_KEY)
           localStorage.removeItem(`forgeiq_start_${workoutId}`)
-          // Déclencher l'event storage pour que BottomNav retire le badge immédiatement
           window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }))
         } catch { /* ignore */ }
+        // Effacer le draft serveur (séance terminée)
+        fetch('/api/workout/save-draft', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workout_id: workoutId, groups: [], session_name: sessionName }),
+        }).catch(() => { /* silencieux */ })
         setSummary({ tonnage: data.totalTonnage ?? 0, sets: data.totalSets ?? 0, newPRs: data.newPRs ?? [] })
         setCompleted(true)
         if (timerRef.current) clearInterval(timerRef.current)
@@ -1241,15 +1287,22 @@ export default function WorkoutSessionPage() {
               Continuer la séance
             </button>
             <button
-              onClick={() => {
+              onClick={async () => {
                 setShowQuitModal(false)
-                // La séance reste dans localStorage pour reprendre plus tard
+                // Sauvegarder sur le serveur avant de partir (permet reprise sur autre appareil)
+                try {
+                  await fetch('/api/workout/save-draft', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ workout_id: workoutId, groups, session_name: sessionName }),
+                  })
+                } catch { /* silencieux */ }
                 router.push('/workout')
               }}
               className="w-full py-3 rounded-2xl font-semibold text-sm"
               style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)', border: '1px solid var(--fiq-border)' }}
             >
-              Mettre en pause
+              ⏸ Mettre en pause
             </button>
             <button
               onClick={async () => {
