@@ -58,7 +58,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ data: { url: session.url }, error: null })
   } catch (err) {
-    console.error('Stripe checkout error:', err)
-    return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('Stripe checkout error:', msg)
+    return NextResponse.json({ data: null, error: msg }, { status: 500 })
   }
 }
