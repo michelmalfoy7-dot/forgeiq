@@ -203,6 +203,10 @@
   .mb-nav {
     margin-bottom: calc(4rem + env(safe-area-inset-bottom));
   }
+  /* Padding-bottom = dégager le contenu scrollable de la bottom nav fixe */
+  .pb-nav {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
 
   /* Boutons ForgeIQ — press feedback */
   .fiq-btn-primary {

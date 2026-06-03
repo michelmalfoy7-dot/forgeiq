@@ -22,7 +22,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <ServiceWorkerRegister />
         <InstallBanner />
         <OfflineBanner />
-        <main className="flex-1 mb-nav overflow-x-hidden">
+        <main className="flex-1 pb-nav overflow-x-hidden">
           {children}
         </main>
         <BottomNav />

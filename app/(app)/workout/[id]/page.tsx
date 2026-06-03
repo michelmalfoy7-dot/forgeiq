@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Dumbbell } from 'lucide-react'
 import { Confetti } from '@/components/ui/Confetti'
 import { PlateCalculatorModal } from '@/components/workout/PlateCalculatorModal'
+import { roundWeight, weightDelta } from '@/lib/utils/numbers'
 
 // ── Types ─────────────────────────────────────────────────────
 type SetType = 'work' | 'top_set' | 'backoff' | 'dropset' | 'failure'
@@ -1631,9 +1632,9 @@ export default function WorkoutSessionPage() {
               </div>
             </div>
 
-            {/* Liste */}
+            {/* Liste — padding bas = dégager la bottom nav */}
             <div className="flex-1 overflow-y-auto px-4 pt-3 space-y-1.5"
-              style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}>
+              style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
               {filteredExercises.length === 0 && (
                 <div className="text-center py-8">
                   <Dumbbell className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--fiq-muted)' }} />
@@ -1884,7 +1885,8 @@ function ExerciseCard({
           <p className="fiq-label mb-2">Dernière séance</p>
           {group.lastSession.map((s, i) => {
             const current = group.sets[i]
-            const weightDiff = current && current.weight_kg !== '' ? parseFloat(String(current.weight_kg).replace(',', '.')) - s.weight_kg : null
+            const currentW = current && current.weight_kg !== '' ? parseFloat(String(current.weight_kg).replace(',', '.')) : null
+            const weightDiff = currentW !== null ? roundWeight(currentW - s.weight_kg) : null
             const repsDiff = current && current.reps !== '' ? Number(current.reps) - s.reps : null
             return (
               <div key={i} className="flex items-center justify-between">
@@ -1894,7 +1896,7 @@ function ExerciseCard({
                 {weightDiff !== null && weightDiff !== 0 && (
                   <span className="text-xs font-bold"
                     style={{ color: weightDiff > 0 ? 'var(--fiq-accent)' : 'var(--fiq-orange)' }}>
-                    {weightDiff > 0 ? '+' : ''}{weightDiff}kg
+                    {weightDelta(currentW!, s.weight_kg)}
                   </span>
                 )}
                 {weightDiff === 0 && repsDiff !== null && repsDiff !== 0 && (

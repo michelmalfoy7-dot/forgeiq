@@ -154,8 +154,8 @@ export async function POST(req: NextRequest) {
       let line = `${name} : ${cur.maxWeight}kg×${cur.maxReps} (${cur.sets} séries)`
       if (newPR) line += ' — 🏆 NOUVEAU PR'
       else if (prevBest !== null) {
-        const delta = Math.round((cur.maxWeight - prevBest) * 10) / 10
-        if (delta !== 0) line += ` (${delta > 0 ? '+' : ''}${delta}kg vs séance préc.)`
+        const delta = Math.round((cur.maxWeight - prevBest) * 100) / 100
+        if (delta !== 0) line += ` (${delta > 0 ? '+' : ''}${parseFloat(delta.toFixed(2))}kg vs séance préc.)`
         else line += ` (stable vs séance préc.)`
       }
       if (pr !== null) line += ` | PR all-time : ${pr}kg`
