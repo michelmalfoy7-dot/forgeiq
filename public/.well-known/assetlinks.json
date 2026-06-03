@@ -1,12 +1,8 @@
-﻿[
-  {
-    "relation": ["delegate_permission/common.handle_all_urls"],
-    "target": {
-      "namespace": "android_app",
-      "package_name": "com.forgeiq.app",
-      "sha256_cert_fingerprints": [
-        "PLACEHOLDER_REPLACE_WITH_SHA256_FROM_PWABUILDER"
-      ]
-    }
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.getforgeiq.twa",
+    "sha256_cert_fingerprints": ["E1:C3:AA:2B:9C:9D:F5:F6:DC:3C:69:65:23:15:45:BB:29:22:27:59:14:47:63:1D:93:5D:7C:0A:A9:0A:98:62"]
   }
-]
+}]
