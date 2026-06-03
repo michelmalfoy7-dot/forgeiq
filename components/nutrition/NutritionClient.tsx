@@ -522,6 +522,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
   // Photo IA
   const [photoAnalysis, setPhotoAnalysis] = useState<PhotoAnalysis | null>(null)
   const [photoQuantities, setPhotoQuantities] = useState<Record<number, string>>({})
+  const [photoNames, setPhotoNames] = useState<Record<number, string>>({})
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0)
   const [photoError, setPhotoError] = useState('')
   // Favoris
@@ -751,11 +752,14 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
       }
 
       const quantities: Record<number, string> = {}
+      const names: Record<number, string> = {}
       ;(data.aliments as PhotoAliment[]).forEach((a, i) => {
         quantities[i] = String(a.quantite_estimee_g)
+        names[i] = a.nom
       })
       setPhotoAnalysis(data)
       setPhotoQuantities(quantities)
+      setPhotoNames(names)
       setMode('photo-confirm')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur inconnue'
@@ -813,7 +817,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
           log_date: today,
           meal_type: mealType,
           food_id: null,
-          food_name: aliment.nom,
+          food_name: (photoNames[idx] ?? aliment.nom).trim() || aliment.nom,
           quantity_g: qty,
           calories_per_100g: per100(aliment.calories),
           protein_per_100g: per100(aliment.proteines_g),
@@ -2211,25 +2215,33 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
                 return (
                   <div key={idx} className="rounded-xl p-3 space-y-2"
                     style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+                    {/* Nom éditable */}
+                    <input
+                      type="text"
+                      value={photoNames[idx] ?? aliment.nom}
+                      onChange={e => setPhotoNames(prev => ({ ...prev, [idx]: e.target.value }))}
+                      className="w-full px-2 py-1 rounded-lg text-sm font-semibold outline-none"
+                      style={{ background: 'var(--fiq-surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+                      placeholder="Nom de l'aliment"
+                    />
                     <div className="flex items-center gap-2">
-                      <p className="font-semibold text-sm flex-1 min-w-0 truncate" style={{ color: 'var(--fiq-text)' }}>
-                        {aliment.nom}
-                      </p>
                       {aliment.confiance === 'faible' && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0"
                           style={{ background: '#F59E0B18', color: '#F59E0B', border: '1px solid #F59E0B33' }}>
                           ⚠️ approx.
                         </span>
                       )}
-                      <input
-                        type="number"
-                        value={qtyRaw}
-                        onChange={e => setPhotoQuantities(prev => ({ ...prev, [idx]: e.target.value }))}
-                        className="w-16 px-2 py-1 rounded-lg text-xs text-center outline-none shrink-0"
-                        style={{ background: 'var(--fiq-surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
-                        min="1" max="2000"
-                      />
-                      <span className="text-xs shrink-0" style={{ color: 'var(--fiq-muted)' }}>g</span>
+                      <div className="flex items-center gap-1 ml-auto shrink-0">
+                        <input
+                          type="number"
+                          value={qtyRaw}
+                          onChange={e => setPhotoQuantities(prev => ({ ...prev, [idx]: e.target.value }))}
+                          className="w-16 px-2 py-1 rounded-lg text-xs text-center outline-none"
+                          style={{ background: 'var(--fiq-surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+                          min="1" max="2000"
+                        />
+                        <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>g</span>
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]" style={{ color: 'var(--fiq-muted)' }}>
                       {aliment.calories != null && (
