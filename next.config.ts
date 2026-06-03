@@ -60,6 +60,8 @@ const nextConfig: NextConfig = {
 
   // Logs expérimentaux pour identifier les slow routes
   experimental: {
+    // lucide-react : tree-shake les icônes (seules celles importées sont incluses)
+    // recharts : lazy via ProgressChartsLazy, mais optimise quand même les imports internes
     optimizePackageImports: ['lucide-react', 'recharts'],
   },
 }

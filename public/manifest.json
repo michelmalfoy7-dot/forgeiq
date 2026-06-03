@@ -13,29 +13,6 @@
   "dir": "ltr",
   "categories": ["health", "fitness", "sports"],
   "prefer_related_applications": false,
-  "screenshots": [
-    {
-      "src": "/screenshots/screenshot-dashboard.png",
-      "sizes": "390x844",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Tableau de bord ForgeIQ"
-    },
-    {
-      "src": "/screenshots/screenshot-workout.png",
-      "sizes": "390x844",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Séance d'entraînement"
-    },
-    {
-      "src": "/screenshots/screenshot-coach.png",
-      "sizes": "390x844",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Coach IA personnalisé"
-    }
-  ],
   "icons": [
     {
       "src": "/icons/icon-192.png",

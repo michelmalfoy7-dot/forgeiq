@@ -1,11 +1,11 @@
-[
+﻿[
   {
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "com.getforgeiq.app",
+      "package_name": "com.forgeiq.app",
       "sha256_cert_fingerprints": [
-        "REMPLACER_PAR_LE_FINGERPRINT_SHA256_DE_PWABUILDER"
+        "PLACEHOLDER_REPLACE_WITH_SHA256_FROM_PWABUILDER"
       ]
     }
   }
