@@ -1,13 +1,25 @@
 import type { NextConfig } from 'next'
+import bundleAnalyzer from '@next/bundle-analyzer'
+
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === 'true',
+})
 
 const nextConfig: NextConfig = {
   // Compression gzip/brotli des assets
   compress: true,
 
-  // Optimisation des images
+  // Optimisation des images (avif/webp auto, lazy loading, resize)
   images: {
     formats: ['image/avif', 'image/webp'],
     minimumCacheTTL: 86400, // 1 jour
+    remotePatterns: [
+      {
+        // Supabase Storage — avatars + photos progression
+        protocol: 'https',
+        hostname: '*.supabase.co',
+      },
+    ],
   },
 
   // Headers de cache pour les assets statiques
@@ -52,4 +64,4 @@ const nextConfig: NextConfig = {
   },
 }
 
-export default nextConfig
+export default withBundleAnalyzer(nextConfig)

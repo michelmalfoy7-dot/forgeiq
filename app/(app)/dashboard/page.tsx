@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { Suspense } from 'react'
 import { AlertBar } from '@/components/ui/AlertBar'
 import { StatCard } from '@/components/ui/StatCard'
@@ -332,10 +333,10 @@ export default async function DashboardPage() {
             </div>
           )}
         </div>
-        <Link href="/profile" className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-sm font-black flex-shrink-0"
+        <Link href="/profile" className="relative w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-sm font-black flex-shrink-0"
           style={profile?.avatar_url ? {} : { background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
           {profile?.avatar_url
-            ? <img src={profile.avatar_url} alt={prenom} className="w-full h-full object-cover" />
+            ? <Image src={profile.avatar_url} alt={prenom} fill className="object-cover" sizes="36px" />
             : prenom[0]?.toUpperCase()
           }
         </Link>

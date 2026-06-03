@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import { Search, Users, Loader2, UserPlus, UserMinus } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
 
 type SearchResult = {
   user_id: string
@@ -133,12 +134,11 @@ export default function SocialSearchPage() {
               >
                 {/* Avatar */}
                 <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm flex-shrink-0"
+                  className="relative w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center font-black text-sm flex-shrink-0"
                   style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
                 >
                   {result.avatar_url ? (
-                    // eslint-disable-next-line @next/next-eslint/no-img-element
-                    <img src={result.avatar_url} alt={result.display_name ?? ''} className="w-full h-full rounded-xl object-cover" />
+                    <Image src={result.avatar_url} alt={result.display_name ?? ''} fill className="object-cover" sizes="40px" />
                   ) : initial}
                 </div>
 

@@ -1,10 +1,9 @@
 'use client'
 
-'use client'
-
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, LogOut, Trash2, Dumbbell, Flame, BarChart2, ChevronRight, MessageCircle, Info, Crown, Users, Globe, Lock, Camera, X } from 'lucide-react'
 import type { TDEEBreakdown } from '@/lib/utils/tdee'
@@ -377,8 +376,7 @@ export function ProfileClient({
             {avatarUploading ? (
               <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--bg)' }} />
             ) : avatarUrl ? (
-              // eslint-disable-next-line @next/next-eslint/no-img-element
-              <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+              <Image src={avatarUrl} alt="Avatar" fill className="object-cover" sizes="64px" />
             ) : (
               <span>{(displayName || email)[0]?.toUpperCase()}</span>
             )}

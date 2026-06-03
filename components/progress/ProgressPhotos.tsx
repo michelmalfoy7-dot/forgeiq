@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Camera, Plus, Trash2, Loader2, Lock, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import Image from 'next/image'
 
 type Photo = {
   id: string
@@ -246,9 +247,13 @@ export function ProgressPhotos() {
               style={{ aspectRatio: '1', background: 'var(--fiq-faint)' }}
               onClick={() => setLightboxIdx(idx)}>
               {photo.signed_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={photo.signed_url} alt={photo.note ?? formatDate(photo.photo_date)}
-                  className="w-full h-full object-cover" />
+                <Image
+                  src={photo.signed_url}
+                  alt={photo.note ?? formatDate(photo.photo_date)}
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 480px) 33vw, 160px"
+                />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <Camera className="w-6 h-6" style={{ color: 'var(--fiq-muted)' }} />
