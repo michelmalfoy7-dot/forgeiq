@@ -1,4 +1,5 @@
 {
+  "id": "/dashboard",
   "name": "ForgeIQ — Build smarter. Lift harder.",
   "short_name": "ForgeIQ",
   "description": "Ton coach IA fitness — Entraînement, nutrition, progression.",
@@ -7,12 +8,15 @@
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "background_color": "#0A0C0F",
-  "theme_color": "#B4FF4A",
+  "theme_color": "#0A0C0F",
   "orientation": "portrait",
   "lang": "fr",
   "dir": "ltr",
   "categories": ["health", "fitness", "sports"],
   "prefer_related_applications": false,
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -37,12 +41,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
-    },
-    {
-      "src": "/icons/icon-192.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
     }
   ],
   "shortcuts": [
