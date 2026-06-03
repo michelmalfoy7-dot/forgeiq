@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { calcDailyTarget } from '@/lib/utils/tdee'
+import { VOLUME_TARGETS } from '@/app/api/progress/volume-weekly/route'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,6 +53,7 @@ function buildSystemPrompt(ctx: {
   sysBp: number | null
   recentWorkouts: { session_name: string; session_date: string; total_tonnage_kg: number | null; total_sets: number | null }[]
   topPRs: { exercise_name: string; value: number; unit: string }[]
+  weeklyVolume: { muscle: string; sets: number; mev: number; mav: number; status: 'low' | 'optimal' | 'high' }[]
   macroMode: string | null
   customCalories: number | null
   customProtein: number | null
@@ -91,6 +93,18 @@ function buildSystemPrompt(ctx: {
     ? ctx.topPRs.slice(0, 8).map(p => `- ${p.exercise_name} : ${p.value}${p.unit}`).join('\n')
     : 'Aucun PR enregistré'
 
+  // Volume hebdo : formater les lignes
+  const volLines = ctx.weeklyVolume.length > 0
+    ? ctx.weeklyVolume.map(v => {
+        const icon = v.status === 'high' ? '⚠️' : v.status === 'optimal' ? '✅' : '📉'
+        return `${icon} ${v.muscle} : ${v.sets} séries [MEV ${v.mev} / MAV ${v.mav}]`
+      }).join('\n')
+    : 'Aucune séance cette semaine'
+
+  const overloadedMuscles = ctx.weeklyVolume.filter(v => v.status === 'high').map(v => v.muscle)
+  const underMEVMuscles   = ctx.weeklyVolume.filter(v => v.status === 'low' && v.sets > 0).map(v => v.muscle)
+  const needsDeload = overloadedMuscles.length >= 2 && (ctx.fatigueScore ?? 0) >= 6
+
   const alerts: string[] = []
   if (ctx.sleepDeepMin !== null && ctx.sleepDeepMin < 60)
     alerts.push(`⚠️ Sommeil profond insuffisant (${ctx.sleepDeepMin}min < 60min) → réduire volume -15-20%`)
@@ -98,6 +112,10 @@ function buildSystemPrompt(ctx: {
     alerts.push(`⚠️ Protéines insuffisantes (${ctx.proteinG}g / objectif ${PROTEIN_TARGET}g) → mentionner`)
   if (ctx.sysBp !== null && ctx.sysBp > 135)
     alerts.push(`🚨 Tension systolique élevée (${ctx.sysBp} mmHg) → recommander bilan médical`)
+  if (needsDeload)
+    alerts.push(`🔄 DÉCHARGE RECOMMANDÉE : ${overloadedMuscles.join(', ')} dépassent le MAV + fatigue ${ctx.fatigueScore}/10 — suggérer une semaine à 40-60% du volume habituel`)
+  if (overloadedMuscles.length > 0 && !needsDeload)
+    alerts.push(`📈 Volume élevé (> MAV) : ${overloadedMuscles.join(', ')} — surveiller les signes de surentraînement`)
 
   return `Tu es le Coach IA de ForgeIQ — un coach fitness personnel bienveillant, expert et direct. Tu parles toujours en français.
 
@@ -146,6 +164,10 @@ ${workoutSummary}
 
 ## Records personnels (top sets)
 ${prSummary}
+
+## Volume d'entraînement cette semaine (ISO lun→dim)
+${volLines}
+${underMEVMuscles.length > 0 ? `→ Groupes sous MEV (à stimuler) : ${underMEVMuscles.join(', ')}` : ''}
 
 ## Alertes actives
 ${alerts.length ? alerts.join('\n') : 'Aucune alerte'}
@@ -270,6 +292,15 @@ export async function POST(req: NextRequest) {
     const sevenDaysAgo  = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]
 
+    // Semaine ISO courante (lundi → dimanche)
+    const nowD = new Date()
+    const dow  = nowD.getDay()
+    const mondayOffset = dow === 0 ? -6 : 1 - dow
+    const isoMonday = new Date(nowD)
+    isoMonday.setDate(nowD.getDate() + mondayOffset)
+    isoMonday.setHours(0, 0, 0, 0)
+    const weekStart = isoMonday.toISOString().split('T')[0]
+
     // Charger le contexte utilisateur en parallèle
     const [
       { data: profile },
@@ -279,6 +310,7 @@ export async function POST(req: NextRequest) {
       { data: topPRs },
       { data: todayFoodLogs },
       { data: steps30dLogs },
+      { data: weekWorkoutsData },
     ] = await Promise.all([
       supabase.from('profiles')
         .select('display_name, goal, level, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g')
@@ -310,7 +342,56 @@ export async function POST(req: NextRequest) {
         .gte('log_date', thirtyDaysAgo)
         .lt('log_date', today)
         .gt('steps', 0),
+      // Workouts de la semaine courante → volume hebdo
+      supabase.from('workouts')
+        .select('id')
+        .eq('user_id', user.id)
+        .gte('session_date', weekStart)
+        .not('completed_at', 'is', null),
     ])
+
+    // ── Volume hebdomadaire par groupe musculaire ────────────────────────────
+    const weekWorkoutIds = (weekWorkoutsData ?? []).map((w: { id: string }) => w.id)
+    let weeklyVolumeData: { muscle: string; sets: number; mev: number; mav: number; status: 'low' | 'optimal' | 'high' }[] = []
+
+    if (weekWorkoutIds.length > 0) {
+      const { data: weekSets } = await supabase
+        .from('workout_sets')
+        .select('exercise_id, exercises_library(muscle_primary)')
+        .in('workout_id', weekWorkoutIds)
+        .eq('is_warmup', false)
+        .neq('reps', 0)
+
+      const MUSCLE_GROUPS: Record<string, string> = {
+        chest: 'Poitrine', lats: 'Dos', mid_back: 'Dos', upper_back: 'Dos', lower_back: 'Dos',
+        traps: 'Dos', front_delt: 'Épaules', side_delt: 'Épaules', rear_delt: 'Épaules',
+        biceps: 'Biceps', triceps: 'Triceps', forearms: 'Avant-bras',
+        quads: 'Jambes', hamstrings: 'Jambes', glutes: 'Fessiers', calves: 'Mollets',
+        abs: 'Abdos', core: 'Abdos', obliques: 'Abdos',
+      }
+
+      const counts: Record<string, number> = {}
+      for (const s of weekSets ?? []) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const lib = s.exercises_library as any
+        const muscles: string[] = Array.isArray(lib)
+          ? (lib[0]?.muscle_primary ?? [])
+          : (lib?.muscle_primary ?? [])
+        if (!muscles.length) continue
+        const group = MUSCLE_GROUPS[muscles[0]]
+        if (!group) continue
+        counts[group] = (counts[group] ?? 0) + 1
+      }
+
+      weeklyVolumeData = Object.entries(VOLUME_TARGETS)
+        .map(([muscle, { mev, mav }]) => {
+          const sets = counts[muscle] ?? 0
+          const status: 'low' | 'optimal' | 'high' = sets >= mav ? 'high' : sets >= mev ? 'optimal' : 'low'
+          return { muscle, sets, mev, mav, status }
+        })
+        .filter(m => m.sets > 0)
+        .sort((a, b) => b.sets - a.sets)
+    }
 
     // Poids lissé le plus récent (fallback si pas de check-in aujourd'hui)
     let recentWeightTrend: number | null = todayLog?.weight_trend ?? null
@@ -391,6 +472,7 @@ export async function POST(req: NextRequest) {
       sysBp: todayLog?.sys_bp ?? null,
       recentWorkouts: recentWorkouts ?? [],
       topPRs: topPRs ?? [],
+      weeklyVolume: weeklyVolumeData,
       macroMode: profile?.macro_mode ?? null,
       customCalories: profile?.custom_calories ?? null,
       customProtein: profile?.custom_protein_g ?? null,

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { ServiceWorkerRegister } from '@/components/layout/ServiceWorkerRegister'
+import { OfflineBanner } from '@/components/layout/OfflineBanner'
 import { ToastProvider } from '@/components/ui/Toast'
 import { InstallBanner } from '@/components/pwa/InstallBanner'
 
@@ -20,6 +21,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="w-full max-w-[480px] min-h-screen flex flex-col relative">
         <ServiceWorkerRegister />
         <InstallBanner />
+        <OfflineBanner />
         <main className="flex-1 mb-nav overflow-x-hidden">
           {children}
         </main>

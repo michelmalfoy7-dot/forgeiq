@@ -325,4 +325,10 @@
   .fiq-timer-pulse {
     animation: fiq-pulse-blue 2s ease-in-out infinite;
   }
+
+  /* Slide-down banner (offline / reconnected) */
+  @keyframes slideDown {
+    from { transform: translateY(-100%); opacity: 0; }
+    to   { transform: translateY(0);     opacity: 1; }
+  }
 }

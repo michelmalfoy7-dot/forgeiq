@@ -2,9 +2,10 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
-import { ChevronDown, ChevronUp, Dumbbell, Trophy, Calendar, ArrowLeft, ChevronDown as LoadMore } from 'lucide-react'
+import { ChevronDown, ChevronUp, Dumbbell, Trophy, Calendar, ArrowLeft, ChevronDown as LoadMore, List, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const PAGE_SIZE = 20
+const DAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 
 type WorkoutSet = {
   id: string
@@ -199,7 +200,218 @@ function WorkoutCard({ workout }: { workout: Workout }) {
   )
 }
 
+// ── Vue calendrier ────────────────────────────────────────────────────────────
+function CalendarView({ workouts }: Props) {
+  const today = new Date()
+  const [year, setYear]         = useState(today.getFullYear())
+  const [month, setMonth]       = useState(today.getMonth())       // 0-indexed
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+
+  // Map session_date → workouts
+  const workoutsByDate = useMemo(() => {
+    const map = new Map<string, Workout[]>()
+    for (const w of workouts) {
+      const existing = map.get(w.session_date) ?? []
+      map.set(w.session_date, [...existing, w])
+    }
+    return map
+  }, [workouts])
+
+  // Construire la grille du mois (lundi en premier)
+  const firstDow   = (new Date(year, month, 1).getDay() + 6) % 7  // 0=lun
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cells: (number | null)[] = [
+    ...Array(firstDow).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ]
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  const todayStr   = today.toISOString().split('T')[0]
+  const monthLabel = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' })
+    .format(new Date(year, month, 1))
+
+  function prevMonth() {
+    if (month === 0) { setYear(y => y - 1); setMonth(11) }
+    else setMonth(m => m - 1)
+    setSelectedDate(null)
+  }
+  function nextMonth() {
+    if (month === 11) { setYear(y => y + 1); setMonth(0) }
+    else setMonth(m => m + 1)
+    setSelectedDate(null)
+  }
+
+  // Séances du jour sélectionné
+  const selectedWorkouts = selectedDate ? (workoutsByDate.get(selectedDate) ?? []) : []
+
+  // Streak actuelle (jours consécutifs avec au moins 1 séance, jusqu'à aujourd'hui)
+  const streak = useMemo(() => {
+    let count = 0
+    const d = new Date(today)
+    while (true) {
+      const str = d.toISOString().split('T')[0]
+      if (!workoutsByDate.has(str)) break
+      count++
+      d.setDate(d.getDate() - 1)
+    }
+    return count
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workoutsByDate])
+
+  // Séances dans le mois courant
+  const sessionsThisMonth = useMemo(() => {
+    let count = 0
+    for (let d = 1; d <= daysInMonth; d++) {
+      const str = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      if (workoutsByDate.has(str)) count++
+    }
+    return count
+  }, [workoutsByDate, year, month, daysInMonth])
+
+  return (
+    <div className="space-y-4">
+      {/* En-tête navigation mois */}
+      <div className="fiq-card">
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={prevMonth}
+            className="w-8 h-8 flex items-center justify-center rounded-lg"
+            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
+          >
+            <ChevronLeft className="w-4 h-4" style={{ color: 'var(--fiq-muted)' }} />
+          </button>
+          <div className="text-center">
+            <p className="font-black text-sm capitalize" style={{ color: 'var(--fiq-text)' }}>
+              {monthLabel}
+            </p>
+            <p className="text-[10px] mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+              {sessionsThisMonth} séance{sessionsThisMonth !== 1 ? 's' : ''}
+              {streak > 1 && (
+                <span style={{ color: 'var(--fiq-accent)' }}> · 🔥 {streak}j consécutifs</span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={nextMonth}
+            className="w-8 h-8 flex items-center justify-center rounded-lg"
+            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
+          >
+            <ChevronRight className="w-4 h-4" style={{ color: 'var(--fiq-muted)' }} />
+          </button>
+        </div>
+
+        {/* Labels jours */}
+        <div className="grid grid-cols-7 mb-1">
+          {DAY_LABELS.map((d, i) => (
+            <div key={i} className="text-center text-[10px] py-1 font-bold"
+              style={{ color: 'var(--fiq-muted)' }}>
+              {d}
+            </div>
+          ))}
+        </div>
+
+        {/* Grille jours */}
+        <div className="grid grid-cols-7 gap-1">
+          {cells.map((day, i) => {
+            if (!day) return <div key={i} />
+
+            const pad    = String(day).padStart(2, '0')
+            const mPad   = String(month + 1).padStart(2, '0')
+            const dateStr = `${year}-${mPad}-${pad}`
+            const dayWorkouts = workoutsByDate.get(dateStr) ?? []
+            const hasWorkout = dayWorkouts.length > 0
+            const isToday    = dateStr === todayStr
+            const isSelected = dateStr === selectedDate
+            const isFuture   = dateStr > todayStr
+
+            return (
+              <button
+                key={i}
+                onClick={() => {
+                  if (!hasWorkout) return
+                  setSelectedDate(isSelected ? null : dateStr)
+                }}
+                className="relative flex flex-col items-center justify-center rounded-xl py-2"
+                style={{
+                  cursor: hasWorkout ? 'pointer' : 'default',
+                  background: isSelected
+                    ? 'var(--fiq-accent)'
+                    : isToday
+                    ? 'rgba(180,255,74,0.1)'
+                    : hasWorkout
+                    ? 'rgba(180,255,74,0.05)'
+                    : 'transparent',
+                  border: isSelected
+                    ? '1.5px solid var(--fiq-accent)'
+                    : isToday
+                    ? '1.5px solid rgba(180,255,74,0.4)'
+                    : '1.5px solid transparent',
+                  opacity: isFuture ? 0.3 : 1,
+                }}
+              >
+                <span
+                  className="text-xs font-black leading-none"
+                  style={{
+                    color: isSelected
+                      ? '#0A0C0F'
+                      : hasWorkout
+                      ? 'var(--fiq-text)'
+                      : 'var(--fiq-muted)',
+                  }}
+                >
+                  {day}
+                </span>
+
+                {/* Point vert sous le numéro si séance */}
+                {hasWorkout && !isSelected && (
+                  <span
+                    className="mt-1 rounded-full"
+                    style={{ width: 4, height: 4, background: 'var(--fiq-accent)' }}
+                  />
+                )}
+                {/* Check si sélectionné */}
+                {isSelected && (
+                  <span className="text-[9px] leading-none mt-0.5" style={{ color: '#0A0C0F' }}>✓</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Légende */}
+      <div className="flex items-center gap-4 px-1">
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-full" style={{ background: 'rgba(180,255,74,0.05)', border: '1.5px solid rgba(180,255,74,0.4)' }} />
+          <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>Aujourd'hui</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-full flex items-center justify-center" style={{ background: 'rgba(180,255,74,0.05)' }}>
+            <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--fiq-accent)' }} />
+          </div>
+          <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>Séance</span>
+        </div>
+      </div>
+
+      {/* Détail séance sélectionnée */}
+      {selectedWorkouts.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs font-black uppercase tracking-wider px-1"
+            style={{ color: 'var(--fiq-muted)' }}>
+            {new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+              .format(new Date(selectedDate! + 'T12:00:00'))}
+          </p>
+          {selectedWorkouts.map(w => (
+            <WorkoutCard key={w.id} workout={w} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function WorkoutHistoryClient({ workouts }: Props) {
+  const [view, setView]             = useState<'list' | 'calendar'>('list')
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const visibleWorkouts = workouts.slice(0, visibleCount)
   const hasMore = visibleCount < workouts.length
@@ -258,17 +470,50 @@ export function WorkoutHistoryClient({ workouts }: Props) {
         </div>
       </div>
 
-      {/* Bouton retour */}
-      <Link
-        href="/workout"
-        className="flex items-center gap-2 text-sm font-semibold"
-        style={{ color: 'var(--fiq-muted)' }}
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Nouvelle séance
-      </Link>
+      {/* Bouton retour + toggle vue */}
+      <div className="flex items-center justify-between">
+        <Link
+          href="/workout"
+          className="flex items-center gap-2 text-sm font-semibold"
+          style={{ color: 'var(--fiq-muted)' }}
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Nouvelle séance
+        </Link>
+
+        {/* Toggle Liste / Calendrier */}
+        <div className="flex items-center rounded-xl overflow-hidden"
+          style={{ border: '1px solid var(--fiq-border)', background: 'var(--fiq-faint)' }}>
+          <button
+            onClick={() => setView('list')}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-black transition-colors"
+            style={{
+              background: view === 'list' ? 'var(--fiq-accent)' : 'transparent',
+              color: view === 'list' ? '#0A0C0F' : 'var(--fiq-muted)',
+            }}
+          >
+            <List className="w-3.5 h-3.5" />
+            Liste
+          </button>
+          <button
+            onClick={() => setView('calendar')}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-black transition-colors"
+            style={{
+              background: view === 'calendar' ? 'var(--fiq-accent)' : 'transparent',
+              color: view === 'calendar' ? '#0A0C0F' : 'var(--fiq-muted)',
+            }}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            Calendrier
+          </button>
+        </div>
+      </div>
+
+      {/* Vue calendrier */}
+      {view === 'calendar' && <CalendarView workouts={workouts} />}
 
       {/* Liste par mois */}
+      {view === 'list' && (<>
       {months.map((month) => (
         <div key={month.label}>
           <div className="flex items-center gap-3 mb-3">
@@ -302,6 +547,7 @@ export function WorkoutHistoryClient({ workouts }: Props) {
           Voir {Math.min(PAGE_SIZE, workouts.length - visibleCount)} séance{Math.min(PAGE_SIZE, workouts.length - visibleCount) > 1 ? 's' : ''} de plus
         </button>
       )}
+      </>)}
     </div>
   )
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, Send, Bot, User, Sparkles, Trash2, Crown } from 'lucide-react'
+import { Loader2, Send, Bot, User, Sparkles, Trash2, Crown, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 
 type Message = { role: 'user' | 'assistant'; content: string; streaming?: boolean }
@@ -33,16 +33,17 @@ function calcProteinTarget(goal?: string, weightKg?: number | null): number {
   return Math.round(w * (ratio.min + ratio.max) / 2)
 }
 
-function getQuickSuggestions(ctx: DailyCtx | null, proteinTarget: number): string[] {
+function getQuickSuggestions(ctx: DailyCtx | null, proteinTarget: number, hasDeloadAlert: boolean): string[] {
   if (!ctx) return ['Quelle séance demain ?', 'Analyse ma semaine', 'Mon prochain PR', 'Besoin d\'un refeed ?']
   const s: string[] = []
-  // Suggestions contextuelles selon données du jour (P5)
+  // Suggestions contextuelles selon données du jour
+  if (hasDeloadAlert) s.push('📊 Analyse mon volume cette semaine')
   if (ctx.sleep_deep_min !== null && ctx.sleep_deep_min < 60) s.push('Séance adaptée aujourd\'hui ?')
   if (ctx.fatigue_score !== null && ctx.fatigue_score >= 8) s.push('Je suis épuisé — que faire ?')
   if (ctx.protein_g !== null && ctx.protein_g < proteinTarget - 20) s.push('Comment atteindre mes protéines ?')
   if (ctx.sleep_deep_min !== null && ctx.sleep_deep_min > 90 && ctx.fatigue_score !== null && ctx.fatigue_score <= 3) s.push('Repousser mes limites aujourd\'hui ?')
   // Compléter jusqu'à 4 suggestions génériques
-  const fallbacks = ['Quelle séance demain ?', 'Analyse ma semaine', 'Mon prochain PR', 'Besoin d\'un refeed ?', 'Optimise ma nutrition', 'Conseils récupération']
+  const fallbacks = ['Quelle séance demain ?', '📊 Analyse mon volume cette semaine', 'Analyse ma semaine', 'Mon prochain PR', 'Besoin d\'un refeed ?', 'Optimise ma nutrition', 'Conseils récupération']
   for (const f of fallbacks) {
     if (s.length >= 4) break
     if (!s.includes(f)) s.push(f)
@@ -222,6 +223,8 @@ export default function CoachPage() {
   const [isInTrial, setIsInTrial] = useState(false)
   const [followUps] = useState<string[]>(getFollowUps())
   const [clearing, setClearing] = useState(false)
+  // Volume hebdo + alerte deload
+  const [deloadMuscles, setDeloadMuscles] = useState<string[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -237,7 +240,7 @@ export default function CoachPage() {
       startOfMonth.setDate(1)
       startOfMonth.setHours(0, 0, 0, 0)
 
-      const [{ data: history }, { data: log }, { data: profile }, { data: foodLogs }, { data: lastWorkout }] = await Promise.all([
+      const [{ data: history }, { data: log }, { data: profile }, { data: foodLogs }, { data: lastWorkout }, volumeRes] = await Promise.all([
         supabase.from('coach_messages')
           .select('role, content, created_at')
           .eq('user_id', user.id)
@@ -265,6 +268,8 @@ export default function CoachPage() {
           .order('session_date', { ascending: false })
           .limit(1)
           .maybeSingle(),
+        // Volume hebdomadaire par muscle (pour alerte deload)
+        fetch('/api/progress/volume-weekly').then(r => r.ok ? r.json() : { data: null }),
       ])
 
       if (history?.length) {
@@ -289,6 +294,13 @@ export default function CoachPage() {
         })
       }
       if (profile) setProteinTarget(calcProteinTarget(profile.goal, profile.weight_kg))
+
+      // Alerte deload : 2+ muscles au-delà du MAV
+      const volumeData = (volumeRes as { data: { muscle: string; sets: number; mav: number; status: string }[] | null })?.data
+      if (volumeData) {
+        const overloaded = volumeData.filter(m => m.status === 'high').map(m => m.muscle)
+        if (overloaded.length >= 2) setDeloadMuscles(overloaded)
+      }
 
       // Déterminer tier et limite
       const status = profile?.subscription_status ?? 'free'
@@ -464,7 +476,7 @@ export default function CoachPage() {
     }
   }
 
-  const suggestions = getQuickSuggestions(dailyCtx, proteinTarget)
+  const suggestions = getQuickSuggestions(dailyCtx, proteinTarget, deloadMuscles.length >= 2)
   const isEmpty = !historyLoading && messages.length === 0
   const lastIsAssistant =
     messages.length > 0 &&
@@ -536,6 +548,24 @@ export default function CoachPage() {
               )}
             </span>
           )}
+        </div>
+      )}
+
+      {/* Banner deload — 2+ muscles au-delà du MAV */}
+      {deloadMuscles.length >= 2 && (
+        <div
+          className="mx-4 mb-3 flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs flex-shrink-0 cursor-pointer"
+          style={{ background: '#F59E0B12', border: '1px solid #F59E0B44', borderLeft: '3px solid var(--fiq-yellow)' }}
+          onClick={() => sendMessage('📊 Analyse mon volume cette semaine et dis-moi si j\'ai besoin d\'une semaine de décharge.')}
+        >
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-yellow)' }} />
+          <div className="flex-1 min-w-0">
+            <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>Volume élevé détecté</p>
+            <p className="mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+              {deloadMuscles.slice(0, 3).join(', ')} dépassent le volume max — décharge recommandée ?
+            </p>
+          </div>
+          <span className="text-xs font-black flex-shrink-0" style={{ color: 'var(--fiq-yellow)' }}>Analyser →</span>
         </div>
       )}
 

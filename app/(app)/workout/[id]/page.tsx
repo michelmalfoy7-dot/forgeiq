@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Dumbbell } from 'lucide-react'
 import { Confetti } from '@/components/ui/Confetti'
+import { PlateCalculatorModal } from '@/components/workout/PlateCalculatorModal'
 
 // ── Types ─────────────────────────────────────────────────────
 type SetType = 'work' | 'top_set' | 'backoff' | 'dropset' | 'failure'
@@ -83,6 +84,35 @@ function calcTonnageGroup(group: ExerciseGroup) {
   return calcTonnage(workSets, isDouble) + calcTonnage(warmSets, isDouble)
 }
 
+// ── Helpers circuits ──────────────────────────────────────────
+/** Nombre d'exercices partageant le même superset_id */
+function getLinkedCount(ssId: string, groups: ExerciseGroup[]): number {
+  return groups.filter(g => g.superset_id === ssId).length
+}
+
+/**
+ * Retourne la lettre du circuit ("A", "B"…) pour un ssId donné.
+ * Seuls les groupes avec 3+ exercices liés sont considérés comme circuits.
+ */
+function getCircuitLetter(ssId: string, groups: ExerciseGroup[]): string {
+  const seen: string[] = []
+  for (const g of groups) {
+    if (g.superset_id && !seen.includes(g.superset_id) && getLinkedCount(g.superset_id, groups) >= 3) {
+      seen.push(g.superset_id)
+    }
+  }
+  const idx = seen.indexOf(ssId)
+  return String.fromCharCode(65 + Math.max(0, idx))  // A, B, C…
+}
+
+/** Position 1-based d'un exercice dans son groupe (superset ou circuit) */
+function getPositionInGroup(gIdx: number, groups: ExerciseGroup[]): number {
+  const ssId = groups[gIdx].superset_id
+  if (!ssId) return 0
+  const firstIdx = groups.findIndex(g => g.superset_id === ssId)
+  return gIdx - firstIdx + 1
+}
+
 export default function WorkoutSessionPage() {
   const { id: workoutId } = useParams<{ id: string }>()
   const router = useRouter()
@@ -116,10 +146,17 @@ export default function WorkoutSessionPage() {
   const [sharing, setSharing] = useState(false)
   const [sharePosted, setSharePosted] = useState(false)
   const [shareDismissed, setShareDismissed] = useState(false)
+  // Programme lié à la séance (pour "sauvegarder la routine")
+  const [programId, setProgramId]             = useState<string | null>(null)
+  const [programName, setProgramName]         = useState<string>('')
+  const [showSaveRoutine, setShowSaveRoutine] = useState(false)
+  const [savingRoutine, setSavingRoutine]     = useState(false)
+  const [routineSaved, setRoutineSaved]       = useState(false)
   // Bilan IA post-séance
   const [aiInsights, setAiInsights] = useState<{
     congrats: string
     insights: { emoji: string; title: string; text: string }[]
+    suggestions?: { emoji: string; action: string; detail: string }[]
   } | null>(null)
   const [aiInsightsLoading, setAiInsightsLoading] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -239,7 +276,7 @@ export default function WorkoutSessionPage() {
 
       const [{ data: exos }, { data: workout }, { data: aliasRows }] = await Promise.all([
         supabase.from('exercises_library').select('id,name,name_fr,slug,muscle_primary,equipment,is_bilateral_dumbbell,is_unilateral').order('name_fr'),
-        supabase.from('workouts').select('session_name, completed_at').eq('id', workoutId).single(),
+        supabase.from('workouts').select('session_name, completed_at, program_id').eq('id', workoutId).single(),
         supabase.from('exercise_aliases').select('exercise_id, alias'),
       ])
 
@@ -262,6 +299,16 @@ export default function WorkoutSessionPage() {
       })) as Exercise[]
       setExercises(library)
       if (workout?.session_name) setSessionName(workout.session_name)
+
+      // Charger le nom du programme si la séance y est liée
+      if (workout?.program_id) {
+        setProgramId(workout.program_id)
+        try {
+          const { data: prog } = await supabase
+            .from('programs').select('name').eq('id', workout.program_id).single()
+          if (prog?.name) setProgramName(prog.name)
+        } catch { /* silencieux */ }
+      }
 
       // 1. Essayer de restaurer depuis localStorage d'abord (le plus rapide)
       try {
@@ -872,6 +919,32 @@ export default function WorkoutSessionPage() {
     }
   }
 
+  // ── Sauvegarder la routine modifiée dans le programme ───────
+  async function saveRoutine() {
+    if (!programId || savingRoutine) return
+    setSavingRoutine(true)
+    try {
+      const exercisePayload = groups.map(g => ({
+        exercise_id: g.exercise_id,
+        name_fr:     g.exercise_name,
+        set_count:   Math.max(1, g.sets.filter(s => !s.is_warmup).length),
+      }))
+
+      const res = await fetch('/api/programs/update-session', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workout_id: workoutId, exercises: exercisePayload }),
+      })
+      const json = await res.json() as { data: unknown; error: string | null }
+      if (!json.error) {
+        setRoutineSaved(true)
+        setShowSaveRoutine(false)
+        setTimeout(() => setRoutineSaved(false), 3000)
+      }
+    } catch { /* silencieux */ }
+    finally { setSavingRoutine(false) }
+  }
+
   // ── Écran de fin ───────────────────────────────────────────
   if (completed && summary) {
     return (
@@ -931,6 +1004,8 @@ export default function WorkoutSessionPage() {
                   <p className="text-base font-black leading-snug" style={{ color: 'var(--fiq-text)' }}>
                     {aiInsights.congrats}
                   </p>
+
+                  {/* Observations */}
                   <div className="space-y-3 pt-1">
                     {aiInsights.insights.map((insight, i) => (
                       <div key={i} className="flex gap-3">
@@ -946,6 +1021,44 @@ export default function WorkoutSessionPage() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Suggestions — prochaines actions concrètes */}
+                  {aiInsights.suggestions && aiInsights.suggestions.length > 0 && (
+                    <div className="pt-3 border-t" style={{ borderColor: 'var(--fiq-border)' }}>
+                      <p className="text-[10px] uppercase tracking-wider font-bold mb-2.5"
+                        style={{ color: 'var(--fiq-muted)' }}>
+                        Prochaines actions
+                      </p>
+                      <div className="space-y-2">
+                        {aiInsights.suggestions.map((s, i) => (
+                          <div
+                            key={i}
+                            className="flex gap-2.5 px-3 py-2.5 rounded-xl"
+                            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
+                          >
+                            <span className="text-base shrink-0">{s.emoji}</span>
+                            <div>
+                              <p className="text-xs font-black mb-0.5" style={{ color: 'var(--fiq-accent)' }}>
+                                {s.action}
+                              </p>
+                              <p className="text-[11px] leading-relaxed" style={{ color: 'var(--fiq-muted)' }}>
+                                {s.detail}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* CTA Coach — creuser plus loin */}
+                  <a
+                    href="/coach"
+                    className="mt-1 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black"
+                    style={{ border: '1px solid #3D8BFF44', color: '#3D8BFF', background: '#3D8BFF0A' }}
+                  >
+                    💬 Creuser avec le coach →
+                  </a>
                 </>
               ) : null}
             </div>
@@ -1051,6 +1164,85 @@ export default function WorkoutSessionPage() {
   return (
     <div className="max-w-lg mx-auto" style={{ paddingBottom: 'calc(8rem + env(safe-area-inset-bottom))' }}>
 
+      {/* Toast succès — routine sauvegardée */}
+      {routineSaved && (
+        <div
+          className="fixed top-4 left-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl shadow-lg"
+          style={{
+            transform: 'translateX(-50%)',
+            background: '#B4FF4A22',
+            border: '1px solid #B4FF4A55',
+            backdropFilter: 'blur(12px)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <span style={{ fontSize: 13, color: 'var(--fiq-accent)', fontWeight: 700 }}>
+            ✅ Routine sauvegardée dans {programName}
+          </span>
+        </div>
+      )}
+
+      {/* Modal — confirmation sauvegarder la routine */}
+      {showSaveRoutine && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: 'rgba(0,0,0,0.7)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowSaveRoutine(false) }}
+        >
+          <div
+            className="w-full max-w-[480px] rounded-t-3xl p-5 pb-8 space-y-4"
+            style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="font-black text-sm" style={{ color: 'var(--fiq-text)' }}>
+                  Sauvegarder la routine
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                  {programName} · {sessionName}
+                </p>
+              </div>
+              <button onClick={() => setShowSaveRoutine(false)}>
+                <X className="w-5 h-5" style={{ color: 'var(--fiq-muted)' }} />
+              </button>
+            </div>
+
+            {/* Aperçu des exercices qui seront sauvegardés */}
+            <div className="rounded-xl p-3 space-y-1.5"
+              style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+              <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--fiq-muted)' }}>
+                {groups.length} exercice{groups.length > 1 ? 's' : ''} · ordre actuel
+              </p>
+              {groups.map((g, i) => (
+                <div key={g.exercise_id} className="flex items-center gap-2">
+                  <span className="text-[10px] w-4 text-right flex-shrink-0" style={{ color: 'var(--fiq-muted)' }}>{i + 1}</span>
+                  <span className="text-xs font-semibold flex-1" style={{ color: 'var(--fiq-text)' }}>{g.exercise_name}</span>
+                  <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+                    {g.sets.filter(s => !s.is_warmup).length} série{g.sets.filter(s => !s.is_warmup).length > 1 ? 's' : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+              La prochaine suggestion de cette séance utilisera cet ordre et ces exercices.
+            </p>
+
+            <button
+              onClick={saveRoutine}
+              disabled={savingRoutine}
+              className="w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2"
+              style={{ background: 'var(--fiq-accent)', color: 'var(--bg)', opacity: savingRoutine ? 0.7 : 1 }}
+            >
+              {savingRoutine
+                ? <><Loader2 className="w-4 h-4 animate-spin" />Sauvegarde…</>
+                : <>💾 Oui, mettre à jour la routine</>
+              }
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Toast de restauration */}
       {restoredFromStorage && (
         <div
@@ -1113,6 +1305,17 @@ export default function WorkoutSessionPage() {
               {totalTonnage.toLocaleString('fr-FR')} kg
             </span>
           )}
+          {/* Bouton sauvegarder la routine — visible seulement si séance liée à un programme */}
+          {programId && groups.length > 0 && (
+            <button
+              onClick={() => setShowSaveRoutine(true)}
+              className="text-xs px-2 py-1 rounded-lg flex items-center gap-1"
+              style={{ color: '#B4FF4A', border: '1px solid #B4FF4A44', background: '#B4FF4A0A' }}
+              title={`Sauvegarder dans ${programName}`}
+            >
+              💾
+            </button>
+          )}
           {/* Bouton quitter (si séance en cours) */}
           {groups.length > 0 && (
             <button
@@ -1173,17 +1376,33 @@ export default function WorkoutSessionPage() {
         {groups.map((group, gIdx) => {
           const nextGroup = groups[gIdx + 1]
           const ssId = group.superset_id
-          const isFirstInSuperset = ssId && (gIdx === 0 || groups[gIdx - 1].superset_id !== ssId)
+          const isFirstInGroup = ssId && (gIdx === 0 || groups[gIdx - 1].superset_id !== ssId)
           const isLinkedToNext = ssId && nextGroup?.superset_id === ssId
+          const linkedCount = ssId ? getLinkedCount(ssId, groups) : 0
+          const isCircuit = linkedCount >= 3
+          // Badge de position : "A1", "A2"… pour circuits, sinon undefined
+          const circuitLetter = isCircuit && ssId ? getCircuitLetter(ssId, groups) : ''
+          const position = ssId ? getPositionInGroup(gIdx, groups) : 0
+          const circuitBadge = isCircuit ? `${circuitLetter}${position}` : undefined
+          // Couleurs dynamiques
+          const groupColor  = isCircuit ? 'var(--fiq-blue)' : 'var(--fiq-orange)'
+          const groupBg     = isCircuit ? '#3D8BFF18' : '#FF6B3518'
+          const groupBorder = isCircuit ? '#3D8BFF44' : '#FF6B3344'
 
           return (
             <div key={group.exercise_id + gIdx}>
-              {/* Label SUPERSET au-dessus du premier exercice du groupe */}
-              {isFirstInSuperset && (
+              {/* Label SUPERSET / CIRCUIT au-dessus du premier exercice */}
+              {isFirstInGroup && (
                 <div className="flex items-center gap-1.5 mb-1.5 ml-1">
-                  <span className="text-xs font-black uppercase tracking-wider" style={{ color: 'var(--fiq-orange)' }}>
-                    ⚡ Superset
-                  </span>
+                  {isCircuit ? (
+                    <span className="text-xs font-black uppercase tracking-wider" style={{ color: 'var(--fiq-blue)' }}>
+                      🔄 Circuit {circuitLetter}
+                    </span>
+                  ) : (
+                    <span className="text-xs font-black uppercase tracking-wider" style={{ color: 'var(--fiq-orange)' }}>
+                      ⚡ Superset
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -1200,18 +1419,27 @@ export default function WorkoutSessionPage() {
                 onRemoveSuperset={() => removeSuperset(gIdx)}
                 onMoveUp={gIdx > 0 ? () => moveGroup(gIdx, 'up') : undefined}
                 onMoveDown={gIdx < groups.length - 1 ? () => moveGroup(gIdx, 'down') : undefined}
+                circuitBadge={circuitBadge}
+                isInCircuit={isCircuit}
               />
 
-              {/* Connecteur entre deux exercices du même superset */}
+              {/* Connecteur entre exercices du même groupe */}
               {isLinkedToNext && (
                 <div className="flex items-center justify-center py-1">
                   <div className="flex flex-col items-center gap-0.5">
-                    <div style={{ width: 2, height: 10, background: '#FF6B3566', borderRadius: 1 }} />
-                    <span className="text-[9px] font-black tracking-wider px-2 py-0.5 rounded-full"
-                      style={{ background: '#FF6B3522', color: 'var(--fiq-orange)', border: '1px solid #FF6B3344' }}>
-                      + superset
-                    </span>
-                    <div style={{ width: 2, height: 10, background: '#FF6B3566', borderRadius: 1 }} />
+                    <div style={{ width: 2, height: 10, background: isCircuit ? '#3D8BFF66' : '#FF6B3566', borderRadius: 1 }} />
+                    {isCircuit ? (
+                      <span className="text-[9px] font-black tracking-wider px-2 py-0.5 rounded-full"
+                        style={{ background: groupBg, color: 'var(--fiq-blue)', border: `1px solid ${groupBorder}` }}>
+                        → {circuitLetter}{position + 1}
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-black tracking-wider px-2 py-0.5 rounded-full"
+                        style={{ background: groupBg, color: 'var(--fiq-orange)', border: `1px solid ${groupBorder}` }}>
+                        + superset
+                      </span>
+                    )}
+                    <div style={{ width: 2, height: 10, background: isCircuit ? '#3D8BFF66' : '#FF6B3566', borderRadius: 1 }} />
                   </div>
                 </div>
               )}
@@ -1309,10 +1537,24 @@ export default function WorkoutSessionPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="font-bold" style={{ color: 'var(--fiq-text)' }}>
-                    {supersetTargetIdx !== null ? '⚡ Ajouter au superset' : 'Choisir un exercice'}
+                    {supersetTargetIdx !== null
+                      ? (() => {
+                          const ssId = groups[supersetTargetIdx]?.superset_id
+                          const count = ssId ? getLinkedCount(ssId, groups) : 0
+                          return count >= 2
+                            ? '🔄 Ajouter au circuit'
+                            : '⚡ Ajouter au superset'
+                        })()
+                      : 'Choisir un exercice'}
                   </h2>
                   {supersetTargetIdx !== null && (
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-orange)' }}>
+                    <p className="text-xs mt-0.5" style={{
+                      color: (() => {
+                        const ssId = groups[supersetTargetIdx]?.superset_id
+                        const count = ssId ? getLinkedCount(ssId, groups) : 0
+                        return count >= 2 ? 'var(--fiq-blue)' : 'var(--fiq-orange)'
+                      })(),
+                    }}>
                       Lié à : {groups[supersetTargetIdx]?.exercise_name}
                     </p>
                   )}
@@ -1513,6 +1755,7 @@ const SET_TYPE_CONFIG: Record<SetType, { label: string; color: string; bg: strin
 function ExerciseCard({
   group, onAddSet, onAddWarmup, onAddDropSet, onUpdateSet, onRemoveSet, onToggleUnilateral,
   onCycleSetType, onAddToSuperset, onRemoveSuperset, onMoveUp, onMoveDown,
+  circuitBadge, isInCircuit,
 }: {
   group: ExerciseGroup
   onAddSet: () => void
@@ -1526,22 +1769,50 @@ function ExerciseCard({
   onRemoveSuperset: () => void
   onMoveUp?: () => void
   onMoveDown?: () => void
+  /** Badge de position dans le circuit (ex : "A1", "A2") — undefined si pas de circuit */
+  circuitBadge?: string
+  /** true si l'exercice fait partie d'un circuit (3+ liés) */
+  isInCircuit?: boolean
 }) {
   const [showHistory, setShowHistory] = useState(true)
+  const [showPlateCalc, setShowPlateCalc] = useState(false)
   const tonnage = calcTonnageGroup(group)
   const isBilateral = group.is_bilateral_dumbbell ?? false
   const isUnilateral = group.is_unilateral ?? false
   const bothSides = group.unilateral_both_sides ?? true
   const inSuperset = !!group.superset_id
 
+  // Couleur du groupe : bleu pour circuit, orange pour superset simple
+  const groupColor = isInCircuit ? 'var(--fiq-blue)' : 'var(--fiq-orange)'
+  const groupBg    = isInCircuit ? '#3D8BFF12' : '#FF6B3512'
+  const groupBorder = isInCircuit ? '#3D8BFF30' : '#FF6B3330'
+
+  // Poids le plus lourd parmi les séries de travail (pour pré-remplir le calculateur)
+  const topWeight = Math.max(
+    0,
+    ...group.sets
+      .filter(s => !s.is_warmup && s.weight_kg !== '')
+      .map(s => parseFloat(String(s.weight_kg).replace(',', '.')) || 0)
+  )
+
   return (
     <div
       className="fiq-card space-y-3"
-      style={inSuperset ? { borderLeft: '3px solid var(--fiq-orange)' } : undefined}
+      style={inSuperset ? { borderLeft: `3px solid ${groupColor}` } : undefined}
     >
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="font-bold" style={{ color: 'var(--fiq-text)' }}>{group.exercise_name}</h3>
+          <div className="flex items-center gap-2">
+            {circuitBadge && (
+              <span
+                className="text-[10px] font-black px-1.5 py-0.5 rounded-md flex-shrink-0"
+                style={{ background: groupBg, color: groupColor, border: `1px solid ${groupBorder}`, letterSpacing: '0.04em' }}
+              >
+                {circuitBadge}
+              </span>
+            )}
+            <h3 className="font-bold" style={{ color: 'var(--fiq-text)' }}>{group.exercise_name}</h3>
+          </div>
           {tonnage > 0 && (
             <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-accent)' }}>
               {tonnage.toLocaleString('fr-FR')} kg
@@ -1572,6 +1843,15 @@ function ExerciseCard({
               PR {group.pr}kg
             </span>
           )}
+          {/* Calculateur de disques */}
+          <button
+            onClick={() => setShowPlateCalc(true)}
+            className="flex items-center justify-center w-7 h-7 rounded-lg"
+            title="Calculateur de disques"
+            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
+          >
+            <Dumbbell className="w-3.5 h-3.5" style={{ color: 'var(--fiq-muted)' }} />
+          </button>
           {/* Boutons réordonner ↑↓ */}
           <div className="flex flex-col gap-0.5">
             <button
@@ -1738,14 +2018,14 @@ function ExerciseCard({
         </Button>
       </div>
 
-      {/* Superset — bouton discret dans le footer */}
+      {/* Superset / Circuit — bouton discret dans le footer */}
       <div className="flex items-center justify-between pt-0.5">
         <button
           onClick={onAddToSuperset}
           className="text-[11px] flex items-center gap-1 px-2 py-1 rounded-lg"
-          style={{ color: 'var(--fiq-orange)', background: '#FF6B3512', border: '1px solid #FF6B3330' }}
+          style={{ color: groupColor, background: groupBg, border: `1px solid ${groupBorder}` }}
         >
-          ⚡ + exercice lié
+          {isInCircuit ? '🔄' : '⚡'} + {isInCircuit ? 'au circuit' : 'exercice lié'}
         </button>
         {inSuperset && (
           <button
@@ -1757,6 +2037,14 @@ function ExerciseCard({
           </button>
         )}
       </div>
+
+      {/* Calculateur de disques — modal plein écran */}
+      {showPlateCalc && (
+        <PlateCalculatorModal
+          initialWeight={topWeight > 0 ? topWeight : undefined}
+          onClose={() => setShowPlateCalc(false)}
+        />
+      )}
     </div>
   )
 }

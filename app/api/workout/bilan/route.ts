@@ -10,9 +10,16 @@ type BilanInsight = {
   text: string
 }
 
+type BilanSuggestion = {
+  emoji: string
+  action: string   // court, commence par un verbe : "Augmenter le bench", "Viser 150g de protéines"
+  detail: string   // 1 phrase concrète, chiffre si possible
+}
+
 type BilanResponse = {
   congrats: string
   insights: BilanInsight[]
+  suggestions?: BilanSuggestion[]
 }
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -26,7 +33,7 @@ export async function POST(req: NextRequest) {
     const { workout_id } = await req.json()
     if (!workout_id) return NextResponse.json({ data: null, error: 'workout_id manquant' }, { status: 400 })
 
-    // Récupérer les données en parallèle
+    // ── 1. Données de la séance actuelle ────────────────────────────────
     const [
       { data: workout },
       { data: profile },
@@ -35,25 +42,25 @@ export async function POST(req: NextRequest) {
     ] = await Promise.all([
       supabase
         .from('workouts')
-        .select('session_name, total_tonnage_kg, total_sets, total_reps, duration_min, completed_at')
+        .select('session_name, total_tonnage_kg, total_sets, total_reps, duration_min, completed_at, session_date')
         .eq('id', workout_id)
         .eq('user_id', user.id)
         .single(),
       supabase
         .from('profiles')
-        .select('goal, experience_level, weight_kg')
+        .select('goal, experience_level, weight_kg, protein_target_g')
         .eq('id', user.id)
         .single(),
       supabase
         .from('daily_logs')
-        .select('fatigue_level, sleep_hours, deep_sleep_min, steps')
+        .select('fatigue_level, sleep_hours, deep_sleep_min, steps, protein_g, calories')
         .eq('user_id', user.id)
         .order('log_date', { ascending: false })
         .limit(1)
         .maybeSingle(),
       supabase
         .from('workout_sets')
-        .select('exercise_name, weight_kg, reps, is_warmup')
+        .select('exercise_id, exercise_name, weight_kg, reps, is_warmup, set_type')
         .eq('workout_id', workout_id)
         .eq('user_id', user.id)
         .order('set_number'),
@@ -61,101 +68,172 @@ export async function POST(req: NextRequest) {
 
     if (!workout) return NextResponse.json({ data: null, error: 'Séance introuvable' }, { status: 404 })
 
-    // Analyser les groupes musculaires travaillés
     const workingSets = (workoutSets ?? []).filter(s => !s.is_warmup)
+    const exerciseIds = [...new Set(workingSets.map(s => s.exercise_id).filter(Boolean))] as string[]
     const topExercises = [...new Set(workingSets.map(s => s.exercise_name))].slice(0, 5)
-    const heaviestSet = workingSets.reduce(
-      (best, s) => (s.weight_kg ?? 0) > (best?.weight_kg ?? 0) ? s : best,
-      null as (typeof workingSets)[0] | null
-    )
 
-    // Objectif humain
+    // ── 2. Contexte historique (3 dernières séances par exercice) ────────
+    // Récupérer les workout_ids des 10 dernières séances complétées (avant celle-ci)
+    const { data: recentWorkouts } = await supabase
+      .from('workouts')
+      .select('id, session_date, total_tonnage_kg')
+      .eq('user_id', user.id)
+      .not('completed_at', 'is', null)
+      .neq('id', workout_id)
+      .order('session_date', { ascending: false })
+      .limit(10)
+
+    const recentWIds = (recentWorkouts ?? []).map(w => w.id)
+    const tonnageTrend = (recentWorkouts ?? []).slice(0, 4).map(w => w.total_tonnage_kg ?? 0).reverse()
+
+    // Historique des sets pour les mêmes exercices (dans les 10 dernières séances)
+    let exerciseTrends: Record<string, { weight_kg: number; reps: number; session_date: string }[]> = {}
+    if (exerciseIds.length > 0 && recentWIds.length > 0) {
+      const { data: historySets } = await supabase
+        .from('workout_sets')
+        .select('exercise_id, exercise_name, weight_kg, reps, workout_id, set_type')
+        .in('exercise_id', exerciseIds)
+        .in('workout_id', recentWIds)
+        .not('is_warmup', 'eq', true)
+        .order('weight_kg', { ascending: false })
+
+      for (const s of historySets ?? []) {
+        if (!s.exercise_id) continue
+        if (s.set_type === 'backoff') continue
+        if (!exerciseTrends[s.exercise_id]) exerciseTrends[s.exercise_id] = []
+        const wDate = recentWorkouts?.find(w => w.id === s.workout_id)?.session_date
+        if (wDate && exerciseTrends[s.exercise_id].length < 3) {
+          exerciseTrends[s.exercise_id].push({ weight_kg: s.weight_kg, reps: s.reps, session_date: wDate })
+        }
+      }
+    }
+
+    // ── 3. PRs de l'utilisateur pour ces exercices ───────────────────────
+    let prMap: Record<string, number> = {}
+    if (exerciseIds.length > 0) {
+      const { data: prs } = await supabase
+        .from('personal_records')
+        .select('exercise_id, value')
+        .eq('user_id', user.id)
+        .eq('record_type', 'top_set')
+        .in('exercise_id', exerciseIds)
+
+      for (const pr of prs ?? []) prMap[pr.exercise_id] = pr.value
+    }
+
+    // ── 4. Composition du contexte enrichi ───────────────────────────────
     const goalLabels: Record<string, string> = {
-      weight_loss: 'perte de poids',
-      muscle_gain: 'prise de muscle',
-      strength: 'force',
-      maintenance: 'maintien',
-      endurance: 'endurance',
+      weight_loss: 'perte de poids', muscle_gain: 'prise de muscle',
+      strength: 'force', maintenance: 'maintien', endurance: 'endurance',
     }
     const levelLabels: Record<string, string> = {
-      beginner: 'débutant',
-      intermediate: 'intermédiaire',
-      advanced: 'avancé',
+      beginner: 'débutant', intermediate: 'intermédiaire', advanced: 'avancé',
     }
+
+    // Sets de travail groupés par exercice pour la séance actuelle
+    const currentByExercise: Record<string, { maxWeight: number; maxReps: number; sets: number; prBefore: number | null }> = {}
+    for (const s of workingSets) {
+      if (!s.exercise_id || s.set_type === 'backoff') continue
+      if (!currentByExercise[s.exercise_id]) {
+        currentByExercise[s.exercise_id] = { maxWeight: 0, maxReps: 0, sets: 0, prBefore: prMap[s.exercise_id] ?? null }
+      }
+      const e = currentByExercise[s.exercise_id]
+      if ((s.weight_kg ?? 0) > e.maxWeight) { e.maxWeight = s.weight_kg ?? 0; e.maxReps = s.reps ?? 0 }
+      e.sets++
+    }
+
+    // Lignes de tendance par exercice
+    const trendLines: string[] = []
+    for (const [exId, cur] of Object.entries(currentByExercise)) {
+      const name = workingSets.find(s => s.exercise_id === exId)?.exercise_name ?? exId
+      const history = exerciseTrends[exId] ?? []
+      const prevBest = history[0]?.weight_kg ?? null
+      const pr = cur.prBefore
+      const newPR = pr !== null && cur.maxWeight > pr
+
+      let line = `${name} : ${cur.maxWeight}kg×${cur.maxReps} (${cur.sets} séries)`
+      if (newPR) line += ' — 🏆 NOUVEAU PR'
+      else if (prevBest !== null) {
+        const delta = Math.round((cur.maxWeight - prevBest) * 10) / 10
+        if (delta !== 0) line += ` (${delta > 0 ? '+' : ''}${delta}kg vs séance préc.)`
+        else line += ` (stable vs séance préc.)`
+      }
+      if (pr !== null) line += ` | PR all-time : ${pr}kg`
+      trendLines.push(line)
+    }
+
+    const tonnageDelta = tonnageTrend.length >= 2
+      ? Math.round(((workout.total_tonnage_kg ?? 0) - tonnageTrend[tonnageTrend.length - 1]) / Math.max(1, tonnageTrend[tonnageTrend.length - 1]) * 100)
+      : null
 
     const context = [
       `Séance : ${workout.session_name ?? 'Libre'}`,
-      `Tonnage : ${workout.total_tonnage_kg ?? 0} kg`,
-      `Séries travaillées : ${workout.total_sets ?? workingSets.length}`,
-      `Répétitions : ${workout.total_reps ?? 0}`,
+      `Date : ${workout.session_date}`,
+      `Tonnage : ${workout.total_tonnage_kg ?? 0} kg${tonnageDelta !== null ? ` (${tonnageDelta > 0 ? '+' : ''}${tonnageDelta}% vs séance préc.)` : ''}`,
+      `Séries de travail : ${workout.total_sets ?? workingSets.length}`,
       workout.duration_min ? `Durée : ${workout.duration_min} min` : null,
-      topExercises.length > 0 ? `Exercices : ${topExercises.join(', ')}` : null,
-      heaviestSet ? `Charge max : ${heaviestSet.weight_kg}kg × ${heaviestSet.reps} reps (${heaviestSet.exercise_name})` : null,
+      trendLines.length > 0 ? `\nPerformances par exercice :\n${trendLines.join('\n')}` : null,
       profile?.goal ? `Objectif : ${goalLabels[profile.goal] ?? profile.goal}` : null,
       profile?.experience_level ? `Niveau : ${levelLabels[profile.experience_level] ?? profile.experience_level}` : null,
-      lastCheckin?.fatigue_level != null ? `Fatigue au check-in : ${lastCheckin.fatigue_level}/10` : null,
+      lastCheckin?.fatigue_level != null ? `Fatigue : ${lastCheckin.fatigue_level}/10` : null,
       lastCheckin?.sleep_hours ? `Sommeil : ${lastCheckin.sleep_hours}h (${lastCheckin.deep_sleep_min ?? '?'}min profond)` : null,
+      lastCheckin?.protein_g && profile?.protein_target_g
+        ? `Protéines aujourd'hui : ${Math.round(lastCheckin.protein_g)}g / objectif ${profile.protein_target_g}g`
+        : lastCheckin?.protein_g ? `Protéines aujourd'hui : ${Math.round(lastCheckin.protein_g)}g` : null,
     ].filter(Boolean).join('\n')
 
-    const prompt = `Tu es le coach IA de ForgeIQ. Génère un bilan post-séance court et percutant en JSON.
+    // ── 5. Appel Haiku ───────────────────────────────────────────────────
+    const prompt = `Tu es le coach IA de ForgeIQ. Génère un bilan post-séance percutant ET des suggestions concrètes en JSON.
 
-DONNÉES DE LA SÉANCE :
+DONNÉES CONTEXTUELLES :
 ${context}
 
 Génère exactement ce JSON (rien d'autre) :
 {
-  "congrats": "Message d'accroche dynamique et motivant (1 phrase, 15 mots max, sans majuscule initiale forcée)",
+  "congrats": "Accroche dynamique et motivante (15 mots max, factuelle si possible)",
   "insights": [
-    { "emoji": "💪", "title": "Titre court", "text": "Observation concrète sur la performance (max 50 mots)" },
-    { "emoji": "🔄", "title": "Titre court", "text": "Conseil récupération ou nutrition post-séance (max 50 mots)" },
-    { "emoji": "📈", "title": "Titre court", "text": "Piste de progression pour la prochaine séance (max 50 mots)" }
+    { "emoji": "💪", "title": "Titre court", "text": "Observation factuelle sur la performance de cette séance (max 45 mots)" },
+    { "emoji": "🔄", "title": "Titre court", "text": "Point récupération ou nutrition POST-séance (max 45 mots)" },
+    { "emoji": "📈", "title": "Titre court", "text": "Tendance de progression détectée sur les dernières séances (max 45 mots)" }
+  ],
+  "suggestions": [
+    { "emoji": "🎯", "action": "Action courte (5 mots max)", "detail": "Explication concrète avec chiffres précis (max 40 mots)" },
+    { "emoji": "🥗", "action": "Action courte (5 mots max)", "detail": "Explication concrète avec chiffres précis (max 40 mots)" }
   ]
 }
 
-Règles strictes :
-- Jamais mentionner Claude, Anthropic, OpenAI, GPT
-- Adapter les emojis au contenu réel (pas forcément 💪🔄📈)
-- Personnaliser selon le tonnage, la fatigue et l'objectif
-- Être factuel et précis sur les chiffres
-- Ton : coach expert, direct, bienveillant`
+Règles :
+- Ne jamais mentionner Claude, Anthropic, OpenAI
+- suggestions = prochaines ACTIONS à faire (commence par un verbe d'action : "Augmenter...", "Viser...", "Reposer...", "Essayer...")
+- Utiliser les données historiques pour être précis (noms d'exercices, kg, reps)
+- Si nouveau PR → en parler dans insights
+- Adapter selon l'objectif (force ≠ prise de muscle ≠ perte de poids)
+- Ton : coach expert, direct, bienveillant. Pas de point d'exclamation excessifs`
 
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5',
-      max_tokens: 512,
+      max_tokens: 700,
       messages: [{ role: 'user', content: prompt }],
     })
 
     const rawText = message.content[0].type === 'text' ? message.content[0].text.trim() : ''
 
-    // Parser le JSON retourné par Claude
     let bilan: BilanResponse
     try {
-      // Extraire le JSON si Claude a mis du texte autour
       const jsonMatch = rawText.match(/\{[\s\S]*\}/)
       if (!jsonMatch) throw new Error('no JSON found')
       bilan = JSON.parse(jsonMatch[0]) as BilanResponse
-      // Valider la structure minimale
       if (!bilan.insights || !Array.isArray(bilan.insights)) throw new Error('invalid structure')
     } catch {
-      // Fallback si le parsing échoue
       bilan = {
-        congrats: 'Belle séance ! Continue comme ça. 🔥',
+        congrats: 'Belle séance — continue sur cette lancée.',
         insights: [
-          {
-            emoji: '💪',
-            title: 'Tonnage réalisé',
-            text: `${workout.total_tonnage_kg ?? 0} kg soulevés au total en ${workout.total_sets ?? 0} séries. Belle session de travail.`,
-          },
-          {
-            emoji: '🔄',
-            title: 'Récupération',
-            text: 'Assure-toi de bien t\'hydrater et de prendre des protéines dans l\'heure qui suit.',
-          },
-          {
-            emoji: '📈',
-            title: 'Prochaine séance',
-            text: 'Note tes sensations maintenant pendant qu\'elles sont fraîches pour mieux progresser.',
-          },
+          { emoji: '💪', title: 'Tonnage réalisé', text: `${workout.total_tonnage_kg ?? 0} kg soulevés en ${workout.total_sets ?? 0} séries.` },
+          { emoji: '🔄', title: 'Récupération', text: 'Hydrate-toi et vise 40g de protéines dans les 2h post-séance.' },
+          { emoji: '📈', title: 'Progression', text: 'Note tes sensations pour mieux calibrer la prochaine séance.' },
+        ],
+        suggestions: [
+          { emoji: '🥩', action: 'Viser les protéines', detail: 'Prends 30-40g de protéines dans l\'heure post-séance pour optimiser la récupération musculaire.' },
         ],
       }
     }

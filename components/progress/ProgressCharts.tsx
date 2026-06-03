@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import {
   ComposedChart, BarChart, Bar, Area, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
 } from 'recharts'
-import { TrendingUp, Dumbbell, Trophy, Calendar } from 'lucide-react'
+import { TrendingUp, Dumbbell, Trophy, Calendar, Activity } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -20,7 +20,10 @@ type PR = {
   reps?: number | null
   achieved_date: string | null
 }
-type Tab = 'weight' | 'tonnage' | 'prs'
+type Tab = 'weight' | 'tonnage' | 'prs' | '1rm'
+
+type OneRmExercise = { exercise_id: string; exercise_name: string; value: number }
+type OneRmPoint    = { date: string; raw_date: string; value_kg: number }
 
 // ─── Tooltip custom poids ─────────────────────────────────────────────────────
 // Affiche date + brut + tendance dans un tooltip premium dark
@@ -85,6 +88,31 @@ function TonnageTooltip({ active, payload, label }: TonnageTooltipProps) {
       <p style={{ color: '#F0F2F5', fontWeight: 900, fontSize: 13 }}>
         {tonnage.toLocaleString('fr-FR')} <span style={{ color: '#6B7280', fontWeight: 400, fontSize: 11 }}>kg</span>
       </p>
+    </div>
+  )
+}
+
+// ─── Tooltip custom 1RM ──────────────────────────────────────────────────────
+interface OneRmTooltipProps {
+  active?: boolean
+  payload?: { value: number }[]
+  label?: string
+}
+
+function OneRmTooltip({ active, payload, label }: OneRmTooltipProps) {
+  if (!active || !payload?.length) return null
+  return (
+    <div style={{
+      background: '#161A21',
+      border: '1px solid rgba(61,139,255,0.3)',
+      borderRadius: 10,
+      padding: '10px 14px',
+    }}>
+      <p style={{ color: '#6B7280', fontSize: 11, marginBottom: 6 }}>{label}</p>
+      <p style={{ color: '#F0F2F5', fontWeight: 900, fontSize: 13 }}>
+        {payload[0].value} <span style={{ color: '#6B7280', fontWeight: 400, fontSize: 11 }}>kg</span>
+      </p>
+      <p style={{ color: '#6B7280', fontSize: 10, marginTop: 2 }}>1RM estimé (Epley)</p>
     </div>
   )
 }
@@ -164,10 +192,43 @@ export function ProgressCharts({
 }) {
   const [tab, setTab] = useState<Tab>('weight')
 
+  // ── État 1RM ──────────────────────────────────────────────────
+  const [oneRmExercises, setOneRmExercises]   = useState<OneRmExercise[]>([])
+  const [selectedExoId, setSelectedExoId]     = useState<string | null>(null)
+  const [oneRmHistory, setOneRmHistory]       = useState<OneRmPoint[]>([])
+  const [oneRmLoading, setOneRmLoading]       = useState(false)
+
+  // Charger la liste des exercices quand on arrive sur l'onglet 1RM
+  useEffect(() => {
+    if (tab !== '1rm' || oneRmExercises.length > 0) return
+    fetch('/api/progress/1rm')
+      .then(r => r.json())
+      .then(({ data }) => {
+        const list = data ?? []
+        setOneRmExercises(list)
+        if (list.length > 0 && !selectedExoId) {
+          setSelectedExoId(list[0].exercise_id)
+        }
+      })
+      .catch(() => {})
+  }, [tab, oneRmExercises.length, selectedExoId])
+
+  // Charger l'historique quand l'exercice change
+  useEffect(() => {
+    if (!selectedExoId) return
+    setOneRmLoading(true)
+    fetch(`/api/progress/1rm?exercise_id=${selectedExoId}`)
+      .then(r => r.json())
+      .then(({ data }) => { setOneRmHistory(data ?? []) })
+      .catch(() => {})
+      .finally(() => setOneRmLoading(false))
+  }, [selectedExoId])
+
   const tabs: { key: Tab; label: string; icon: ReactNode }[] = [
     { key: 'weight',  label: 'Poids',   icon: <TrendingUp className="w-4 h-4" /> },
     { key: 'tonnage', label: 'Tonnage', icon: <Dumbbell className="w-4 h-4" /> },
     { key: 'prs',     label: 'Records', icon: <Trophy className="w-4 h-4" /> },
+    { key: '1rm',     label: '1RM',     icon: <Activity className="w-4 h-4" /> },
   ]
 
   // Dernier poids EWMA connu pour le badge du header
@@ -176,10 +237,13 @@ export function ProgressCharts({
   // Indice de la dernière barre de tonnage pour la surbrillance
   const lastBarIndex = weeklyTonnage.length - 1
 
+  // 1RM actuel de l'exercice sélectionné
+  const currentOneRm = oneRmExercises.find(e => e.exercise_id === selectedExoId)?.value ?? null
+
   return (
     <div className="space-y-4">
       {/* ── Sélecteur onglets avec transition scale ────────────────────────── */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         {tabs.map(t => {
           const isActive = tab === t.key
           return (
@@ -427,6 +491,132 @@ export function ProgressCharts({
                 )
               })}
             </div>
+          )}
+        </div>
+      )}
+      {/* ── 1RM estimé — sélecteur exercice + courbe historique ─────────── */}
+      {tab === '1rm' && (
+        <div className="fiq-card space-y-4">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>1RM estimé</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                Formule Epley · charge × (1 + reps ÷ 30)
+              </p>
+            </div>
+            {currentOneRm !== null && (
+              <span className="text-xs font-black px-2.5 py-1 rounded-lg flex-shrink-0"
+                style={{ background: 'rgba(61,139,255,0.12)', color: '#3D8BFF', border: '1px solid rgba(61,139,255,0.25)' }}>
+                {currentOneRm} kg
+              </span>
+            )}
+          </div>
+
+          {/* Sélecteur exercice */}
+          {oneRmExercises.length === 0 ? (
+            <EmptyState label="Complete quelques séances pour voir ton 1RM estimé par exercice." />
+          ) : (
+            <>
+              <div className="relative">
+                <select
+                  value={selectedExoId ?? ''}
+                  onChange={e => setSelectedExoId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm font-semibold appearance-none outline-none pr-8"
+                  style={{
+                    background: 'var(--fiq-faint)',
+                    border: '1px solid var(--fiq-border)',
+                    color: 'var(--fiq-text)',
+                  }}
+                >
+                  {oneRmExercises.map(e => (
+                    <option key={e.exercise_id} value={e.exercise_id}>
+                      {e.exercise_name} — {e.value} kg
+                    </option>
+                  ))}
+                </select>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                  style={{ color: 'var(--fiq-muted)', fontSize: 12 }}>▼</span>
+              </div>
+
+              {oneRmLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-6 h-6 border-2 rounded-full animate-spin"
+                    style={{ borderColor: 'var(--fiq-border)', borderTopColor: '#3D8BFF' }} />
+                </div>
+              ) : oneRmHistory.length < 2 ? (
+                <EmptyState label="Logue au moins 2 séances avec cet exercice pour voir la progression." />
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <ComposedChart data={oneRmHistory} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                      <defs>
+                        <linearGradient id="oneRmGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor="#3D8BFF" stopOpacity={0.2} />
+                          <stop offset="95%" stopColor="#3D8BFF" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1F242E" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fill: '#6B7280', fontSize: 10 }}
+                        tickLine={false}
+                        axisLine={false}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        tick={{ fill: '#6B7280', fontSize: 10 }}
+                        tickLine={false}
+                        axisLine={false}
+                        domain={['auto', 'auto']}
+                        tickFormatter={v => `${v}kg`}
+                      />
+                      <Tooltip content={<OneRmTooltip />} />
+                      <Area
+                        type="monotone"
+                        dataKey="value_kg"
+                        stroke="#3D8BFF"
+                        strokeWidth={2.5}
+                        fill="url(#oneRmGradient)"
+                        dot={(props: object) => {
+                          const p = props as { cx?: number; cy?: number; index?: number }
+                          if (p.index !== oneRmHistory.length - 1 || p.cx == null || p.cy == null) return <g key={`dot-${p.index ?? 0}`} />
+                          return (
+                            <g key={`dot-${p.index}`}>
+                              <circle cx={p.cx} cy={p.cy} r={8} fill="rgba(61,139,255,0.15)" />
+                              <circle cx={p.cx} cy={p.cy} r={4} fill="#3D8BFF" stroke="#0A0C0F" strokeWidth={2} />
+                            </g>
+                          )
+                        }}
+                        activeDot={{ r: 4, fill: '#3D8BFF', stroke: '#0A0C0F', strokeWidth: 2 }}
+                        name="1RM estimé"
+                        connectNulls
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+
+                  {/* Résumé progression */}
+                  {(() => {
+                    const first = oneRmHistory[0].value_kg
+                    const last  = oneRmHistory[oneRmHistory.length - 1].value_kg
+                    const diff  = Math.round((last - first) * 10) / 10
+                    const pct   = Math.round(((last - first) / first) * 100)
+                    return (
+                      <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl" style={{ background: 'var(--fiq-faint)' }}>
+                        <span className="text-xl">{diff >= 0 ? '💪' : '📉'}</span>
+                        <div>
+                          <p className="text-sm font-black" style={{ color: diff >= 0 ? '#3D8BFF' : 'var(--fiq-orange)' }}>
+                            {diff > 0 ? '+' : ''}{diff} kg ({pct > 0 ? '+' : ''}{pct}%)
+                          </p>
+                          <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+                            {first} kg → {last} kg · {oneRmHistory.length} séances
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </>
+              )}
+            </>
           )}
         </div>
       )}
