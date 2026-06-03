@@ -100,17 +100,28 @@ export async function DELETE(req: NextRequest) {
   }
 }
 
-// PATCH : incrémenter use_count quand on utilise un favori
+// PATCH : incrémenter use_count + mémoriser la dernière dose utilisée
 export async function PATCH(req: NextRequest) {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
 
-    const { id } = await req.json()
+    const { id, last_quantity_g } = await req.json()
     if (!id) return NextResponse.json({ data: null, error: 'ID manquant' }, { status: 400 })
 
+    // Incrémenter le compteur d'utilisation
     await supabase.rpc('increment_favorite_count', { fav_id: id }).maybeSingle()
+
+    // Mémoriser la dose réellement utilisée (mise à jour default_quantity_g)
+    const qty = Number(last_quantity_g)
+    if (qty > 0) {
+      await supabase
+        .from('food_favorites')
+        .update({ default_quantity_g: qty })
+        .eq('id', id)
+        .eq('user_id', user.id)
+    }
 
     return NextResponse.json({ data: { ok: true }, error: null })
   } catch {

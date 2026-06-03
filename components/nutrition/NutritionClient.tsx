@@ -527,6 +527,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
   const [photoError, setPhotoError] = useState('')
   // Favoris
   const [favorites, setFavorites] = useState<Favorite[]>([])
+  const [selectedFavId, setSelectedFavId] = useState<string | null>(null)
   const [favLoading, setFavLoading] = useState(false)
   const [savingFav, setSavingFav] = useState(false)
   const [savedFav, setSavedFav] = useState(false)
@@ -603,6 +604,9 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFood, favorites])
+
+  // Charger les favoris dès l'ouverture du modal (pour les afficher dans l'écran 'choose')
+  useEffect(() => { loadFavorites() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cycling des messages de chargement analyse photo
   useEffect(() => {
@@ -795,7 +799,25 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
         body: JSON.stringify(payload),
       })
       const { data } = await res.json()
-      if (data) { onAdded(data); onClose() }
+      if (data) {
+        // Si vient d'un favori → mémoriser la dose réellement utilisée
+        if (selectedFavId) {
+          const usedQty = parseFloat(quantity) || 100
+          fetch('/api/nutrition/favorites', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: selectedFavId, last_quantity_g: usedQty }),
+          }).catch(() => {})
+          // Mise à jour locale immédiate (pas besoin de re-fetch)
+          setFavorites(prev => prev.map(f =>
+            f.id === selectedFavId
+              ? { ...f, default_quantity_g: usedQty, use_count: (f.use_count ?? 0) + 1 }
+              : f
+          ))
+          setSelectedFavId(null)
+        }
+        onAdded(data); onClose()
+      }
     } finally {
       setAdding(false)
     }
@@ -900,6 +922,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
   }
 
   function addFromFavorite(fav: Favorite) {
+    setSelectedFavId(fav.id)
     setSelectedFood({
       id: fav.food_id ?? null,
       name: fav.food_name,
@@ -913,12 +936,6 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
       barcode: null,
     })
     setQuantity(String(fav.default_quantity_g))
-    // Incrémente use_count en arrière-plan
-    fetch('/api/nutrition/favorites', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: fav.id }),
-    }).catch(() => {})
     setMode('confirm')
   }
 
@@ -1143,6 +1160,58 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
         {/* ── Choix du mode ── */}
         {mode === 'choose' && (
           <div className="space-y-3">
+
+            {/* Récents — aliments fréquents avec dernière dose mémorisée */}
+            {favorites.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] fiq-label px-0.5">Récents</p>
+                <div className="space-y-1.5">
+                  {[...favorites]
+                    .sort((a, b) => (b.use_count ?? 0) - (a.use_count ?? 0))
+                    .slice(0, 5)
+                    .map(fav => {
+                      const kcal = fav.calories_per_100g != null
+                        ? Math.round(fav.calories_per_100g * fav.default_quantity_g / 100)
+                        : null
+                      const prot = fav.protein_per_100g != null
+                        ? Math.round(fav.protein_per_100g * fav.default_quantity_g / 100 * 10) / 10
+                        : null
+                      return (
+                        <button
+                          key={fav.id}
+                          onClick={() => addFromFavorite(fav)}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all"
+                          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
+                        >
+                          <Star className="w-3.5 h-3.5 shrink-0" style={{ color: '#F59E0B', fill: '#F59E0B' }} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold truncate" style={{ color: 'var(--fiq-text)' }}>
+                              {fav.food_name}
+                            </p>
+                            <p className="text-[11px]" style={{ color: 'var(--fiq-muted)' }}>
+                              {kcal != null ? `${kcal} kcal` : ''}
+                              {prot != null ? ` · ${prot}g prot.` : ''}
+                              {fav.use_count > 1 ? ` · ×${fav.use_count}` : ''}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-xs font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
+                              {fav.default_quantity_g}g
+                            </p>
+                          </div>
+                        </button>
+                      )
+                    })
+                  }
+                </div>
+                <div className="flex items-center gap-3 pt-1">
+                  <div className="flex-1 h-px" style={{ background: 'var(--fiq-border)' }} />
+                  <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>autres options</span>
+                  <div className="flex-1 h-px" style={{ background: 'var(--fiq-border)' }} />
+                </div>
+              </div>
+            )}
+
             {/* Accès rapide */}
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -1263,9 +1332,9 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
                         <p className="text-xs font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
                           {fav.default_quantity_g}g
                         </p>
-                        {fav.use_count > 1 && (
-                          <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>×{fav.use_count}</p>
-                        )}
+                        <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+                          {fav.use_count > 1 ? `×${fav.use_count}` : 'dernière dose'}
+                        </p>
                       </div>
                     </button>
                     {/* Bouton suppression favori */}
@@ -1766,43 +1835,34 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
                   {[...favorites]
                     .sort((a, b) => (b.use_count ?? 0) - (a.use_count ?? 0))
                     .slice(0, 8)
-                    .map(fav => (
-                      <button
-                        key={fav.id}
-                        onClick={() => {
-                          setSelectedFood({
-                            id: fav.food_id ?? null,
-                            name: fav.food_name,
-                            name_fr: fav.food_name,
-                            brand: fav.brand ?? null,
-                            calories: fav.calories_per_100g ?? null,
-                            protein_g: fav.protein_per_100g ?? null,
-                            carbs_g: fav.carbs_per_100g ?? null,
-                            fat_g: fav.fat_per_100g ?? null,
-                            fiber_g: null,
-                            barcode: null,
-                          })
-                          setMode('confirm')
-                        }}
-                        className="w-full text-left px-3 py-2.5 rounded-xl transition-all"
-                        style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
-                      >
-                        <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>
-                          {fav.food_name}
-                          {fav.use_count > 1 && (
-                            <span className="ml-1.5 text-[10px] font-normal" style={{ color: 'var(--fiq-muted)' }}>
-                              ×{fav.use_count}
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
-                          {fav.brand && `${fav.brand} · `}
-                          {fav.calories_per_100g ? `${Math.round(fav.calories_per_100g)} kcal` : ''}
-                          {fav.protein_per_100g ? ` · ${Math.round(fav.protein_per_100g)}g prot.` : ''}
-                          {' pour 100g'}
-                        </p>
-                      </button>
-                    ))
+                    .map(fav => {
+                      const kcal = fav.calories_per_100g != null
+                        ? Math.round(fav.calories_per_100g * fav.default_quantity_g / 100)
+                        : null
+                      const prot = fav.protein_per_100g != null
+                        ? Math.round(fav.protein_per_100g * fav.default_quantity_g / 100 * 10) / 10
+                        : null
+                      return (
+                        <button
+                          key={fav.id}
+                          onClick={() => addFromFavorite(fav)}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all"
+                          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold truncate" style={{ color: 'var(--fiq-text)' }}>{fav.food_name}</p>
+                            <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                              {kcal != null ? `${kcal} kcal` : ''}
+                              {prot != null ? ` · ${prot}g prot.` : ''}
+                              {fav.use_count > 1 ? ` · ×${fav.use_count}` : ''}
+                            </p>
+                          </div>
+                          <p className="text-xs font-black fiq-data shrink-0" style={{ color: 'var(--fiq-accent)' }}>
+                            {fav.default_quantity_g}g
+                          </p>
+                        </button>
+                      )
+                    })
                   }
                 </div>
               </div>
