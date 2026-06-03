@@ -43,6 +43,36 @@
       "purpose": "maskable"
     }
   ],
+  "screenshots": [
+    {
+      "src": "/screenshots/screenshot-dashboard.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Dashboard — KPIs, alertes IA et volume musculaire"
+    },
+    {
+      "src": "/screenshots/screenshot-workout.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Séances — Programme et historique d'entraînement"
+    },
+    {
+      "src": "/screenshots/screenshot-coach.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Coach IA — Recommandations personnalisées"
+    },
+    {
+      "src": "/screenshots/screenshot-nutrition.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Nutrition — Macros, hydratation et jeûne intermittent"
+    }
+  ],
   "shortcuts": [
     {
       "name": "Démarrer une séance",
