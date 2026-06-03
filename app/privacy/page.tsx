@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 }
 
 const LAST_UPDATED = '3 juin 2026'
-const CONTACT_EMAIL = 'privacy@getforgeiq.com'
+const CONTACT_EMAIL = 'hello@getforgeiq.com'
 const APP_URL = 'https://getforgeiq.com'
 
 export default function PrivacyPage() {
