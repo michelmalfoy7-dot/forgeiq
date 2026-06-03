@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
     // Calculer les macros pour la quantité saisie
     const ratio = qty / 100
-    const entry = {
+    const entry: Record<string, unknown> = {
       user_id: user.id,
       log_date,
       meal_type,
@@ -60,6 +60,26 @@ export async function POST(req: NextRequest) {
       source,
       photo_url,
       ai_note,
+    }
+
+    // Récupérer les micronutriments depuis foods_library si food_id connu
+    if (food_id) {
+      const { data: lib } = await supabase
+        .from('foods_library')
+        .select('iron_mg,magnesium_mg,zinc_mg,calcium_mg,vitamin_d_mcg,potassium_mg,vitamin_c_mg')
+        .eq('id', food_id)
+        .maybeSingle()
+
+      if (lib) {
+        const r = ratio
+        entry.iron_mg       = lib.iron_mg       != null ? Math.round(lib.iron_mg       * r * 1000) / 1000 : null
+        entry.magnesium_mg  = lib.magnesium_mg  != null ? Math.round(lib.magnesium_mg  * r * 10)   / 10   : null
+        entry.zinc_mg       = lib.zinc_mg       != null ? Math.round(lib.zinc_mg       * r * 1000) / 1000 : null
+        entry.calcium_mg    = lib.calcium_mg    != null ? Math.round(lib.calcium_mg    * r * 10)   / 10   : null
+        entry.vitamin_d_mcg = lib.vitamin_d_mcg != null ? Math.round(lib.vitamin_d_mcg * r * 100)  / 100  : null
+        entry.potassium_mg  = lib.potassium_mg  != null ? Math.round(lib.potassium_mg  * r * 10)   / 10   : null
+        entry.vitamin_c_mg  = lib.vitamin_c_mg  != null ? Math.round(lib.vitamin_c_mg  * r * 100)  / 100  : null
+      }
     }
 
     const { data, error } = await supabase.from('food_logs').insert(entry).select().single()

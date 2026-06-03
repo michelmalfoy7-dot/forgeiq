@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { Plus, Camera, ScanLine, Search, Trash2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, X, Check, Keyboard, Star, ChefHat, Minus, ArrowLeft, Link2, Sparkles } from 'lucide-react'
 import { WaterWidget } from '@/components/nutrition/WaterWidget'
 import { FastingWidget } from '@/components/nutrition/FastingWidget'
+import { MicroNutrientWidget, MicroTotals } from '@/components/nutrition/MicroNutrientWidget'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -20,6 +21,14 @@ type FoodLog = {
   source: string
   ai_note: string | null
   created_at: string
+  // Micronutriments (null si non disponibles dans la bibliothèque)
+  iron_mg:       number | null
+  magnesium_mg:  number | null
+  zinc_mg:       number | null
+  calcium_mg:    number | null
+  vitamin_d_mcg: number | null
+  potassium_mg:  number | null
+  vitamin_c_mg:  number | null
 }
 
 type FoodResult = {
@@ -2339,6 +2348,8 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
   const [modalMeal, setModalMeal] = useState<string | null>(null)
   const [expandedMeals, setExpandedMeals] = useState<Set<string>>(new Set(['breakfast', 'lunch', 'dinner', 'snack']))
 
+  const [microCollapsed, setMicroCollapsed] = useState(true)
+
   // ── Suggestions IA repas ─────────────────────────────────────
   const [showSuggest, setShowSuggest] = useState(false)
   const [suggestLoading, setSuggestLoading] = useState(false)
@@ -2397,6 +2408,24 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
       fiber_g:   acc.fiber_g   + (l.fiber_g   ?? 0),
     }),
     { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 }
+  )
+
+  // Agrégation micronutriments depuis les logs du jour
+  const microTotals: MicroTotals = logs.reduce(
+    (acc, l) => ({
+      iron_mg:       acc.iron_mg       + (l.iron_mg       ?? 0),
+      magnesium_mg:  acc.magnesium_mg  + (l.magnesium_mg  ?? 0),
+      zinc_mg:       acc.zinc_mg       + (l.zinc_mg       ?? 0),
+      calcium_mg:    acc.calcium_mg    + (l.calcium_mg     ?? 0),
+      vitamin_d_mcg: acc.vitamin_d_mcg + (l.vitamin_d_mcg ?? 0),
+      potassium_mg:  acc.potassium_mg  + (l.potassium_mg  ?? 0),
+      vitamin_c_mg:  acc.vitamin_c_mg  + (l.vitamin_c_mg  ?? 0),
+      logsWithData:  acc.logsWithData  + (l.iron_mg != null ? 1 : 0),
+      totalLogs:     acc.totalLogs     + 1,
+    }),
+    { iron_mg: 0, magnesium_mg: 0, zinc_mg: 0, calcium_mg: 0,
+      vitamin_d_mcg: 0, potassium_mg: 0, vitamin_c_mg: 0,
+      logsWithData: 0, totalLogs: 0 }
   )
 
   const byMeal = MEAL_ORDER.reduce((acc, m) => {
@@ -2723,6 +2752,17 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
       {isToday && (
         <div className="mb-4">
           <FastingWidget />
+        </div>
+      )}
+
+      {/* Widget micronutriments — toujours visible (jour courant et historique) */}
+      {logs.length > 0 && (
+        <div className="mb-4">
+          <MicroNutrientWidget
+            totals={microTotals}
+            collapsed={microCollapsed}
+            onToggle={() => setMicroCollapsed(c => !c)}
+          />
         </div>
       )}
 
