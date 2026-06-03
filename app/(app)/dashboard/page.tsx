@@ -42,6 +42,7 @@ export default async function DashboardPage() {
     { data: weekLogs },
     { data: todayWorkouts },
     { data: todayFoodLogs },
+    { data: pausedWorkoutRow },
   ] = await Promise.all([
     supabase.from('profiles')
       .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, height_cm, age, gender, macro_mode, custom_protein_g, custom_calories, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, avatar_url')
@@ -79,6 +80,17 @@ export default async function DashboardPage() {
       .select('protein_g, calories, carbs_g, fat_g, meal_type')
       .eq('user_id', user.id)
       .eq('log_date', today),
+
+    // Séance en pause : démarrée aujourd'hui, non terminée — mode pause
+    supabase.from('workouts')
+      .select('id, session_name, started_at, draft_state')
+      .eq('user_id', user.id)
+      .eq('session_date', today)
+      .is('completed_at', null)
+      .not('started_at', 'is', null)
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ])
 
   if (profileError) console.error('[Dashboard] profileError:', profileError.code, profileError.message)
@@ -114,6 +126,25 @@ export default async function DashboardPage() {
 
   // Types de repas logués aujourd'hui — pour les indicateurs du widget nutrition
   const loggedMealTypes = new Set((todayFoodLogs ?? []).map(l => (l as { meal_type?: string }).meal_type).filter(Boolean))
+
+  // ── Séance en pause — infos du draft ────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pausedDraft = (pausedWorkoutRow as any)?.draft_state as { groups?: { sets?: { is_warmup?: boolean }[] }[]; saved_at?: string } | null
+  const pausedExerciseCount = pausedDraft?.groups?.length ?? 0
+  const pausedSetCount = pausedDraft?.groups?.reduce(
+    (acc: number, g: { sets?: { is_warmup?: boolean }[] }) =>
+      acc + (g.sets?.filter(s => !s.is_warmup).length ?? 0), 0
+  ) ?? 0
+  // Durée écoulée depuis le démarrage (en minutes)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pausedStartedAt = (pausedWorkoutRow as any)?.started_at as string | null
+  const pausedElapsedMin = pausedStartedAt
+    ? Math.floor((Date.now() - new Date(pausedStartedAt).getTime()) / 60000)
+    : null
+  const pausedElapsedLabel = pausedElapsedMin === null ? null
+    : pausedElapsedMin < 60
+      ? `il y a ${pausedElapsedMin} min`
+      : `il y a ${Math.floor(pausedElapsedMin / 60)}h${pausedElapsedMin % 60 > 0 ? `${pausedElapsedMin % 60}` : ''}`
 
   // ── État séance du jour (4 cas) ──────────────────────────────
   const latestTodayWorkout = todayWorkouts?.[0] ?? null
@@ -499,10 +530,57 @@ export default async function DashboardPage() {
         )}
       </Link>
 
-      {/* Card séance proposée — 4 cas */}
+      {/* Card séance proposée — 5 cas (pause + 4 originaux) */}
       <div className="fiq-card space-y-4">
 
-        {programDoneToday && latestTodayWorkout ? (
+        {pausedWorkoutRow && !latestTodayWorkout ? (
+          /* ── Cas 0 : Séance en pause — non terminée aujourd'hui ── */
+          <>
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="fiq-label">Séance en pause</p>
+                <h2 className="text-lg font-black mt-0.5" style={{ color: 'var(--fiq-yellow)' }}>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  ⏸ {(pausedWorkoutRow as any).session_name ?? 'Séance'}
+                </h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                  {pausedElapsedLabel ?? 'Interrompue'}
+                  {pausedExerciseCount > 0 && ` · ${pausedExerciseCount} exercice${pausedExerciseCount > 1 ? 's' : ''}`}
+                  {pausedSetCount > 0 && `, ${pausedSetCount} série${pausedSetCount > 1 ? 's' : ''} effectuée${pausedSetCount > 1 ? 's' : ''}`}
+                </p>
+              </div>
+              <span className="text-2xl">⏸</span>
+            </div>
+
+            {/* Barre de progression visuelle */}
+            {pausedSetCount > 0 && (
+              <div
+                className="flex items-center gap-2 rounded-xl px-3 py-2"
+                style={{ background: '#F59E0B15', border: '1px solid #F59E0B33' }}
+              >
+                <span className="text-xs font-semibold" style={{ color: '#F59E0B' }}>
+                  {pausedSetCount} série{pausedSetCount > 1 ? 's' : ''} sauvegardée{pausedSetCount > 1 ? 's' : ''}
+                </span>
+                <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>— reprends où tu t&apos;es arrêté</span>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-2">
+              <Link
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                href={`/workout/${(pausedWorkoutRow as any).id}`}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-black text-sm transition-all"
+                style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+              >
+                ▶ Reprendre la séance
+              </Link>
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              <CancelWorkoutButton workoutId={(pausedWorkoutRow as any).id} label="Abandonner" />
+            </div>
+          </>
+
+        ) : programDoneToday && latestTodayWorkout ? (
           /* ── Cas 1 : Séance programme faite aujourd'hui ── */
           <>
             <div className="flex items-start justify-between">

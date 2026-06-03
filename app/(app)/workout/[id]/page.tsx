@@ -1064,7 +1064,7 @@ export default function WorkoutSessionPage() {
           }}
         >
           <span style={{ fontSize: 13, color: 'var(--fiq-accent)', fontWeight: 700 }}>
-            ✓ Séance restaurée automatiquement
+            ⏸→▶ Séance reprise — continue où tu t&apos;es arrêté
           </span>
         </div>
       )}
