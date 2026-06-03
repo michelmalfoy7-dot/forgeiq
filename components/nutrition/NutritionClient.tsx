@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Plus, Camera, ScanLine, Search, Trash2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, X, Check, Keyboard, Star, ChefHat, Minus, ArrowLeft, Link2, Sparkles } from 'lucide-react'
 import { WaterWidget } from '@/components/nutrition/WaterWidget'
+import { FastingWidget } from '@/components/nutrition/FastingWidget'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -2715,6 +2716,13 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
       {isToday && (
         <div className="mb-4">
           <WaterWidget initialWaterMl={initialWaterMl} goalMl={waterGoalMl} />
+        </div>
+      )}
+
+      {/* Widget jeûne intermittent */}
+      {isToday && (
+        <div className="mb-4">
+          <FastingWidget />
         </div>
       )}
 
