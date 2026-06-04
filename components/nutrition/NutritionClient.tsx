@@ -80,6 +80,14 @@ type Recipe = {
   carbs_per_serving?: number | null
   fat_per_serving?: number | null
   fiber_per_serving?: number | null
+  // Micronutriments calculés par portion
+  iron_mg_per_serving?:        number | null
+  magnesium_mg_per_serving?:   number | null
+  zinc_mg_per_serving?:        number | null
+  calcium_mg_per_serving?:     number | null
+  potassium_mg_per_serving?:   number | null
+  vitamin_c_mg_per_serving?:   number | null
+  vitamin_d_mcg_per_serving?:  number | null
   recipe_ingredients?: RecipeIngr[]
 }
 
@@ -970,6 +978,8 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
         ? '1 portion'
         : `${recipePortions} portion${recipePortions > 1 ? 's' : ''}`
 
+      // Micros par portion → convertis en "per 100g" pour compatibilité avec log/route.ts
+      // (quantity_g = recipePortions * 100, ratio = recipePortions → micro total = micro/serving * recipePortions)
       const payload = {
         log_date: today,
         meal_type: mealType,
@@ -981,8 +991,16 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
         carbs_per_100g: selectedRecipe.carbs_per_serving ?? null,
         fat_per_100g: selectedRecipe.fat_per_serving ?? null,
         fiber_per_100g: selectedRecipe.fiber_per_serving ?? null,
-        source: 'search', // 'recipe' cause parfois un CHECK constraint — on garde le badge via ai_note
+        source: 'search',
         ai_note: `🍽️ Recette · ${portionLabel}`,
+        // Micros directs (déjà en valeur absolue par portion × nb portions)
+        iron_mg_direct:       selectedRecipe.iron_mg_per_serving       != null ? selectedRecipe.iron_mg_per_serving       * recipePortions : null,
+        magnesium_mg_direct:  selectedRecipe.magnesium_mg_per_serving  != null ? selectedRecipe.magnesium_mg_per_serving  * recipePortions : null,
+        zinc_mg_direct:       selectedRecipe.zinc_mg_per_serving       != null ? selectedRecipe.zinc_mg_per_serving       * recipePortions : null,
+        calcium_mg_direct:    selectedRecipe.calcium_mg_per_serving    != null ? selectedRecipe.calcium_mg_per_serving    * recipePortions : null,
+        potassium_mg_direct:  selectedRecipe.potassium_mg_per_serving  != null ? selectedRecipe.potassium_mg_per_serving  * recipePortions : null,
+        vitamin_c_mg_direct:  selectedRecipe.vitamin_c_mg_per_serving  != null ? selectedRecipe.vitamin_c_mg_per_serving  * recipePortions : null,
+        vitamin_d_mcg_direct: selectedRecipe.vitamin_d_mcg_per_serving != null ? selectedRecipe.vitamin_d_mcg_per_serving * recipePortions : null,
       }
 
       const res = await fetch('/api/nutrition/log', {
@@ -2834,6 +2852,9 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
             totals={microTotals}
             collapsed={microCollapsed}
             onToggle={() => setMicroCollapsed(c => !c)}
+            totalCalories={totals.calories}
+            hasDinnerLogged={logs.some(l => l.meal_type === 'dinner')}
+            isToday={isToday}
           />
         </div>
       )}

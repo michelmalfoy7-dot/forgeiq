@@ -66,21 +66,63 @@ function fmt(val: number, unit: string): string {
 // ── Composant ────────────────────────────────────────────────────────────────
 
 type Props = {
-  totals:    MicroTotals
-  collapsed: boolean
-  onToggle:  () => void
+  totals:          MicroTotals
+  collapsed:       boolean
+  onToggle:        () => void
+  totalCalories?:  number   // kcal loggées ce jour
+  hasDinnerLogged?: boolean  // repas du soir enregistré
+  isToday?:        boolean   // affichage du jour courant
 }
 
-export function MicroNutrientWidget({ totals, collapsed, onToggle }: Props) {
-  const dataQualityPct = totals.totalLogs > 0
+export function MicroNutrientWidget({
+  totals, collapsed, onToggle,
+  totalCalories = 0, hasDinnerLogged = false, isToday = true,
+}: Props) {
+  const coveragePct = totals.totalLogs > 0
     ? Math.round((totals.logsWithData / totals.totalLogs) * 100)
     : 0
 
-  // Nombre de micros en déficit (< 50% de la cible)
-  const deficits = MICRO_CONFIG.filter(m => {
-    const val = totals[m.key] as number
-    return val < m.target * 0.5
-  }).length
+  const hour = new Date().getHours()
+
+  // Conditions pour afficher des alertes fiables :
+  // 1. Journée avancée (> 19h) OU dîner loggé OU jour passé
+  // 2. Couverture données ≥ 60 %
+  // 3. Au moins 1 500 kcal loggées
+  const eveningReached  = !isToday || hour >= 19 || hasDinnerLogged
+  const coverageOk      = coveragePct >= 60 || !isToday
+  const calorieOk       = totalCalories >= 1500 || !isToday
+  const canShowDeficits = eveningReached && coverageOk && calorieOk
+
+  // Nombre de micros en déficit confirmé (< 50 % cible) — seulement si données fiables
+  const deficits = canShowDeficits
+    ? MICRO_CONFIG.filter(m => (totals[m.key] as number) < m.target * 0.5).length
+    : 0
+
+  // Sous-titre du header
+  const subtitle = (() => {
+    if (!eveningReached || !calorieOk) {
+      return (
+        <span style={{ color: 'var(--fiq-muted)' }}>
+          📊 Suivi en cours — bilan ce soir
+        </span>
+      )
+    }
+    if (!coverageOk) {
+      return (
+        <span style={{ color: 'var(--fiq-muted)' }}>
+          📊 Données partielles ({coveragePct}% aliments)
+        </span>
+      )
+    }
+    if (deficits > 0) {
+      return (
+        <span style={{ color: 'var(--fiq-orange)' }}>
+          ⚠️ {deficits} déficit{deficits > 1 ? 's' : ''} probable{deficits > 1 ? 's' : ''}
+        </span>
+      )
+    }
+    return <span style={{ color: 'var(--fiq-accent)' }}>✅ Objectifs atteints</span>
+  })()
 
   return (
     <div className="fiq-card">
@@ -90,12 +132,7 @@ export function MicroNutrientWidget({ totals, collapsed, onToggle }: Props) {
           <span className="text-base">🧬</span>
           <div className="text-left">
             <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Micronutriments</p>
-            <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--fiq-muted)' }}>
-              {deficits > 0
-                ? <span style={{ color: 'var(--fiq-orange)' }}>⚠️ {deficits} déficit{deficits > 1 ? 's' : ''}</span>
-                : <span style={{ color: 'var(--fiq-accent)' }}>✅ Tous les objectifs atteints</span>
-              }
-            </p>
+            <p className="text-[10px] uppercase tracking-wider">{subtitle}</p>
           </div>
         </div>
         <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
@@ -105,15 +142,45 @@ export function MicroNutrientWidget({ totals, collapsed, onToggle }: Props) {
 
       {!collapsed && (
         <div className="mt-3 space-y-2.5">
+
+          {/* Bannière "données incomplètes" si journée non terminée */}
+          {isToday && !canShowDeficits && (
+            <div className="rounded-lg px-3 py-2 text-[11px]"
+              style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)', lineHeight: 1.4 }}>
+              {!eveningReached || !calorieOk
+                ? '📊 Ajoute tes repas de la journée pour voir ton bilan complet ce soir.'
+                : `⚠️ Données disponibles pour ${totals.logsWithData}/${totals.totalLogs} aliments — les valeurs réelles sont probablement supérieures.`}
+            </div>
+          )}
+
+          {/* Fiabilité (données partielles en journée normale) */}
+          {canShowDeficits && coveragePct < 80 && (
+            <div className="rounded-lg px-3 py-2 text-[11px]"
+              style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)' }}>
+              ⚠️ Estimation basée sur {coveragePct}% de ta journée —
+              {' '}{totals.logsWithData}/{totals.totalLogs} aliments avec données micro.
+            </div>
+          )}
+
           {MICRO_CONFIG.map((m) => {
             const val = totals[m.key] as number
+            const hasData = totals.logsWithData > 0
             const pct = Math.min(100, m.target > 0 ? (val / m.target) * 100 : 0)
             const over = val > m.target
-            const color = over
-              ? 'var(--fiq-blue)'
-              : pct >= 75 ? 'var(--fiq-accent)'
-              : pct >= 40 ? 'var(--fiq-orange)'
-              : 'var(--fiq-red)'
+
+            // Couleur : gris si données insuffisantes et journée non terminée
+            const color = (!hasData || (!canShowDeficits && val === 0))
+              ? 'var(--fiq-muted)'
+              : over
+                ? 'var(--fiq-blue)'
+                : pct >= 75 ? 'var(--fiq-accent)'
+                : pct >= 40 ? 'var(--fiq-orange)'
+                : canShowDeficits ? 'var(--fiq-red)' : 'var(--fiq-muted)'
+
+            // Affichage valeur : "~?" si aucune donnée
+            const displayVal = (val === 0 && totals.logsWithData === 0)
+              ? <span style={{ color: 'var(--fiq-muted)' }}>~?</span>
+              : <span style={{ color }}>{fmt(val, m.unit)}</span>
 
             return (
               <div key={m.key}>
@@ -123,14 +190,12 @@ export function MicroNutrientWidget({ totals, collapsed, onToggle }: Props) {
                     <span className="text-xs font-semibold" style={{ color: 'var(--fiq-text)' }}>
                       {m.label}
                     </span>
-                    <span className="text-[9px]" style={{ color: 'var(--fiq-muted)' }} title={m.tip}>
+                    <span className="text-[9px]" style={{ color: 'var(--fiq-muted)' }}>
                       {m.tip}
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className="text-xs font-black fiq-data" style={{ color }}>
-                      {fmt(val, m.unit)}
-                    </span>
+                    <span className="text-xs font-black fiq-data">{displayVal}</span>
                     <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
                       / {fmt(m.target, m.unit)}
                     </span>
@@ -139,35 +204,33 @@ export function MicroNutrientWidget({ totals, collapsed, onToggle }: Props) {
                 <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--fiq-faint)' }}>
                   <div
                     className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${pct}%`, background: color, opacity: val === 0 ? 0.25 : 1 }}
+                    style={{
+                      width: `${pct}%`,
+                      background: color,
+                      opacity: val === 0 ? 0.2 : 1,
+                    }}
                   />
                 </div>
               </div>
             )
           })}
 
-          {/* Qualité des données */}
-          {totals.totalLogs > 0 && dataQualityPct < 100 && (
-            <p className="text-[10px] pt-1" style={{ color: 'var(--fiq-muted)' }}>
-              ⚡ Données disponibles pour {totals.logsWithData}/{totals.totalLogs} aliments
-              {dataQualityPct < 50 && ' — ajoute des aliments depuis la bibliothèque pour plus de précision'}
-            </p>
+          {/* Légende — seulement si données présentes */}
+          {totals.logsWithData > 0 && (
+            <div className="flex items-center gap-3 pt-1 flex-wrap">
+              {[
+                { color: 'var(--fiq-red)',    label: '< 40%' },
+                { color: 'var(--fiq-orange)', label: '40–75%' },
+                { color: 'var(--fiq-accent)', label: '75–100%' },
+                { color: 'var(--fiq-blue)',   label: 'Dépassé' },
+              ].map(({ color, label }) => (
+                <div key={label} className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+                  <span className="text-[9px]" style={{ color: 'var(--fiq-muted)' }}>{label}</span>
+                </div>
+              ))}
+            </div>
           )}
-
-          {/* Légende */}
-          <div className="flex items-center gap-3 pt-1 flex-wrap">
-            {[
-              { color: 'var(--fiq-red)',    label: '< 40%' },
-              { color: 'var(--fiq-orange)', label: '40–75%' },
-              { color: 'var(--fiq-accent)', label: '75–100%' },
-              { color: 'var(--fiq-blue)',   label: 'Dépassé' },
-            ].map(({ color, label }) => (
-              <div key={label} className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full" style={{ background: color }} />
-                <span className="text-[9px]" style={{ color: 'var(--fiq-muted)' }}>{label}</span>
-              </div>
-            ))}
-          </div>
         </div>
       )}
     </div>

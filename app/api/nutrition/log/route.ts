@@ -25,6 +25,14 @@ export async function POST(req: NextRequest) {
       source = 'manual',
       photo_url = null,
       ai_note = null,
+      // Micros directs (recettes, aliments avec données déjà calculées)
+      iron_mg_direct       = null,
+      magnesium_mg_direct  = null,
+      zinc_mg_direct       = null,
+      calcium_mg_direct    = null,
+      potassium_mg_direct  = null,
+      vitamin_c_mg_direct  = null,
+      vitamin_d_mcg_direct = null,
     } = body
 
     if (!food_name) return NextResponse.json({ data: null, error: 'Nom aliment manquant' }, { status: 400 })
@@ -60,6 +68,17 @@ export async function POST(req: NextRequest) {
       source,
       photo_url,
       ai_note,
+    }
+
+    // Micros directs (recettes) — priorité sur foods_library
+    if (iron_mg_direct != null || magnesium_mg_direct != null || zinc_mg_direct != null) {
+      entry.iron_mg       = iron_mg_direct       != null ? Math.round(iron_mg_direct       * 1000) / 1000 : null
+      entry.magnesium_mg  = magnesium_mg_direct  != null ? Math.round(magnesium_mg_direct  * 10)   / 10   : null
+      entry.zinc_mg       = zinc_mg_direct       != null ? Math.round(zinc_mg_direct       * 1000) / 1000 : null
+      entry.calcium_mg    = calcium_mg_direct    != null ? Math.round(calcium_mg_direct    * 10)   / 10   : null
+      entry.potassium_mg  = potassium_mg_direct  != null ? Math.round(potassium_mg_direct  * 10)   / 10   : null
+      entry.vitamin_c_mg  = vitamin_c_mg_direct  != null ? Math.round(vitamin_c_mg_direct  * 100)  / 100  : null
+      entry.vitamin_d_mcg = vitamin_d_mcg_direct != null ? Math.round(vitamin_d_mcg_direct * 100)  / 100  : null
     }
 
     // Récupérer les micronutriments depuis foods_library si food_id connu

@@ -13,27 +13,61 @@ type Ingredient = {
   fat_per_100g?: number | null
   fiber_per_100g?: number | null
   sort_order?: number
+  // Micronutriments optionnels (présents si l'ingrédient vient de foods_library)
+  iron_mg_per_100g?:       number | null
+  magnesium_mg_per_100g?:  number | null
+  zinc_mg_per_100g?:       number | null
+  calcium_mg_per_100g?:    number | null
+  potassium_mg_per_100g?:  number | null
+  vitamin_c_mg_per_100g?:  number | null
+  vitamin_d_mcg_per_100g?: number | null
 }
 
 function calcPerServing(ingredients: Ingredient[], servings: number) {
   const total = ingredients.reduce((acc, ing) => {
     const ratio = ing.quantity_g / 100
+    const micro = (v: number | null | undefined) => v != null ? v * ratio : null
+    const addMicro = (a: number | null, b: number | null) =>
+      a != null && b != null ? a + b : (a ?? b)
+
     return {
-      calories: acc.calories + (ing.calories_per_100g ?? 0) * ratio,
-      protein:  acc.protein  + (ing.protein_per_100g  ?? 0) * ratio,
-      carbs:    acc.carbs    + (ing.carbs_per_100g    ?? 0) * ratio,
-      fat:      acc.fat      + (ing.fat_per_100g      ?? 0) * ratio,
-      fiber:    acc.fiber    + (ing.fiber_per_100g    ?? 0) * ratio,
+      calories:    acc.calories    + (ing.calories_per_100g ?? 0) * ratio,
+      protein:     acc.protein     + (ing.protein_per_100g  ?? 0) * ratio,
+      carbs:       acc.carbs       + (ing.carbs_per_100g    ?? 0) * ratio,
+      fat:         acc.fat         + (ing.fat_per_100g      ?? 0) * ratio,
+      fiber:       acc.fiber       + (ing.fiber_per_100g    ?? 0) * ratio,
+      // Micros : null si pas de données, sinon somme
+      iron_mg:       addMicro(acc.iron_mg,       micro(ing.iron_mg_per_100g)),
+      magnesium_mg:  addMicro(acc.magnesium_mg,  micro(ing.magnesium_mg_per_100g)),
+      zinc_mg:       addMicro(acc.zinc_mg,        micro(ing.zinc_mg_per_100g)),
+      calcium_mg:    addMicro(acc.calcium_mg,     micro(ing.calcium_mg_per_100g)),
+      potassium_mg:  addMicro(acc.potassium_mg,   micro(ing.potassium_mg_per_100g)),
+      vitamin_c_mg:  addMicro(acc.vitamin_c_mg,   micro(ing.vitamin_c_mg_per_100g)),
+      vitamin_d_mcg: addMicro(acc.vitamin_d_mcg,  micro(ing.vitamin_d_mcg_per_100g)),
     }
-  }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 })
+  }, {
+    calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0,
+    iron_mg: null as number | null, magnesium_mg: null as number | null,
+    zinc_mg: null as number | null, calcium_mg: null as number | null,
+    potassium_mg: null as number | null, vitamin_c_mg: null as number | null,
+    vitamin_d_mcg: null as number | null,
+  })
 
   const s = Math.max(1, servings)
+  const r = (v: number | null) => v != null ? Math.round(v / s * 100) / 100 : null
   return {
-    calories_per_serving: Math.round(total.calories / s * 10) / 10,
-    protein_per_serving:  Math.round(total.protein  / s * 10) / 10,
-    carbs_per_serving:    Math.round(total.carbs    / s * 10) / 10,
-    fat_per_serving:      Math.round(total.fat      / s * 10) / 10,
-    fiber_per_serving:    Math.round(total.fiber    / s * 10) / 10,
+    calories_per_serving:    Math.round(total.calories / s * 10) / 10,
+    protein_per_serving:     Math.round(total.protein  / s * 10) / 10,
+    carbs_per_serving:       Math.round(total.carbs    / s * 10) / 10,
+    fat_per_serving:         Math.round(total.fat      / s * 10) / 10,
+    fiber_per_serving:       Math.round(total.fiber    / s * 10) / 10,
+    iron_mg_per_serving:     r(total.iron_mg),
+    magnesium_mg_per_serving: r(total.magnesium_mg),
+    zinc_mg_per_serving:     r(total.zinc_mg),
+    calcium_mg_per_serving:  r(total.calcium_mg),
+    potassium_mg_per_serving: r(total.potassium_mg),
+    vitamin_c_mg_per_serving: r(total.vitamin_c_mg),
+    vitamin_d_mcg_per_serving: r(total.vitamin_d_mcg),
   }
 }
 

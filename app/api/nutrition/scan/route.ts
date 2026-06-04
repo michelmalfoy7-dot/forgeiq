@@ -54,6 +54,12 @@ export async function GET(req: NextRequest) {
       (n['energy_100g'] ? Math.round(n['energy_100g'] / 4.184) : null) ??
       (n['energy-kj_100g'] ? Math.round(n['energy-kj_100g'] / 4.184) : null) ?? null
 
+    // Helper : extraire une valeur micro depuis OFF (retourne null si absent ou 0)
+    const micro = (key: string): number | null => {
+      const v = n[key] ?? n[key.replace('_100g', '')] ?? null
+      return v != null && v > 0 ? v : null
+    }
+
     const food = {
       name:      p.product_name_fr ?? p.product_name ?? 'Produit inconnu',
       name_fr:   p.product_name_fr ?? p.product_name ?? null,
@@ -68,6 +74,14 @@ export async function GET(req: NextRequest) {
       sodium_mg: n.sodium_100g ? Math.round(n.sodium_100g * 1000) : null,
       source:    'openfoodfacts' as const,
       image_url: p.image_front_url ?? p.image_url ?? null,
+      // ── Micronutriments extraits depuis OpenFoodFacts ──────────────────────
+      iron_mg:       micro('iron_100g'),
+      magnesium_mg:  micro('magnesium_100g'),
+      zinc_mg:       micro('zinc_100g'),
+      calcium_mg:    micro('calcium_100g'),
+      potassium_mg:  micro('potassium_100g'),
+      vitamin_c_mg:  micro('vitamin-c_100g'),
+      vitamin_d_mcg: micro('vitamin-d_100g'),
     }
 
     // 3. Mettre en cache dans foods_library
