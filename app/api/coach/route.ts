@@ -14,11 +14,10 @@ const MODEL_COACH = 'claude-haiku-4-5'
 
 // Limites selon le plan
 const LIMITS = {
-  free_trial_days:   30,  // Durée max de l'essai gratuit (jours depuis inscription)
-  free_monthly:      10,  // Messages/mois pendant l'essai — ~1,5¢/user sur tout l'essai
-  monthly:           60,  // Pro mensuel — usage confortable
-  annual:      Infinity,  // Pro annuel — illimité
-  lifetime:    Infinity,  // Accès à vie — illimité
+  free_total:    5,        // Messages TOTAL à vie pour les comptes gratuits (pas de trial)
+  monthly:      60,        // Pro mensuel — usage confortable
+  annual:  Infinity,       // Pro annuel — illimité
+  lifetime: Infinity,      // Accès à vie — illimité
 }
 
 // Nombre de messages d'historique injectés dans le contexte
@@ -211,54 +210,18 @@ export async function POST(req: NextRequest) {
     const isAdmin = subProfile?.is_admin ?? false
     const isFree = !isAdmin && status !== 'pro' && status !== 'lifetime'
 
-    // ── Calcul âge du compte ──────────────────────────────────────────────────
-    const accountCreatedAt = new Date(user.created_at ?? Date.now())
-    const accountAgeDays = (Date.now() - accountCreatedAt.getTime()) / (1000 * 60 * 60 * 24)
-    const trialDaysLeft = Math.max(0, Math.ceil(LIMITS.free_trial_days - accountAgeDays))
-    const isInTrial = isFree && accountAgeDays < LIMITS.free_trial_days
-
-    // ── Bloquer free hors essai (> 30 jours) ─────────────────────────────────
-    if (isFree && !isInTrial) {
-      return NextResponse.json({
-        data: null,
-        error: 'Ton essai gratuit de 30 jours est terminé. Passe en Pro pour continuer avec le coach IA.',
-        limitReached: true,
-        isFree: true,
-        trialExpired: true,
-      }, { status: 429 })
-    }
-
     // ── Comptage messages selon le plan ───────────────────────────────────────
-    // Free trial : 3/semaine (lundi 00:00 → dimanche 23:59)
-    // Pro mensuel : 60/mois
-    // Illimitié (annuel, lifetime, admin) : pas de comptage
-
     let msgCount = 0
     let msgLimit: number
 
     if (isAdmin) {
       msgLimit = Infinity
 
-    } else if (isInTrial) {
-      // Essai gratuit : 10 messages/mois calendaire
-      const startOfMonth = new Date()
-      startOfMonth.setUTCDate(1)
-      startOfMonth.setUTCHours(0, 0, 0, 0)
-
-      const { count: monthly } = await supabase
-        .from('coach_messages')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('role', 'user')
-        .gte('created_at', startOfMonth.toISOString())
-      msgCount = monthly ?? 0
-      msgLimit = LIMITS.free_monthly
-
     } else if (status === 'lifetime' || (status === 'pro' && plan === 'annual')) {
       msgLimit = Infinity
 
-    } else {
-      // Pro mensuel
+    } else if (status === 'pro') {
+      // Pro mensuel : 60/mois calendaire
       const startOfMonth = new Date()
       startOfMonth.setUTCDate(1)
       startOfMonth.setUTCHours(0, 0, 0, 0)
@@ -270,11 +233,21 @@ export async function POST(req: NextRequest) {
         .gte('created_at', startOfMonth.toISOString())
       msgCount = monthly ?? 0
       msgLimit = LIMITS.monthly
+
+    } else {
+      // Free : 5 messages TOTAL à vie — pour goûter, pas pour abuser
+      const { count: total } = await supabase
+        .from('coach_messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('role', 'user')
+      msgCount = total ?? 0
+      msgLimit = LIMITS.free_total
     }
 
     if (msgLimit !== Infinity && msgCount >= msgLimit) {
-      const errMsg = isInTrial
-        ? `Tu as utilisé tes ${LIMITS.free_monthly} messages gratuits ce mois-ci. Reviens le 1er ou passe en Pro.`
+      const errMsg = isFree
+        ? `Tu as utilisé tes ${LIMITS.free_total} messages offerts. Passe en Pro pour un accès illimité au coach IA.`
         : `Limite de ${msgLimit} messages atteinte ce mois-ci.`
       return NextResponse.json({
         data: null,
@@ -283,7 +256,6 @@ export async function POST(req: NextRequest) {
         count: msgCount,
         limit: msgLimit,
         isFree,
-        weeklyLimit: isInTrial,
       }, { status: 429 })
     }
 
@@ -586,10 +558,9 @@ export async function POST(req: NextRequest) {
         'X-Coach-Limit': String(msgLimit === Infinity ? 9999 : msgLimit),
         'X-Coach-Is-Free': String(isFree),
         'X-Coach-Is-Admin': String(isAdmin),
-        // Période d'essai : 3/semaine pendant 30j
-        'X-Coach-Trial-Days-Left': String(isInTrial ? trialDaysLeft : 0),
-        'X-Coach-In-Trial': String(isInTrial),
-        'X-Coach-Monthly-Trial': String(isInTrial),
+        'X-Coach-Trial-Days-Left': '0',
+        'X-Coach-In-Trial': 'false',
+        'X-Coach-Monthly-Trial': 'false',
       },
     })
   } catch {

@@ -7,10 +7,11 @@ export const maxDuration = 30 // Vercel — analyse vision peut prendre jusqu'à
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-// Limites analyses photo/mois selon le plan
+// Limites analyses photo selon le plan
+// Photo IA = feature Pro uniquement — coût Anthropic Vision non négligeable
 const PHOTO_LIMITS = {
-  free:     5,        // Découverte — 5 analyses à vie (coût max $0.02/user)
-  monthly:  60,       // Pro mensuel — ~2/jour, usage confortable
+  free:     0,        // Gratuit : 0 — feature Pro
+  monthly:  60,       // Pro mensuel — ~2/jour
   annual:   Infinity, // Pro annuel — illimité
   lifetime: Infinity, // À vie — illimité
 }
@@ -42,16 +43,21 @@ export async function POST(req: NextRequest) {
     else if (status === 'pro') photoLimit = PHOTO_LIMITS.monthly
     else photoLimit = PHOTO_LIMITS.free
 
+    // Free = bloqué immédiatement (photoLimit = 0)
+    if (!isAdmin && isFree) {
+      return NextResponse.json({
+        data: null,
+        error: 'L\'analyse photo est réservée aux abonnés Pro. Passe en Pro pour scanner tes repas en photo.',
+        limitReached: true,
+        isPro: false,
+      }, { status: 403 })
+    }
+
     if (!isAdmin && photoLimit !== Infinity) {
-      // Free → all-time, Pro → ce mois-ci
+      // Pro mensuel → compter ce mois-ci
       let photoCount: number
-      if (isFree) {
-        const { count } = await supabase
-          .from('food_logs')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('source', 'photo')
-        photoCount = count ?? 0
+      if (false) {
+        photoCount = 0
       } else {
         const startOfMonth = new Date()
         startOfMonth.setDate(1)
