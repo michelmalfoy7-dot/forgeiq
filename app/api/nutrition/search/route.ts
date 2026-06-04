@@ -40,14 +40,54 @@ export async function GET(req: NextRequest) {
       merged.push(r)
     }
 
-    // Trier : priorité aux résultats dont le name_fr commence par la query (meilleur match)
+    // ── Tri intelligent : brut avant industriel ──────────────────────────────
+    // Principe : même si "Semoule Lustucru" commence par la query, "Semoule"
+    // (sans marque, nom court) doit passer devant.
+    //
+    // Score = matchScore (0-2) × 10 + rawScore (0-4)
+    //   matchScore : 0 = commence par query, 1 = contient, 2 = autre
+    //   rawScore   : 0 = brut (pas de marque, nom court, source db)
+    //                1 = db avec marque OU nom long
+    //                2 = db avec marque ET nom long / mots-clés industriels
+    //                4 = résultat OFF (jamais d'id = produit packagé)
+    // → Plus le score est bas, plus l'aliment remonte en haut
     const qLow = q.toLowerCase()
+
+    // Mots-clés qui signalent un plat préparé / produit industriel
+    const PROCESSED_KW = [
+      'préparé', 'cuisiné', 'assaisonné', 'aromatisé', 'royal', 'recette',
+      'spécial', 'spéciale', 'allégé', 'light', 'saveur', 'aux herbes',
+      'à l\'ail', 'bio ', 'halal', 'en conserve', 'surgelé', 'plat ',
+      'sauce ', 'garni', 'farci', 'risotto', 'paella',
+    ]
+
+    function rawScore(item: { id: string | null; name_fr: string | null; name: string | null; brand: string | null }): number {
+      // Résultats OFF → toujours en fin (produits industriels packagés)
+      if (!item.id) return 4
+
+      const nameLow = (item.name_fr ?? item.name ?? '').toLowerCase()
+      const wordCount = nameLow.trim().split(/\s+/).length
+      const hasBrand = !!item.brand
+      const isProcessed = PROCESSED_KW.some(k => nameLow.includes(k))
+
+      // Brut idéal : pas de marque, nom court (≤ 3 mots), aucun mot-clé industriel
+      if (!hasBrand && wordCount <= 3 && !isProcessed) return 0
+      // Brut avec description longue mais toujours sans marque
+      if (!hasBrand && !isProcessed) return 1
+      // Avec marque mais nom simple
+      if (hasBrand && wordCount <= 2) return 2
+      // Industriel (marque + long / mots-clés)
+      return 3
+    }
+
     merged.sort((a, b) => {
-      const aFr = (a.name_fr ?? '').toLowerCase()
-      const bFr = (b.name_fr ?? '').toLowerCase()
-      const aScore = aFr.startsWith(qLow) ? 0 : aFr.includes(qLow) ? 1 : 2
-      const bScore = bFr.startsWith(qLow) ? 0 : bFr.includes(qLow) ? 1 : 2
-      return aScore - bScore
+      const aFr = (a.name_fr ?? a.name ?? '').toLowerCase()
+      const bFr = (b.name_fr ?? b.name ?? '').toLowerCase()
+      const aMatch = aFr.startsWith(qLow) ? 0 : aFr.includes(qLow) ? 1 : 2
+      const bMatch = bFr.startsWith(qLow) ? 0 : bFr.includes(qLow) ? 1 : 2
+      const aTotal = aMatch * 10 + rawScore(a)
+      const bTotal = bMatch * 10 + rawScore(b)
+      return aTotal - bTotal
     })
 
     // Si on a 5+ résultats locaux avec données → on retourne directement
