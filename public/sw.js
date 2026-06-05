@@ -110,3 +110,47 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data === 'SKIP_WAITING') self.skipWaiting()
 })
+
+// ── Push : afficher la notification système ──────────────────────────────────
+self.addEventListener('push', (event) => {
+  let data = {}
+  try { data = event.data?.json() ?? {} } catch { /* payload invalide */ }
+
+  const title   = data.title   ?? 'ForgeIQ'
+  const body    = data.body    ?? 'Nouvelle activité sur ton profil'
+  const url     = data.url     ?? '/social/notifications'
+  const tag     = data.tag     ?? 'forgeiq-notif'
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon:     '/icons/icon-192x192.png',
+      badge:    '/icons/icon-72x72.png',
+      tag,
+      renotify: true,
+      data:     { url },
+      vibrate:  [100, 50, 100],
+    })
+  )
+})
+
+// ── NotificationClick : ouvrir l'app sur la bonne page ───────────────────────
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const url = event.notification.data?.url ?? '/social/notifications'
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Fenêtre déjà ouverte → focus
+      for (const client of clientList) {
+        if ('focus' in client) {
+          client.focus()
+          if ('navigate' in client) client.navigate(url)
+          return
+        }
+      }
+      // Sinon ouvrir une nouvelle fenêtre
+      if (clients.openWindow) return clients.openWindow(url)
+    })
+  )
+})

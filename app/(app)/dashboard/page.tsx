@@ -9,7 +9,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { UpgradeBanner } from '@/components/dashboard/UpgradeBanner'
 import { CancelWorkoutButton } from '@/components/dashboard/CancelWorkoutButton'
 import { formatSleep } from '@/lib/formatSleep'
-import { Dumbbell, TrendingUp, ClipboardList, MessageCircle, Utensils } from 'lucide-react'
+import { Dumbbell, TrendingUp, ClipboardList, MessageCircle, Utensils, Users } from 'lucide-react'
 import { calcDailyTarget } from '@/lib/utils/tdee'
 import { VolumeHebdoWidget } from '@/components/dashboard/VolumeHebdoWidget'
 
@@ -831,6 +831,25 @@ export default async function DashboardPage() {
             <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>Programmes</p>
             <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Guidés & custom</p>
           </div>
+        </Link>
+        <Link href="/coach" className="fiq-card flex items-center gap-3">
+          <MessageCircle className="w-5 h-5" style={{ color: 'var(--fiq-blue)' }} />
+          <div>
+            <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>Coach IA</p>
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Poser une question</p>
+          </div>
+        </Link>
+        <Link href="/social/explorer" className="fiq-card flex items-center gap-3 col-span-2"
+          style={{ background: '#B4FF4A08', borderColor: '#B4FF4A25' }}>
+          <Users className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>Communauté</p>
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Voir les séances de la communauté</p>
+          </div>
+          <span className="text-xs font-black px-2 py-1 rounded-lg flex-shrink-0"
+            style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
+            Explorer →
+          </span>
         </Link>
       </div>
     </div>

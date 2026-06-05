@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { sendPushToUser } from '@/lib/utils/push'
 
 export const dynamic = 'force-dynamic'
 
@@ -114,5 +115,13 @@ async function createLikeNotification(
     actor_id:     actorId,
     type:         'like',
     reference_id: shareId,
+  })
+
+  // Push notification (fire-and-forget)
+  void sendPushToUser(share.user_id, {
+    title: '❤️ ForgeIQ',
+    body:  'Quelqu\'un a aimé ta séance !',
+    url:   '/social/notifications',
+    tag:   'like',
   })
 }

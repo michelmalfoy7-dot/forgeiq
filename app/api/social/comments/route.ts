@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { sendPushToUser } from '@/lib/utils/push'
 
 export const dynamic = 'force-dynamic'
 
@@ -104,6 +105,12 @@ export async function POST(request: Request) {
             actor_id:     user.id,
             type:         'comment',
             reference_id: body.share_id,
+          })
+          void sendPushToUser(share.user_id, {
+            title: '💬 ForgeIQ',
+            body:  'Quelqu\'un a commenté ta séance !',
+            url:   '/social/notifications',
+            tag:   'comment',
           })
         }
       } catch { /* silencieux */ }

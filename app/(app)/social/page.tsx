@@ -5,6 +5,7 @@ import { Search, Users, Compass } from 'lucide-react'
 import { SocialProfileSetup } from '@/components/social/SocialProfileSetup'
 import { FeedList } from '@/components/social/FeedList'
 import { NotificationBell } from '@/components/social/NotificationBell'
+import { PushPermissionPrompt } from '@/components/social/PushPermissionPrompt'
 import type { FeedPost } from '@/components/social/WorkoutPost'
 import { buildExercisesMap } from '@/lib/utils/social'
 
@@ -138,6 +139,8 @@ export default async function SocialPage() {
 
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
+      {/* Prompt push notifications (apparaît 3s après, une seule fois) */}
+      <PushPermissionPrompt />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

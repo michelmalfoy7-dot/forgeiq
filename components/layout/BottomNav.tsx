@@ -2,14 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Dumbbell, Utensils, MessageCircle, User } from 'lucide-react'
+import { LayoutDashboard, Dumbbell, Utensils, Users, User } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 
 const NAV_ITEMS = [
   { href: '/dashboard', icon: LayoutDashboard, label: "Aujourd'hui" },
   { href: '/workout',   icon: Dumbbell,        label: 'Séance' },
   { href: '/nutrition', icon: Utensils,         label: 'Nutrition' },
-  { href: '/coach',     icon: MessageCircle,    label: 'Coach' },
+  { href: '/social',    icon: Users,            label: 'Communauté' },
   { href: '/profile',   icon: User,             label: 'Profil' },
 ]
 
@@ -36,6 +36,7 @@ export function BottomNav() {
   const [activeWorkoutId, setActiveWorkoutId] = useState<string | null>(null)
   const [showQuitModal, setShowQuitModal] = useState(false)
   const [pendingHref, setPendingHref] = useState<string | null>(null)
+  const [notifUnread, setNotifUnread] = useState(0)
 
   // Vérifier localStorage pour une séance active
   const checkActiveWorkout = useCallback(() => {
@@ -58,6 +59,22 @@ export function BottomNav() {
   useEffect(() => {
     checkActiveWorkout()
   }, [pathname, checkActiveWorkout])
+
+  // Badge notifications — vérifier le count toutes les 60s
+  useEffect(() => {
+    async function fetchNotifCount() {
+      try {
+        const res  = await fetch('/api/social/notifications')
+        const json = await res.json() as { data: { unread_count: number } | null }
+        if (json.data) setNotifUnread(json.data.unread_count)
+      } catch { /* silencieux */ }
+    }
+    fetchNotifCount()
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchNotifCount()
+    }, 60_000)
+    return () => clearInterval(interval)
+  }, [])
 
   function handleNavClick(e: React.MouseEvent, href: string) {
     // On est déjà sur la destination → rien
@@ -122,7 +139,7 @@ export function BottomNav() {
                   }}
                 />
 
-                {/* Icône + badge séance active */}
+                {/* Icône + badges */}
                 <div className="relative">
                   <Icon
                     style={{
@@ -137,24 +154,31 @@ export function BottomNav() {
                   {isWorkout && activeWorkoutId && !isActive && (
                     <span
                       className="absolute -top-0.5 -right-0.5 rounded-full"
-                      style={{
-                        width: 7,
-                        height: 7,
-                        background: 'var(--fiq-accent)',
-                        boxShadow: '0 0 6px rgba(180,255,74,0.6)',
-                      }}
+                      style={{ width: 7, height: 7, background: 'var(--fiq-accent)', boxShadow: '0 0 6px rgba(180,255,74,0.6)' }}
                     />
                   )}
                   {/* Indicateur pulsant si on est dans la séance */}
                   {isWorkout && activeWorkoutId && isActive && (
                     <span
                       className="absolute -top-0.5 -right-0.5 rounded-full animate-pulse"
-                      style={{
-                        width: 7,
-                        height: 7,
-                        background: 'var(--fiq-accent)',
-                      }}
+                      style={{ width: 7, height: 7, background: 'var(--fiq-accent)' }}
                     />
+                  )}
+                  {/* Badge rouge notifications sur Social */}
+                  {item.href === '/social' && notifUnread > 0 && !isActive && (
+                    <span
+                      className="absolute -top-1 -right-1.5 flex items-center justify-center rounded-full text-[8px] font-black"
+                      style={{
+                        minWidth: 14,
+                        height: 14,
+                        background: 'var(--fiq-red)',
+                        color: '#fff',
+                        padding: '0 3px',
+                        boxShadow: '0 0 0 2px var(--bg)',
+                      }}
+                    >
+                      {notifUnread > 9 ? '9+' : notifUnread}
+                    </span>
                   )}
                 </div>
 
