@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { Search, Users, Loader2, UserPlus, UserMinus } from 'lucide-react'
+import { useState, useCallback, useEffect } from 'react'
+import { Search, Users, Loader2, UserPlus, UserMinus, TrendingUp } from 'lucide-react'
 import Link from 'next/link'
 import Image from 'next/image'
 
@@ -17,10 +17,19 @@ type SearchResult = {
 }
 
 export default function SocialSearchPage() {
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<SearchResult[]>([])
-  const [loading, setLoading] = useState(false)
+  const [query, setQuery]           = useState('')
+  const [results, setResults]       = useState<SearchResult[]>([])
+  const [suggestions, setSuggestions] = useState<SearchResult[]>([])
+  const [loading, setLoading]       = useState(false)
   const [debounceTimer, setDebounceTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
+
+  // Charger les suggestions au montage
+  useEffect(() => {
+    fetch('/api/social/search?suggestions=true')
+      .then(r => r.json())
+      .then((json: { data: SearchResult[] | null }) => { if (json.data) setSuggestions(json.data) })
+      .catch(() => {})
+  }, [])
 
   // Recherche avec debounce 300ms
   const handleSearch = useCallback((q: string) => {
@@ -181,25 +190,63 @@ export default function SocialSearchPage() {
         </div>
       )}
 
-      {/* État vide */}
+      {/* Aucun résultat de recherche */}
       {query.length >= 2 && !loading && results.length === 0 && (
         <div className="text-center py-10">
           <Users className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--fiq-muted)' }} />
-          <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>
-            Aucun athlète trouvé
-          </p>
-          <p className="text-xs mt-1" style={{ color: 'var(--fiq-muted)' }}>
-            Essaie un autre username
-          </p>
+          <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>Aucun athlète trouvé</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--fiq-muted)' }}>Essaie un autre username</p>
         </div>
       )}
 
-      {/* Invite initiale */}
-      {query.length < 2 && (
-        <div className="text-center py-8">
-          <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>
-            Tape au moins 2 caractères pour rechercher
-          </p>
+      {/* Suggestions par défaut — visible quand pas encore de recherche */}
+      {query.length < 2 && suggestions.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4" style={{ color: 'var(--fiq-accent)' }} />
+            <p className="text-xs font-black uppercase tracking-wider" style={{ color: 'var(--fiq-muted)', letterSpacing: '0.08em' }}>
+              Athlètes à suivre
+            </p>
+          </div>
+          {suggestions.map((result) => {
+            const initial = (result.display_name || result.username || '?')[0].toUpperCase()
+            return (
+              <div key={result.user_id} className="fiq-card flex items-center gap-3" style={{ padding: '12px 14px' }}>
+                <Link href={result.username ? `/u/${result.username}` : '#'} className="relative w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center font-black text-sm flex-shrink-0"
+                  style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
+                  {result.avatar_url
+                    ? <Image src={result.avatar_url} alt={result.display_name ?? ''} fill className="object-cover" sizes="40px" />
+                    : initial}
+                </Link>
+                <Link href={result.username ? `/u/${result.username}` : '#'} className="flex-1 min-w-0">
+                  <p className="font-bold text-sm truncate" style={{ color: 'var(--fiq-text)' }}>
+                    {result.display_name || result.username}
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+                    {result.username ? `@${result.username} · ` : ''}{result.followers_count} abonné{result.followers_count > 1 ? 's' : ''}
+                  </p>
+                </Link>
+                <button
+                  onClick={() => {
+                    handleFollow(result.user_id, result.is_following)
+                    setSuggestions(prev => prev.map(r =>
+                      r.user_id === result.user_id
+                        ? { ...r, is_following: !result.is_following, followers_count: r.followers_count + (result.is_following ? -1 : 1) }
+                        : r
+                    ))
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black flex-shrink-0"
+                  style={{
+                    background: result.is_following ? 'var(--fiq-faint)' : 'var(--fiq-accent)',
+                    color:      result.is_following ? 'var(--fiq-muted)' : 'var(--bg)',
+                    border:     result.is_following ? '1px solid var(--fiq-border)' : 'none',
+                  }}
+                >
+                  {result.is_following ? <><UserMinus className="w-3.5 h-3.5" /> Suivi</> : <><UserPlus className="w-3.5 h-3.5" /> Suivre</>}
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

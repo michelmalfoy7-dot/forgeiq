@@ -10,10 +10,33 @@ export async function GET(request: NextRequest) {
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
 
     const { searchParams } = new URL(request.url)
-    const q = searchParams.get('q')?.trim() ?? ''
+    const q           = searchParams.get('q')?.trim() ?? ''
+    const suggestions = searchParams.get('suggestions') === 'true'
 
-    if (q.length < 2) {
-      return NextResponse.json({ data: [], error: null })
+    // Mode suggestions : top athlètes non suivis (affiché à l'ouverture de la recherche)
+    if (suggestions || q.length < 2) {
+      const { data: followsData } = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', user.id)
+
+      const followingIds = (followsData ?? []).map((f: { following_id: string }) => f.following_id)
+      const excludeIds   = [...followingIds, user.id]
+
+      const { data } = await supabase
+        .from('social_profiles')
+        .select('user_id, username, display_name, bio, avatar_url, followers_count, following_count')
+        .eq('is_public', true)
+        .not('user_id', 'in', `(${excludeIds.join(',')})`)
+        .order('followers_count', { ascending: false })
+        .limit(10)
+
+      const results = (data ?? []).map((p: {
+        user_id: string; username: string | null; display_name: string | null
+        bio: string | null; avatar_url: string | null; followers_count: number; following_count: number
+      }) => ({ ...p, is_following: false }))
+
+      return NextResponse.json({ data: results, error: null })
     }
 
     // Recherche dans les profils publics par username ou display_name
@@ -22,7 +45,7 @@ export async function GET(request: NextRequest) {
       .select('user_id, username, display_name, bio, avatar_url, followers_count, following_count')
       .eq('is_public', true)
       .or(`username.ilike.%${q}%,display_name.ilike.%${q}%`)
-      .neq('user_id', user.id) // Exclure soi-même des résultats
+      .neq('user_id', user.id)
       .limit(20)
 
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
