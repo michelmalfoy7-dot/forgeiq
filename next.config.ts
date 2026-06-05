@@ -19,6 +19,11 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: '*.supabase.co',
       },
+      {
+        // QR codes profils publics
+        protocol: 'https',
+        hostname: 'api.qrserver.com',
+      },
     ],
   },
 

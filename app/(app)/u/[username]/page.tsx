@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
+import Image from 'next/image'
 import { WorkoutPost } from '@/components/social/WorkoutPost'
 import { FollowButton } from '@/components/social/FollowButton'
 import { ShareBig5Button } from '@/components/social/ShareBig5Button'
@@ -93,18 +94,56 @@ export default async function PublicProfilePage({ params }: PageProps) {
     isFollowing = !!followData
   }
 
-  // Récupérer les stats de la cible
+  // Dates pour les calculs
+  const now           = new Date()
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0]
+  const sixtyDaysAgo  = new Date(now.getTime() - 60 * 86400000).toISOString().split('T')[0]
+  const sevenDaysAgo  = new Date(now.getTime() - 7  * 86400000).toISOString().split('T')[0]
+
+  // Récupérer les stats de la cible (avec dates pour progression + streak)
   const { data: workoutStats } = await supabase
     .from('workouts')
-    .select('total_tonnage_kg, total_sets')
+    .select('total_tonnage_kg, total_sets, session_date, completed_at')
     .eq('user_id', targetProfile.user_id)
     .not('completed_at', 'is', null)
+    .order('session_date', { ascending: false })
 
   const totalSessions = (workoutStats ?? []).length
-  const totalTonnage = (workoutStats ?? []).reduce(
-    (acc: number, w: { total_tonnage_kg: number | null }) => acc + (w.total_tonnage_kg ?? 0),
-    0
+  const totalTonnage  = (workoutStats ?? []).reduce(
+    (acc: number, w: { total_tonnage_kg: number | null }) => acc + (w.total_tonnage_kg ?? 0), 0
   )
+
+  // Progression tonnage mensuelle (30j vs 30j précédents)
+  const last30Tonnage  = (workoutStats ?? [])
+    .filter((w: { session_date: string | null }) => w.session_date && w.session_date >= thirtyDaysAgo)
+    .reduce((a: number, w: { total_tonnage_kg: number | null }) => a + (w.total_tonnage_kg ?? 0), 0)
+  const prev30Tonnage  = (workoutStats ?? [])
+    .filter((w: { session_date: string | null }) => w.session_date && w.session_date >= sixtyDaysAgo && w.session_date < thirtyDaysAgo)
+    .reduce((a: number, w: { total_tonnage_kg: number | null }) => a + (w.total_tonnage_kg ?? 0), 0)
+  const progressPct = prev30Tonnage > 0
+    ? Math.round(((last30Tonnage - prev30Tonnage) / prev30Tonnage) * 100)
+    : null
+
+  // Séances cette semaine
+  const sessionsThisWeek = (workoutStats ?? [])
+    .filter((w: { session_date: string | null }) => w.session_date && w.session_date >= sevenDaysAgo).length
+
+  // Streak — jours consécutifs avec séance (à partir d'aujourd'hui)
+  const sessionDates = [...new Set((workoutStats ?? [])
+    .map((w: { session_date: string | null }) => w.session_date)
+    .filter(Boolean)
+  )].sort().reverse() as string[]
+
+  let streak = 0
+  let expected = now.toISOString().split('T')[0]
+  for (const d of sessionDates) {
+    if (d === expected) {
+      streak++
+      const prev = new Date(expected)
+      prev.setDate(prev.getDate() - 1)
+      expected = prev.toISOString().split('T')[0]
+    } else break
+  }
 
   // Récupérer TOUS les PRs top_set pour le Big 5
   const { data: allPRs } = await supabase
@@ -274,26 +313,40 @@ export default async function PublicProfilePage({ params }: PageProps) {
         )}
       </div>
 
-      {/* Stats performance */}
+      {/* Stats performance — 4 métriques */}
       <div className="grid grid-cols-2 gap-3">
         <div className="fiq-card text-center">
-          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--fiq-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Séances
-          </p>
-          <p className="text-xl font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
-            {totalSessions}
-          </p>
+          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--fiq-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Séances</p>
+          <p className="text-xl font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>{totalSessions}</p>
+          {sessionsThisWeek > 0 && (
+            <p className="text-[10px] mt-0.5" style={{ color: 'var(--fiq-muted)' }}>{sessionsThisWeek} cette semaine</p>
+          )}
         </div>
         <div className="fiq-card text-center">
-          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--fiq-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Tonnage
-          </p>
+          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--fiq-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Tonnage total</p>
           <p className="text-xl font-black fiq-data" style={{ color: 'var(--fiq-blue)' }}>
-            {totalTonnage > 1000
-              ? `${(totalTonnage / 1000).toFixed(1)}t`
-              : `${Math.round(totalTonnage)}kg`}
+            {totalTonnage > 1000 ? `${(totalTonnage / 1000).toFixed(1)}t` : `${Math.round(totalTonnage)}kg`}
           </p>
+          {progressPct !== null && (
+            <p className="text-[10px] mt-0.5 font-bold" style={{ color: progressPct >= 0 ? 'var(--fiq-accent)' : 'var(--fiq-red)' }}>
+              {progressPct >= 0 ? '+' : ''}{progressPct}% vs mois préc.
+            </p>
+          )}
         </div>
+        {streak >= 2 && (
+          <div className="fiq-card text-center" style={{ background: '#FF6B3510', borderColor: '#FF6B3530' }}>
+            <p className="text-xs font-semibold mb-1" style={{ color: 'var(--fiq-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Streak</p>
+            <p className="text-xl font-black fiq-data" style={{ color: 'var(--fiq-orange)' }}>🔥 {streak}</p>
+            <p className="text-[10px] mt-0.5" style={{ color: 'var(--fiq-muted)' }}>jours d&apos;affilée</p>
+          </div>
+        )}
+        {big5Filled.length > 0 && (
+          <div className="fiq-card text-center">
+            <p className="text-xs font-semibold mb-1" style={{ color: 'var(--fiq-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Records</p>
+            <p className="text-xl font-black fiq-data" style={{ color: '#A855F7' }}>{big5Filled.length}/5</p>
+            <p className="text-[10px] mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Big 5</p>
+          </div>
+        )}
       </div>
 
       {/* Big 5 — Records par mouvement fondamental */}
@@ -342,6 +395,26 @@ export default async function PublicProfilePage({ params }: PageProps) {
               username={targetProfile.username}
               displayName={targetProfile.display_name ?? targetProfile.username ?? 'athlete'}
             />
+          </div>
+        </div>
+      )}
+
+      {/* QR code — partager le profil IRL */}
+      {targetProfile.username && (
+        <div className="fiq-card flex items-center gap-4">
+          <Image
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&bgcolor=161A21&color=B4FF4A&qzone=1&data=${encodeURIComponent(`${APP_URL}/u/${targetProfile.username}`)}`}
+            alt="QR code profil"
+            width={80}
+            height={80}
+            className="rounded-xl flex-shrink-0"
+            unoptimized
+          />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Profil ForgeIQ</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+              Scanne pour ouvrir ce profil · getforgeiq.com/u/{targetProfile.username}
+            </p>
           </div>
         </div>
       )}
