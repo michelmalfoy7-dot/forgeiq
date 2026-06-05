@@ -162,12 +162,13 @@ export async function POST(req: NextRequest) {
     // ── 1. Vérification du plan (Pro/Lifetime uniquement) ──────────────────
     const { data: profile } = await supabase
       .from('profiles')
-      .select('subscription_status, goal, level, gym_id, gym_equipment_profiles(tier, name, features)')
+      .select('subscription_status, is_admin, goal, level, gym_id, gym_equipment_profiles(tier, name, features)')
       .eq('id', user.id)
       .single()
 
-    const status = profile?.subscription_status ?? 'free'
-    const isPro = status === 'pro' || status === 'lifetime'
+    const status  = profile?.subscription_status ?? 'free'
+    const isAdmin = (profile as unknown as { is_admin?: boolean })?.is_admin ?? false
+    const isPro   = isAdmin || status === 'pro' || status === 'lifetime'
     if (!isPro) {
       return NextResponse.json(
         { data: null, error: 'Fonctionnalité réservée aux membres Pro et Lifetime.' },

@@ -1,18 +1,18 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Space_Grotesk } from 'next/font/google'
 import { PostHogProvider } from '@/lib/posthog'
 import { SplashScreen } from '@/components/ui/SplashScreen'
 import { ServiceWorkerRegister } from '@/components/layout/ServiceWorkerRegister'
 import './globals.css'
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
+// Space Grotesk — typographie principale ForgeIQ
+// Choisie pour : x-height 70% (lisibilité dark), chiffres tabulaires, caractère technique
+// Remplace Geist (trop générique) — utilisée par Linear, Raycast, Arc
+const spaceGrotesk = Space_Grotesk({
+  variable: '--font-space-grotesk',
   subsets: ['latin'],
-})
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700'],
+  display: 'swap',
 })
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://getforgeiq.com'
@@ -91,7 +91,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="fr"
-      className={`${geistSans.variable} ${geistMono.variable} h-full`}
+      className={`${spaceGrotesk.variable} h-full`}
     >
       <body className="min-h-full flex flex-col antialiased">
         {/* SW enregistré au niveau racine — visible par PWABuilder et tous les bots */}
