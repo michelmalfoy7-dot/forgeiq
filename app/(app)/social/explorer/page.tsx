@@ -118,6 +118,7 @@ export default async function ExplorerPage() {
       comments_count: share.comments_count,
       created_at: share.created_at,
       is_liked: likedIds.has(share.id),
+      is_mine: share.user_id === user.id,
       exercises: exercisesByWorkout.get(share.workout_id),
       author: {
         username: social?.username ?? null,

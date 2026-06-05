@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Heart, Share2, Dumbbell, Clock, MessageCircle, Loader2 } from 'lucide-react'
+import { Heart, Share2, Dumbbell, Clock, MessageCircle, Loader2, MoreHorizontal, Pencil, Trash2, X, Check } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { CommentSheet } from './CommentSheet'
@@ -22,6 +22,7 @@ export type FeedPost = {
   comments_count: number
   created_at: string
   is_liked: boolean
+  is_mine?: boolean
   exercises?: ExerciseInPost[]
   author: {
     username: string | null
@@ -57,13 +58,20 @@ function formatTonnage(kg: number): string {
   return `${kg.toLocaleString('fr-FR')} kg`
 }
 
-export function WorkoutPost({ post }: { post: FeedPost }) {
+export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id: string) => void }) {
   const [liked, setLiked]               = useState(post.is_liked)
   const [likesCount, setLikesCount]     = useState(post.likes_count)
   const [commentsCount, setCommentsCount] = useState(post.comments_count)
   const [liking, setLiking]             = useState(false)
   const [sharing, setSharing]           = useState(false)
   const [showComments, setShowComments] = useState(false)
+  // Menu ··· (modifier / supprimer)
+  const [showMenu, setShowMenu]         = useState(false)
+  const [editMode, setEditMode]         = useState(false)
+  const [editCaption, setEditCaption]   = useState(post.caption ?? '')
+  const [saving, setSaving]             = useState(false)
+  const [caption, setCaption]           = useState(post.caption)
+  const [deleted, setDeleted]           = useState(false)
 
   async function handleLike() {
     if (liking) return
@@ -147,11 +155,43 @@ export function WorkoutPost({ post }: { post: FeedPost }) {
     }
   }
 
+  // ── Modifier caption ──────────────────────────────────────
+  async function handleSaveEdit() {
+    if (saving) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/social/share', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ share_id: post.id, caption: editCaption }),
+      })
+      if (res.ok) { setCaption(editCaption.trim() || null); setEditMode(false) }
+    } catch { /* silencieux */ }
+    finally   { setSaving(false) }
+  }
+
+  // ── Supprimer le post ──────────────────────────────────────
+  async function handleDelete() {
+    if (!confirm('Supprimer ce post du feed ?')) return
+    try {
+      const res = await fetch('/api/social/share', {
+        method:  'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ share_id: post.id }),
+      })
+      if (res.ok) { setDeleted(true); onDelete?.(post.id) }
+    } catch { /* silencieux */ }
+    setShowMenu(false)
+  }
+
   const avatarInitial = (post.author.display_name || post.author.username || '?')[0].toUpperCase()
   const hasWorkout = !!post.workout
 
+  // Post supprimé → ne rien rendre
+  if (deleted) return null
+
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}>
+    <div className="rounded-2xl overflow-hidden relative" style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}>
 
       {/* ── Carte séance (bloc visuel principal) ── */}
       {hasWorkout && (
@@ -281,13 +321,73 @@ export function WorkoutPost({ post }: { post: FeedPost }) {
             </p>
           </div>
         </div>
+
+        {/* Bouton ··· — visible seulement sur ses propres posts */}
+        {post.is_mine && (
+          <button
+            onClick={() => setShowMenu(v => !v)}
+            className="p-2 rounded-xl transition-opacity active:opacity-60 flex-shrink-0"
+            style={{ color: 'var(--fiq-muted)' }}
+          >
+            <MoreHorizontal className="w-4 h-4" />
+          </button>
+        )}
       </Link>
 
-      {/* Caption */}
-      {post.caption && (
+      {/* Fermer le menu si clic en dehors */}
+      {showMenu && (
+        <div className="fixed inset-0 z-[9]" onClick={() => setShowMenu(false)} />
+      )}
+
+      {/* Caption (affichée ou en mode édition) */}
+      {editMode ? (
+        <div className="px-4 pb-3 space-y-2">
+          <textarea
+            value={editCaption}
+            onChange={e => setEditCaption(e.target.value.slice(0, 150))}
+            rows={2}
+            autoFocus
+            className="w-full text-sm rounded-xl px-3 py-2 outline-none resize-none"
+            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+          />
+          <div className="flex gap-2">
+            <button onClick={handleSaveEdit} disabled={saving}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black"
+              style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+              Sauvegarder
+            </button>
+            <button onClick={() => { setEditMode(false); setEditCaption(caption ?? '') }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold"
+              style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)' }}>
+              <X className="w-3.5 h-3.5" /> Annuler
+            </button>
+          </div>
+        </div>
+      ) : caption ? (
         <p className="text-sm leading-relaxed px-4 pb-3" style={{ color: 'var(--fiq-text)' }}>
-          {post.caption}
+          {caption}
         </p>
+      ) : null}
+
+      {/* Menu ··· flottant (propres posts seulement) */}
+      {showMenu && post.is_mine && (
+        <div className="absolute top-12 right-3 z-10 rounded-2xl shadow-2xl overflow-hidden"
+          style={{ background: 'var(--surface)', border: '1px solid var(--fiq-border)', minWidth: 160 }}>
+          <button onClick={() => { setEditMode(true); setShowMenu(false) }}
+            className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-left hover:opacity-80 transition-opacity"
+            style={{ color: 'var(--fiq-text)' }}>
+            <Pencil className="w-4 h-4" style={{ color: 'var(--fiq-blue)' }} />
+            Modifier la caption
+          </button>
+          <div style={{ height: 1, background: 'var(--fiq-border)' }} />
+          <button onClick={handleDelete}
+            className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-left hover:opacity-80 transition-opacity"
+            style={{ color: 'var(--fiq-red)' }}>
+            <Trash2 className="w-4 h-4" />
+            Supprimer du feed
+          </button>
+        </div>
       )}
 
       {/* ── Sheet commentaires ── */}

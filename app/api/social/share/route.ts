@@ -48,3 +48,49 @@ export async function POST(request: Request) {
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
   }
 }
+
+// PATCH — modifier la caption d'un post
+export async function PATCH(request: Request) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
+
+    const body = await request.json() as { share_id?: string; caption?: string }
+    if (!body.share_id) return NextResponse.json({ data: null, error: 'share_id requis' }, { status: 400 })
+
+    const { error } = await supabase
+      .from('workout_shares')
+      .update({ caption: body.caption?.trim() || null })
+      .eq('id', body.share_id)
+      .eq('user_id', user.id) // RLS : seulement son propre post
+
+    if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
+    return NextResponse.json({ data: { ok: true }, error: null })
+  } catch {
+    return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
+  }
+}
+
+// DELETE — supprimer un post du feed
+export async function DELETE(request: Request) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
+
+    const body = await request.json() as { share_id?: string }
+    if (!body.share_id) return NextResponse.json({ data: null, error: 'share_id requis' }, { status: 400 })
+
+    const { error } = await supabase
+      .from('workout_shares')
+      .delete()
+      .eq('id', body.share_id)
+      .eq('user_id', user.id) // RLS : seulement son propre post
+
+    if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
+    return NextResponse.json({ data: { ok: true }, error: null })
+  } catch {
+    return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
+  }
+}
