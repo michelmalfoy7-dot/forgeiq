@@ -147,6 +147,8 @@ export default function WorkoutSessionPage() {
   const [sharing, setSharing] = useState(false)
   const [sharePosted, setSharePosted] = useState(false)
   const [shareDismissed, setShareDismissed] = useState(false)
+  const [shareId, setShareId] = useState<string | null>(null)
+  const [sharingCard, setSharingCard] = useState(false)
   // Programme lié à la séance (pour "sauvegarder la routine")
   const [programId, setProgramId]             = useState<string | null>(null)
   const [programName, setProgramName]         = useState<string>('')
@@ -920,19 +922,53 @@ export default function WorkoutSessionPage() {
     if (sharing) return
     setSharing(true)
     try {
-      const res = await fetch('/api/social/share', {
-        method: 'POST',
+      const res  = await fetch('/api/social/share', {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workout_id: workoutId, caption: shareCaption }),
+        body:    JSON.stringify({ workout_id: workoutId, caption: shareCaption }),
       })
-      const json = await res.json() as { data: unknown; error: string | null }
-      if (!json.error) {
+      const json = await res.json() as { data: { id: string } | null; error: string | null }
+      if (!json.error && json.data?.id) {
+        setShareId(json.data.id)
         setSharePosted(true)
       }
     } catch { /* Erreur réseau silencieuse */ }
-    finally {
-      setSharing(false)
-    }
+    finally { setSharing(false) }
+  }
+
+  // ── Partage carte image PNG (post + natif) ────────────────
+  async function handleShareCard(id: string) {
+    if (sharingCard) return
+    setSharingCard(true)
+    const slug = sessionName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+    const fallbackText = [
+      `💪 ${sessionName} — via ForgeIQ`,
+      summary ? `⚡ ${summary.tonnage.toLocaleString('fr-FR')} kg · ${summary.sets} séries` : '',
+      shareCaption.trim(),
+      'getforgeiq.com',
+    ].filter(Boolean).join('\n')
+    try {
+      const cardRes = await fetch(`/api/social/card?id=${id}`)
+      if (cardRes.ok) {
+        const blob = await cardRes.blob()
+        const file = new File([blob], `forgeiq-${slug}.png`, { type: 'image/png' })
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file], text: fallbackText })
+          return
+        }
+        // Fallback : télécharger l'image
+        const url = URL.createObjectURL(blob)
+        const a   = document.createElement('a')
+        a.href = url; a.download = `forgeiq-${slug}.png`
+        document.body.appendChild(a); a.click(); document.body.removeChild(a)
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+        return
+      }
+    } catch { /* Fallback texte */ }
+    finally   { setSharingCard(false) }
+    // Fallback texte
+    if (navigator.share) await navigator.share({ text: fallbackText }).catch(() => {})
+    else await navigator.clipboard.writeText(fallbackText).catch(() => {})
   }
 
   // ── Sauvegarder la routine modifiée dans le programme ───────
@@ -1080,38 +1116,76 @@ export default function WorkoutSessionPage() {
             </div>
           )}
 
-          {/* Card partage post-séance */}
+          {/* ── Card partage post-séance ── */}
           {!shareDismissed && !sharePosted && (
-            <div className="fiq-card space-y-3 text-left">
-              <p className="text-sm font-bold" style={{ color: 'var(--fiq-text)' }}>
-                Partager cette séance
-              </p>
-
-              {/* Preview visuelle */}
-              <div className="rounded-xl p-4 space-y-2" style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
-                <p className="text-xs font-black" style={{ color: 'var(--fiq-accent)' }}>💪 ForgeIQ</p>
-                {shareCaption.trim() && (
-                  <p className="text-xs italic leading-relaxed" style={{ color: 'var(--fiq-text)' }}>
-                    &ldquo;{shareCaption.trim()}&rdquo;
-                  </p>
-                )}
-                <p className="text-sm font-bold" style={{ color: 'var(--fiq-text)' }}>{sessionName} · {formatTime(elapsed)}</p>
-                <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
-                  ⚡ {summary.tonnage.toLocaleString('fr-FR')} kg · {summary.sets} séries
-                  {summary.newPRs.length > 0 && ` · 🏆 ${summary.newPRs.length} PR${summary.newPRs.length > 1 ? 's' : ''}`}
+            <div
+              className="space-y-3 rounded-2xl p-4 text-left"
+              style={{ background: '#B4FF4A08', border: '1px solid #B4FF4A30' }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>
+                  🔥 Fais voir ta séance !
                 </p>
+                <button onClick={() => setShareDismissed(true)} className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+                  Passer
+                </button>
               </div>
 
-              {/* Caption avec compteur */}
+              {/* Mini preview carte ForgeIQ */}
+              <div
+                className="rounded-xl overflow-hidden"
+                style={{ background: '#0A0C0F', border: '1px solid #1F242E' }}
+              >
+                <div className="px-4 pt-4 pb-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black"
+                        style={{ background: 'var(--fiq-accent)', color: '#0A0C0F' }}>F</div>
+                      <span className="text-[9px] font-black tracking-widest" style={{ color: 'var(--fiq-accent)' }}>FORGEIQ</span>
+                    </div>
+                  </div>
+                  <p className="text-base font-black leading-tight" style={{ color: '#F0F2F5', letterSpacing: '-0.02em' }}>
+                    {sessionName}
+                  </p>
+                  <div className="h-0.5 w-8 rounded-full mt-2 mb-3" style={{ background: 'var(--fiq-accent)' }} />
+                  <div className="flex gap-4">
+                    <div>
+                      <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
+                        {summary.tonnage >= 1000
+                          ? `${(summary.tonnage / 1000).toFixed(1)}t`
+                          : `${Math.round(summary.tonnage)} kg`}
+                      </p>
+                      <p className="text-[9px] uppercase tracking-widest" style={{ color: '#6B7280' }}>soulevés</p>
+                    </div>
+                    <div>
+                      <p className="text-lg font-black fiq-data" style={{ color: '#F0F2F5' }}>{summary.sets}</p>
+                      <p className="text-[9px] uppercase tracking-widest" style={{ color: '#6B7280' }}>séries</p>
+                    </div>
+                    {summary.newPRs.length > 0 && (
+                      <div>
+                        <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-yellow)' }}>
+                          🏆 {summary.newPRs.length}
+                        </p>
+                        <p className="text-[9px] uppercase tracking-widest" style={{ color: '#6B7280' }}>
+                          PR{summary.newPRs.length > 1 ? 's' : ''}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Caption */}
               <div className="space-y-1">
                 <textarea
-                  placeholder="Ressenti, contexte, note du jour..."
+                  placeholder="Ressenti, contexte, message…"
                   value={shareCaption}
                   onChange={(e) => setShareCaption(e.target.value.slice(0, 150))}
                   rows={2}
                   style={{
                     width: '100%', padding: '10px 12px', borderRadius: 10,
-                    background: 'var(--bg)', border: '1px solid var(--fiq-border)',
+                    background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)',
                     color: 'var(--fiq-text)', fontSize: 13, resize: 'none', outline: 'none',
                   }}
                 />
@@ -1120,38 +1194,58 @@ export default function WorkoutSessionPage() {
                 </p>
               </div>
 
-              <div className="flex gap-2">
-                {/* Partage natif mobile */}
-                <button
-                  onClick={handleNativeShare}
-                  className="flex-1 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-1.5"
-                  style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
-                >
-                  ↗️ Partager
-                </button>
-                {/* Partage ForgeIQ feed */}
-                <button
-                  onClick={handleShareToFeed}
-                  disabled={sharing}
-                  className="flex-1 py-2.5 rounded-xl font-black text-sm"
-                  style={{ background: sharing ? 'var(--fiq-faint)' : 'var(--fiq-accent)', color: sharing ? 'var(--fiq-muted)' : 'var(--bg)' }}
-                >
-                  {sharing ? '...' : '📤 Partager sur ForgeIQ'}
-                </button>
-              </div>
-
-              {/* Passer - dismissible */}
+              {/* Bouton principal : poster + générer carte */}
               <button
-                onClick={() => setShareDismissed(true)}
-                className="w-full text-xs py-1"
-                style={{ color: 'var(--fiq-muted)' }}
+                onClick={handleShareToFeed}
+                disabled={sharing}
+                className="w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-60"
+                style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
               >
-                Passer
+                {sharing
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Publication…</>
+                  : <>📤 Poster sur ForgeIQ</>
+                }
               </button>
             </div>
           )}
 
-          {sharePosted && (
+          {/* ── Après publication : partage carte image ── */}
+          {sharePosted && shareId && (
+            <div
+              className="rounded-2xl p-4 space-y-3 text-left"
+              style={{ background: '#B4FF4A10', border: '1px solid #B4FF4A40' }}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🎉</span>
+                <div>
+                  <p className="text-sm font-black" style={{ color: 'var(--fiq-accent)' }}>Live sur ForgeIQ !</p>
+                  <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Ta séance est visible dans la communauté</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleShareCard(shareId)}
+                  disabled={sharingCard}
+                  className="flex-1 py-2.5 rounded-xl font-black text-sm flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-60"
+                  style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+                >
+                  {sharingCard
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Génération…</>
+                    : <>🖼️ Partager la carte</>
+                  }
+                </button>
+                <a
+                  href="/social"
+                  className="flex-1 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center"
+                  style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
+                >
+                  Voir le feed →
+                </a>
+              </div>
+            </div>
+          )}
+
+          {sharePosted && !shareId && (
             <p className="text-xs text-center" style={{ color: 'var(--fiq-accent)' }}>✅ Publié dans le feed !</p>
           )}
 
