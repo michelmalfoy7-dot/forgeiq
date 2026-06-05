@@ -54,7 +54,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/pricing') ||
     pathname.startsWith('/nutrition')
 
-  if (!user && isAppRoute) {
+  if (!user && isAppRoute && !isPublicRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

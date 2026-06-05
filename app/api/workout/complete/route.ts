@@ -162,7 +162,9 @@ export async function POST(request: Request) {
             .eq('user_id', u.user_id)
             .eq('exercise_id', u.exercise_id)
             .eq('record_type', 'top_set')
-        } catch { /* colonne reps pas encore migrée — silencieux */ }
+        } catch (err) {
+          console.error('[complete] PR reps update failed:', u.exercise_id, err)
+        }
       }
     }
 
@@ -171,6 +173,7 @@ export async function POST(request: Request) {
       error: null,
     })
   } catch (e) {
+    console.error('[workout/complete]', e)
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
   }
 }

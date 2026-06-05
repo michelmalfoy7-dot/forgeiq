@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { calcDailyTarget } from '@/lib/utils/tdee'
-import { VOLUME_TARGETS } from '@/app/api/progress/volume-weekly/route'
+import { MUSCLE_GROUPS, VOLUME_TARGETS } from '@/lib/utils/volume'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +10,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 // Haiku uniquement — le contexte préchargé (profil + séances + macros) suffit
 // pour des réponses qualitatives en coaching fitness. ~10x moins cher que Sonnet.
-const MODEL_COACH = 'claude-haiku-4-5'
+const MODEL_COACH = 'claude-haiku-4-5-20251001'
 
 // Limites selon le plan
 const LIMITS = {
@@ -192,6 +192,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const userMessage: string = body.message ?? ''
     if (!userMessage.trim()) return NextResponse.json({ data: null, error: 'Message vide' }, { status: 400 })
+    // Limite de longueur — évite les injections de prompt massives et les coûts excessifs en tokens
+    if (userMessage.length > 2000) return NextResponse.json({ data: null, error: 'Message trop long (max 2000 caractères)' }, { status: 400 })
 
     // Récupérer statut, plan et flag admin — détermine le type de comptage
     const { data: subProfile } = await supabase
@@ -308,12 +310,15 @@ export async function POST(req: NextRequest) {
         .select('calories, protein_g, carbs_g, fat_g')
         .eq('user_id', user.id).eq('log_date', today),
       // Moyenne steps 30j (journées complètes = exclut aujourd'hui + zéros)
+      // .limit(30) explicite : borne la requête à 30 lignes max, cohérent avec la fenêtre glissante
+      // Note : une RPC Supabase (AVG côté DB) serait plus efficace si le volume de daily_logs grandit
       supabase.from('daily_logs')
         .select('steps')
         .eq('user_id', user.id)
         .gte('log_date', thirtyDaysAgo)
         .lt('log_date', today)
-        .gt('steps', 0),
+        .gt('steps', 0)
+        .limit(30),
       // Workouts de la semaine courante → volume hebdo
       supabase.from('workouts')
         .select('id')
@@ -333,14 +338,6 @@ export async function POST(req: NextRequest) {
         .in('workout_id', weekWorkoutIds)
         .eq('is_warmup', false)
         .neq('reps', 0)
-
-      const MUSCLE_GROUPS: Record<string, string> = {
-        chest: 'Poitrine', lats: 'Dos', mid_back: 'Dos', upper_back: 'Dos', lower_back: 'Dos',
-        traps: 'Dos', front_delt: 'Épaules', side_delt: 'Épaules', rear_delt: 'Épaules',
-        biceps: 'Biceps', triceps: 'Triceps', forearms: 'Avant-bras',
-        quads: 'Jambes', hamstrings: 'Jambes', glutes: 'Fessiers', calves: 'Mollets',
-        abs: 'Abdos', core: 'Abdos', obliques: 'Abdos',
-      }
 
       const counts: Record<string, number> = {}
       for (const s of weekSets ?? []) {
@@ -390,6 +387,16 @@ export async function POST(req: NextRequest) {
       .limit(HISTORY_LIMIT)
 
     // Totaux nutrition du jour depuis food_logs (plus précis que protein_g du check-in)
+    //
+    // SOURCES DE PROTÉINES — deux champs distincts, priorité à food_logs :
+    //  • daily_logs.protein_g  : saisie manuelle au check-in (approximatif, optionnel)
+    //  • food_logs.protein_g   : somme des aliments loggés dans /nutrition (précis, item par item)
+    //
+    // Ici on utilise food_logs quand hasFoodLogs=true (priorité), sinon fallback sur
+    // daily_logs.protein_g. Le client (coach/page.tsx) affiche daily_logs.protein_g via
+    // le check-in — il y a donc un écart possible si l'utilisateur a loggé ses repas
+    // mais pas fait son check-in. Amélioration future : exposer le total food_logs
+    // directement dans la réponse initiale du coach pour synchroniser l'affichage.
     const foodTotals = (todayFoodLogs ?? []).reduce(
       (acc, l) => ({
         calories:  acc.calories  + (l.calories  ?? 0),
@@ -558,9 +565,6 @@ export async function POST(req: NextRequest) {
         'X-Coach-Limit': String(msgLimit === Infinity ? 9999 : msgLimit),
         'X-Coach-Is-Free': String(isFree),
         'X-Coach-Is-Admin': String(isAdmin),
-        'X-Coach-Trial-Days-Left': '0',
-        'X-Coach-In-Trial': 'false',
-        'X-Coach-Monthly-Trial': 'false',
       },
     })
   } catch {

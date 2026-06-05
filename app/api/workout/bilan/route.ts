@@ -33,6 +33,15 @@ export async function POST(req: NextRequest) {
     const { workout_id } = await req.json()
     if (!workout_id) return NextResponse.json({ data: null, error: 'workout_id manquant' }, { status: 400 })
 
+    // Vérifier le plan — bilan IA réservé aux abonnés Pro/Lifetime
+    const { data: sub } = await supabase
+      .from('profiles')
+      .select('subscription_status, is_admin')
+      .eq('id', user.id)
+      .single()
+    const isPro = sub?.is_admin || sub?.subscription_status === 'pro' || sub?.subscription_status === 'lifetime'
+    if (!isPro) return NextResponse.json({ data: null, error: 'Bilan IA réservé au plan Pro', paywall: true }, { status: 403 })
+
     // ── 1. Données de la séance actuelle ────────────────────────────────
     const [
       { data: workout },
@@ -48,12 +57,12 @@ export async function POST(req: NextRequest) {
         .single(),
       supabase
         .from('profiles')
-        .select('goal, experience_level, weight_kg, protein_target_g')
+        .select('goal, level, weight_kg')
         .eq('id', user.id)
         .single(),
       supabase
         .from('daily_logs')
-        .select('fatigue_level, sleep_hours, deep_sleep_min, steps, protein_g, calories')
+        .select('fatigue_score, sleep_total_min, sleep_deep_min, steps, protein_g')
         .eq('user_id', user.id)
         .order('log_date', { ascending: false })
         .limit(1)
@@ -162,8 +171,9 @@ export async function POST(req: NextRequest) {
       trendLines.push(line)
     }
 
-    const tonnageDelta = tonnageTrend.length >= 2
-      ? Math.round(((workout.total_tonnage_kg ?? 0) - tonnageTrend[tonnageTrend.length - 1]) / Math.max(1, tonnageTrend[tonnageTrend.length - 1]) * 100)
+    const lastTonnage = tonnageTrend[tonnageTrend.length - 1] ?? 0
+    const tonnageDelta = tonnageTrend.length >= 2 && lastTonnage > 0
+      ? Math.round(((workout.total_tonnage_kg ?? 0) - lastTonnage) / lastTonnage * 100)
       : null
 
     const context = [
@@ -174,12 +184,10 @@ export async function POST(req: NextRequest) {
       workout.duration_min ? `Durée : ${workout.duration_min} min` : null,
       trendLines.length > 0 ? `\nPerformances par exercice :\n${trendLines.join('\n')}` : null,
       profile?.goal ? `Objectif : ${goalLabels[profile.goal] ?? profile.goal}` : null,
-      profile?.experience_level ? `Niveau : ${levelLabels[profile.experience_level] ?? profile.experience_level}` : null,
-      lastCheckin?.fatigue_level != null ? `Fatigue : ${lastCheckin.fatigue_level}/10` : null,
-      lastCheckin?.sleep_hours ? `Sommeil : ${lastCheckin.sleep_hours}h (${lastCheckin.deep_sleep_min ?? '?'}min profond)` : null,
-      lastCheckin?.protein_g && profile?.protein_target_g
-        ? `Protéines aujourd'hui : ${Math.round(lastCheckin.protein_g)}g / objectif ${profile.protein_target_g}g`
-        : lastCheckin?.protein_g ? `Protéines aujourd'hui : ${Math.round(lastCheckin.protein_g)}g` : null,
+      profile?.level ? `Niveau : ${levelLabels[profile.level] ?? profile.level}` : null,
+      lastCheckin?.fatigue_score != null ? `Fatigue : ${lastCheckin.fatigue_score}/10` : null,
+      lastCheckin?.sleep_total_min ? `Sommeil : ${Math.round(lastCheckin.sleep_total_min / 60 * 10) / 10}h (${lastCheckin.sleep_deep_min ?? '?'}min profond)` : null,
+      lastCheckin?.protein_g ? `Protéines aujourd'hui : ${Math.round(lastCheckin.protein_g)}g` : null,
     ].filter(Boolean).join('\n')
 
     // ── 5. Appel Haiku ───────────────────────────────────────────────────
@@ -224,7 +232,8 @@ Règles :
       if (!jsonMatch) throw new Error('no JSON found')
       bilan = JSON.parse(jsonMatch[0]) as BilanResponse
       if (!bilan.insights || !Array.isArray(bilan.insights)) throw new Error('invalid structure')
-    } catch {
+    } catch (parseErr) {
+      console.error('[bilan] JSON parse failed, using fallback. Raw:', rawText.slice(0, 200), parseErr)
       bilan = {
         congrats: 'Belle séance — continue sur cette lancée.',
         insights: [
@@ -239,7 +248,8 @@ Règles :
     }
 
     return NextResponse.json({ data: bilan, error: null })
-  } catch {
+  } catch (err) {
+    console.error('[bilan] Erreur serveur:', err)
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
   }
 }

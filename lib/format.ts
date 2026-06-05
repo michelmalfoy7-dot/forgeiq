@@ -19,14 +19,6 @@ export function formatSleep(minutes: number | null | undefined): string {
 }
 
 /**
- * Formate un poids en kg avec une décimale si nécessaire
- */
-export function formatWeight(kg: number | null | undefined): string {
-  if (kg == null) return '—'
-  return kg % 1 === 0 ? `${kg}` : kg.toFixed(1)
-}
-
-/**
  * Formate une durée en minutes → "1h30" ou "45min"
  */
 export function formatDuration(minutes: number | null | undefined): string {

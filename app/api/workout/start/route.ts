@@ -10,12 +10,16 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
 
+    // Valider et normaliser le nom de séance
+    const rawName = typeof session_name === 'string' ? session_name.trim() : ''
+    const safeName = rawName.length > 0 ? rawName.slice(0, 100) : 'Séance libre'
+
     const { data, error } = await supabase
       .from('workouts')
       .insert({
         user_id: user.id,
         program_id: program_id ?? null,
-        session_name: session_name ?? 'Séance libre',
+        session_name: safeName,
         session_date: new Date().toISOString().split('T')[0],
         started_at: new Date().toISOString(),
       })

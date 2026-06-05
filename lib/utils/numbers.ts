@@ -10,11 +10,14 @@ export const roundWeight = (n: number): number =>
   Math.round(n * 100) / 100
 
 /**
- * Affichage propre d'un poids :
+ * Affichage propre d'un poids de barre/haltère (usage salle) :
  * - 1.80 → "1.8"
  * - 6.80 → "6.8"
  * - 10.00 → "10"
  * - 0.25 → "0.25"
+ *
+ * Note : pour afficher le poids corporel (null-safe, 1 décimale), utiliser
+ * formatSleep/formatDuration dans lib/format.ts ou gérer le null en amont.
  */
 export const formatWeight = (n: number): string =>
   parseFloat(roundWeight(n).toFixed(2)).toString()

@@ -1,15 +1,6 @@
-/**
- * Formate des minutes en format lisible h min
- * 82 → "1h 22min" | 60 → "1h" | 40 → "40min" | 0 → "—"
- */
-export function formatSleep(minutes: number | null | undefined): string {
-  if (!minutes || minutes <= 0) return '—'
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  if (h === 0) return `${m}min`
-  if (m === 0) return `${h}h`
-  return `${h}h ${m}min`
-}
+// Re-export depuis la source canonique — lib/format.ts
+// Évite la duplication de logique (deux implémentations légèrement divergentes existaient)
+export { formatSleep } from '@/lib/format'
 
 /**
  * Convertit heures + minutes en minutes totales pour la DB

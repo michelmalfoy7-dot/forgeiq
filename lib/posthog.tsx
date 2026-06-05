@@ -2,6 +2,10 @@
 
 import { useEffect } from 'react'
 
+// Flag module-level — évite la double initialisation (HMR, StrictMode)
+// Remplace posthog.__loaded (propriété interne non documentée, fragile aux upgrades)
+let posthogInitialized = false
+
 /**
  * Charge PostHog en différé (import dynamique) pour ne pas alourdir le bundle initial.
  * Utilisation : <PostHogProvider>{children}</PostHogProvider> dans le layout racine.
@@ -13,7 +17,8 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 
     // Import dynamique : PostHog (~70KB) ne bloque pas le LCP
     import('posthog-js').then(({ default: posthog }) => {
-      if (posthog.__loaded) return // évite la double initialisation (HMR)
+      if (posthogInitialized) return // évite la double initialisation (HMR)
+      posthogInitialized = true
       posthog.init(key, {
         api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://eu.i.posthog.com',
         capture_pageview: true,

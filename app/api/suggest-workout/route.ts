@@ -29,10 +29,10 @@ export async function GET(req: Request) {
     ] = await Promise.all([
       supabase.from('profiles')
         .select('current_program_id, sessions_per_week, goal, level, weight_kg, gym_id, gym_equipment_profiles(tier)')
-        .eq('id', user.id).single(),
+        .eq('id', user.id).maybeSingle(),
       supabase.from('daily_logs')
         .select('sleep_deep_min, fatigue_score, weight_trend')
-        .eq('user_id', user.id).eq('log_date', today).single(),
+        .eq('user_id', user.id).eq('log_date', today).maybeSingle(),
       supabase.from('personal_records')
         .select('exercise_name, value, unit, record_type')
         .eq('user_id', user.id).eq('record_type', 'top_set')
@@ -115,8 +115,10 @@ export async function GET(req: Request) {
 
       if (deepSleep < 60) adjustmentReasons.push('Sommeil profond insuffisant')
       if (fatigue >= 8) adjustmentReasons.push('Fatigue élevée')
-      // Perte de poids > 0.5kg/semaine = catabolisme potentiel → volume réduit
-      if (weightTrend !== null && profile?.weight_kg && profile.weight_kg - weightTrend > 0.5) {
+      // Perte de poids significative : EWMA < profil onboarding de plus de 3kg
+      // (comparaison profile.weight_kg = poids déclaré à l'inscription, indicateur grossier)
+      // TODO AGENT CORE : comparer EWMA J vs EWMA J-7 quand la donnée est disponible dans daily_logs
+      if (weightTrend !== null && profile?.weight_kg && profile.weight_kg - weightTrend > 3) {
         adjustmentReasons.push('Perte de poids rapide')
       }
 
@@ -183,7 +185,7 @@ weights = 75-85% du PR si disponible, sinon null.`
 
           const getCachedReason = unstable_cache(
             () => anthropic.messages.create({
-              model: 'claude-haiku-4-20250514',
+              model: 'claude-haiku-4-5-20251001',
               max_tokens: 300,
               messages: [{ role: 'user', content: prompt }],
             }),
@@ -233,7 +235,7 @@ Inclure 4-6 exercices adaptés à la séance "${sessionName}". weight_kg basé s
           // Cache 24h par user+séance — 1 génération IA max par jour
           const getCachedSuggestion = unstable_cache(
             () => anthropic.messages.create({
-              model: 'claude-haiku-4-20250514',
+              model: 'claude-haiku-4-5-20251001',
               max_tokens: 600,
               messages: [{ role: 'user', content: prompt }],
             }),

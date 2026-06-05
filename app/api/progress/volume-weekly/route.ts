@@ -1,52 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { MUSCLE_GROUPS, VOLUME_TARGETS, type MuscleVolume } from '@/lib/utils/volume'
 
 export const dynamic = 'force-dynamic'
 
-// Groupes musculaires — mapping clé Supabase → groupe normalisé
-const MUSCLE_GROUPS: Record<string, string> = {
-  chest:      'Poitrine',
-  lats:       'Dos',
-  mid_back:   'Dos',
-  upper_back: 'Dos',
-  lower_back: 'Dos',
-  traps:      'Dos',
-  front_delt: 'Épaules',
-  side_delt:  'Épaules',
-  rear_delt:  'Épaules',
-  biceps:     'Biceps',
-  triceps:    'Triceps',
-  forearms:   'Avant-bras',
-  quads:      'Jambes',
-  hamstrings: 'Jambes',
-  glutes:     'Fessiers',
-  calves:     'Mollets',
-  abs:        'Abdos',
-  core:       'Abdos',
-  obliques:   'Abdos',
-}
-
-// Seuils sets/semaine (science-based — Dr. Mike Israetel / RP)
-export const VOLUME_TARGETS: Record<string, { mev: number; mav: number }> = {
-  Poitrine:    { mev: 10, mav: 18 },
-  Dos:         { mev: 10, mav: 20 },
-  Épaules:     { mev: 8,  mav: 16 },
-  Biceps:      { mev: 6,  mav: 14 },
-  Triceps:     { mev: 6,  mav: 14 },
-  'Avant-bras':{ mev: 0,  mav: 10 },
-  Jambes:      { mev: 10, mav: 20 },
-  Fessiers:    { mev: 6,  mav: 16 },
-  Mollets:     { mev: 6,  mav: 14 },
-  Abdos:       { mev: 6,  mav: 16 },
-}
-
-export type MuscleVolume = {
-  muscle: string
-  sets: number
-  mev: number
-  mav: number
-  status: 'low' | 'optimal' | 'high'  // sous MEV / dans MEV-MAV / au-delà MAV
-}
 
 /**
  * GET /api/progress/volume-weekly
@@ -68,43 +25,28 @@ export async function GET() {
     monday.setHours(0, 0, 0, 0)
     const weekStart = monday.toISOString().split('T')[0]
 
-    // Récupérer les sets de travail de la semaine avec le groupe musculaire de l'exercice
-    const { data: sets, error } = await supabase
-      .from('workout_sets')
-      .select('exercise_id, exercises_library!inner(muscle_primary)')
-      .eq('workouts.user_id', user.id)
-      .eq('is_warmup', false)
-      .neq('reps', 0)
-      .gte('workouts.session_date', weekStart)
-      .not('workouts.completed_at', 'is', null)
+    // Requête en deux temps — la jointure imbriquée workout_sets→workouts via Supabase JS
+    // ne supporte pas les filtres sur la table parente (user_id, session_date).
+    const { data: weekWorkouts } = await supabase
+      .from('workouts')
+      .select('id')
+      .eq('user_id', user.id)
+      .gte('session_date', weekStart)
+      .not('completed_at', 'is', null)
 
-    // La jointure via FK imbriquée ne fonctionne pas toujours avec Supabase JS.
-    // On passe par une requête plus simple sur workouts de la semaine.
-    if (error || !sets) {
-      // Fallback : requête en deux temps
-      const { data: weekWorkouts } = await supabase
-        .from('workouts')
-        .select('id')
-        .eq('user_id', user.id)
-        .gte('session_date', weekStart)
-        .not('completed_at', 'is', null)
-
-      const workoutIds = (weekWorkouts ?? []).map(w => w.id)
-      if (workoutIds.length === 0) {
-        return NextResponse.json({ data: buildEmptyVolume(), error: null })
-      }
-
-      const { data: weekSets } = await supabase
-        .from('workout_sets')
-        .select('exercise_id, exercises_library(muscle_primary)')
-        .in('workout_id', workoutIds)
-        .eq('is_warmup', false)
-        .neq('reps', 0)
-
-      return NextResponse.json({ data: aggregateVolume(weekSets ?? []), error: null })
+    const workoutIds = (weekWorkouts ?? []).map(w => w.id)
+    if (workoutIds.length === 0) {
+      return NextResponse.json({ data: buildEmptyVolume(), error: null })
     }
 
-    return NextResponse.json({ data: aggregateVolume(sets ?? []), error: null })
+    const { data: weekSets } = await supabase
+      .from('workout_sets')
+      .select('exercise_id, exercises_library(muscle_primary)')
+      .in('workout_id', workoutIds)
+      .eq('is_warmup', false)
+      .neq('reps', 0)
+
+    return NextResponse.json({ data: aggregateVolume(weekSets ?? []), error: null })
   } catch {
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
   }

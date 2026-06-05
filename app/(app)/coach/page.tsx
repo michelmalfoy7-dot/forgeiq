@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, Send, Bot, User, Sparkles, Trash2, Crown, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
+import { PaywallModal } from '@/components/ui/PaywallModal'
 
 type Message = { role: 'user' | 'assistant'; content: string; streaming?: boolean }
 
@@ -219,8 +220,7 @@ export default function CoachPage() {
   const [coachLimit, setCoachLimit] = useState(9999)
   const [isFree, setIsFree] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
-  const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null)
-  const [isInTrial, setIsInTrial] = useState(false)
+  const [showPaywall, setShowPaywall] = useState(false)
   const [followUps] = useState<string[]>(getFollowUps())
   const [clearing, setClearing] = useState(false)
   // Volume hebdo + alerte deload
@@ -302,7 +302,7 @@ export default function CoachPage() {
         if (overloaded.length >= 2) setDeloadMuscles(overloaded)
       }
 
-      // Déterminer tier et limite
+      // Déterminer tier et limite — aligné sur la logique serveur
       const status = profile?.subscription_status ?? 'free'
       const plan = profile?.subscription_plan ?? 'free'
       const admin = profile?.is_admin ?? false
@@ -310,34 +310,18 @@ export default function CoachPage() {
       const free = !admin && status !== 'pro' && status !== 'lifetime'
       setIsFree(free)
 
-      // Période d'essai gratuit : 30 jours post-inscription
-      const accountCreatedAt = new Date(user.created_at ?? Date.now())
-      const accountAgeDays = (Date.now() - accountCreatedAt.getTime()) / (1000 * 60 * 60 * 24)
-      const daysLeft = Math.max(0, Math.ceil(30 - accountAgeDays))
-      const inTrial = free && accountAgeDays < 30
-      setIsInTrial(inTrial)
-      setTrialDaysLeft(inTrial ? daysLeft : null)
-
       if (admin) {
         setCoachLimit(9999)
         setCoachCount(0)
-      } else if (inTrial) {
-        // Essai gratuit : 10 messages/mois calendaire pendant 30 jours
-        const startOfMonth = new Date()
-        startOfMonth.setUTCDate(1)
-        startOfMonth.setUTCHours(0, 0, 0, 0)
-        setCoachLimit(10)
-        const { count: monthly } = await supabase
+      } else if (free) {
+        // Free : 5 messages TOTAL à vie
+        setCoachLimit(5)
+        const { count: total } = await supabase
           .from('coach_messages')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', user.id)
           .eq('role', 'user')
-          .gte('created_at', startOfMonth.toISOString())
-        setCoachCount(monthly ?? 0)
-      } else if (free) {
-        // Essai terminé → bloqué
-        setCoachLimit(0)
-        setCoachCount(1)
+        setCoachCount(total ?? 0)
       } else {
         // Pro — comptage mensuel
         const limit = (status === 'lifetime' || plan === 'annual') ? 9999 : 60
@@ -373,6 +357,7 @@ export default function CoachPage() {
 
   async function clearHistory() {
     if (clearing) return
+    if (!window.confirm('Effacer toute la conversation ? Cette action est irréversible.')) return
     setClearing(true)
     try {
       const supabase = createClient()
@@ -403,31 +388,18 @@ export default function CoachPage() {
         body: JSON.stringify({ message: text }),
       })
 
-      if (res.status === 429) {
-        const { error: limitErr } = await res.json()
-        setMessages(prev => {
-          const updated = [...prev]
-          updated[updated.length - 1] = {
-            role: 'assistant',
-            content: limitErr ?? 'Limite mensuelle atteinte. Passez en Pro pour un accès illimité.',
-            streaming: false,
-          }
-          return updated
-        })
+      if (res.status === 429 || res.status === 403) {
+        // Supprimer le message "..." placeholder et afficher le paywall
+        setMessages(prev => prev.slice(0, -1))
         setLoading(false)
+        setShowPaywall(true)
         return
       }
       if (!res.ok || !res.body) throw new Error('Erreur réseau')
 
-      // Lire le compteur + trial depuis les headers de réponse
+      // Lire le compteur depuis les headers de réponse
       const headerCount = res.headers.get('X-Coach-Count')
       if (headerCount) setCoachCount(parseInt(headerCount))
-      const headerTrialDays = res.headers.get('X-Coach-Trial-Days-Left')
-      const headerInTrial = res.headers.get('X-Coach-In-Trial')
-      if (headerInTrial === 'true' && headerTrialDays) {
-        setIsInTrial(true)
-        setTrialDaysLeft(parseInt(headerTrialDays))
-      }
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -486,6 +458,8 @@ export default function CoachPage() {
   const limitReached = coachCount >= coachLimit
 
   return (
+    <>
+    {showPaywall && <PaywallModal onClose={() => setShowPaywall(false)} trigger="coach" />}
     <div className="flex flex-col max-w-lg mx-auto" style={{ height: 'calc(100dvh - 4rem - env(safe-area-inset-bottom))' }}>
       {/* Header */}
       <div className="px-4 pt-4 pb-3 flex-shrink-0 flex items-start justify-between">
@@ -667,12 +641,11 @@ export default function CoachPage() {
               }
             }}
             placeholder={
-              !isFree ? 'Pose ta question au coach...'
-              : !isInTrial ? '🔒 Essai terminé — Passe en Pro...'
+              limitReached && isFree ? '🔒 5 messages utilisés — Passe en Pro...'
               : limitReached ? '🔒 Limite du mois atteinte — reviens le 1er ou passe en Pro...'
               : 'Pose ta question au coach...'
             }
-            disabled={loading || (isFree && (!isInTrial || limitReached))}
+            disabled={loading || (isFree && limitReached)}
             className="flex-1 resize-none rounded-xl px-4 py-3 text-sm outline-none transition-all"
             style={{
               background: 'var(--fiq-card)',
@@ -684,7 +657,7 @@ export default function CoachPage() {
           />
           <button
             onClick={() => sendMessage(input)}
-            disabled={loading || !input.trim() || (isFree && (!isInTrial || limitReached))}
+            disabled={loading || !input.trim() || (isFree && limitReached)}
             className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-all"
             style={{
               background: input.trim() && !loading ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
@@ -698,37 +671,35 @@ export default function CoachPage() {
           </button>
         </div>
 
-        {/* Compteur quota free — visible dès le début (pas seulement après 1 message) */}
-        {/* Bannière essai gratuit — 10/mois pendant 30j */}
-        {isFree && isInTrial && !historyLoading && (
-          <div className="mt-2 flex items-center justify-between gap-2">
-            <p className="text-xs" style={{ color: limitReached ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
-              🎁{' '}
-              {limitReached
-                ? <>Limite atteinte · <Link href="/pricing" style={{ color: 'var(--fiq-accent)', fontWeight: 700 }}>Pro →</Link></>
-                : <><span className="font-black" style={{ color: 'var(--fiq-accent)' }}>{coachCount}/{10}</span> ce mois · essai gratuit</>}
-            </p>
-            <p className="text-xs" style={{ color: (trialDaysLeft ?? 30) <= 5 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
-              {(trialDaysLeft ?? 0) > 0 && `${trialDaysLeft}j restant${(trialDaysLeft ?? 0) > 1 ? 's' : ''} · `}
-              <Link href="/pricing" style={{ color: 'var(--fiq-accent)', fontWeight: 700 }}>Pro →</Link>
-            </p>
-          </div>
-        )}
-
-        {/* Mur d'upgrade — essai 30j terminé */}
-        {isFree && !isInTrial && (
-          <div className="mt-3 rounded-2xl p-4 flex items-center gap-3"
-            style={{ background: '#B4FF4A12', border: '1px solid #B4FF4A44' }}>
-            <Crown className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Essai gratuit terminé</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Passe en Pro pour continuer avec le coach IA.</p>
-            </div>
-            <Link href="/pricing"
-              className="px-3 py-2 rounded-xl text-xs font-black flex-shrink-0"
-              style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
-              Pro →
-            </Link>
+        {/* Compteur free — 5 messages offerts */}
+        {isFree && !historyLoading && (
+          <div className="mt-2">
+            {limitReached ? (
+              <button
+                onClick={() => setShowPaywall(true)}
+                className="w-full flex items-center justify-between gap-2 rounded-2xl px-4 py-3"
+                style={{ background: '#B4FF4A12', border: '1px solid #B4FF4A44' }}
+              >
+                <div className="flex items-center gap-2">
+                  <Crown className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
+                  <div className="text-left">
+                    <p className="text-xs font-black" style={{ color: 'var(--fiq-text)' }}>5 messages offerts utilisés</p>
+                    <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>Tap pour débloquer le coach illimité</p>
+                  </div>
+                </div>
+                <span className="text-xs font-black px-2.5 py-1.5 rounded-xl flex-shrink-0"
+                  style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
+                  Pro →
+                </span>
+              </button>
+            ) : (
+              <p className="text-xs text-center" style={{ color: 'var(--fiq-muted)' }}>
+                🎁 <span className="font-black" style={{ color: 'var(--fiq-accent)' }}>{5 - coachCount}</span> message{5 - coachCount > 1 ? 's' : ''} offert{5 - coachCount > 1 ? 's' : ''} restant{5 - coachCount > 1 ? 's' : ''} ·{' '}
+                <button onClick={() => setShowPaywall(true)} style={{ color: 'var(--fiq-accent)', fontWeight: 700 }}>
+                  Passer en Pro
+                </button>
+              </p>
+            )}
           </div>
         )}
 
@@ -741,5 +712,6 @@ export default function CoachPage() {
         )}
       </div>
     </div>
+    </>
   )
 }

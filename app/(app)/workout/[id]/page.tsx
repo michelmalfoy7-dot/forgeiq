@@ -248,6 +248,7 @@ export default function WorkoutSessionPage() {
   // ── Auto-save Supabase au changement de visibilité ────────
   useEffect(() => {
     const handleVisibility = () => {
+      if (!loadedRef.current) return // Ne pas sauvegarder avant le chargement initial
       if (document.visibilityState === 'hidden' && groups.length > 0 && !completed) {
         // LocalStorage
         try {
@@ -332,18 +333,25 @@ export default function WorkoutSessionPage() {
         const draftRes = await fetch(`/api/workout/save-draft?workout_id=${workoutId}`)
         const { data: draft } = await draftRes.json()
         if (draft?.groups?.length > 0) {
-          setGroups(draft.groups)
-          if (draft.session_name) setSessionName(draft.session_name)
-          // Ré-hydrater localStorage pour les prochains accès
-          localStorage.setItem(STORAGE_KEY, JSON.stringify({
-            groups: draft.groups,
-            sessionName: draft.session_name,
-            savedAt: Date.now(),
-          }))
-          loadedRef.current = true
-          setRestoredFromStorage(true)
-          setTimeout(() => setRestoredFromStorage(false), 4000)
-          return
+          // Vérifier que le draft n'est pas trop ancien (> 24h) pour éviter
+          // de charger un état obsolète après une longue absence
+          const draftSavedAt = draft.saved_at ? new Date(draft.saved_at).getTime() : 0
+          if (Date.now() - draftSavedAt > 86400000) {
+            // Draft trop ancien — ignorer et laisser la séance partir vide
+          } else {
+            setGroups(draft.groups)
+            if (draft.session_name) setSessionName(draft.session_name)
+            // Ré-hydrater localStorage pour les prochains accès
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+              groups: draft.groups,
+              sessionName: draft.session_name,
+              savedAt: draftSavedAt || Date.now(),
+            }))
+            loadedRef.current = true
+            setRestoredFromStorage(true)
+            setTimeout(() => setRestoredFromStorage(false), 4000)
+            return
+          }
         }
       } catch { /* ignore */ }
 
@@ -358,12 +366,19 @@ export default function WorkoutSessionPage() {
           // Si aucun match (ex: machine Hammer Strength non en bibliothèque, nom by_tier
           // résolu différemment), on l'ajoute quand même sans données lastSession/PR.
           // Avant : les exercices sans match étaient silencieusement supprimés → séance incomplète.
+          //
+          // Normalisation : retire accents, tirets, caractères spéciaux → réduit les faux non-matchs
+          const normName = (s: string) =>
+            s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[-_]/g, ' ')
+             .replace(/[^a-z0-9 ]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase()
+
           const withMatches = suggested.map((s) => ({
             s,
             match: library.find((e) =>
               (s.slug && e.slug && e.slug === s.slug) ||
-              (e.name_fr ?? '').toLowerCase() === s.name.toLowerCase() ||
-              e.name.toLowerCase() === s.name.toLowerCase()
+              normName(e.name_fr ?? '') === normName(s.name) ||
+              normName(e.name) === normName(s.name) ||
+              (e.aliases ?? []).some(a => normName(a.alias) === normName(s.name))
             ) ?? null,
           }))
 
