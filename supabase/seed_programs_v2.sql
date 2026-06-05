@@ -128,7 +128,7 @@ VALUES (
             "sets": 3, "reps": "10-15", "rest_sec": 120,
             "note": "Dos droit, tirer le coude vers la hanche, pause d'une seconde en contraction.",
             "by_tier": {
-              "premium":  {"slug": "seated-cable-row", "name_fr": "Iso-Lateral Row Hammer Strength"},
+              "premium":  {"slug": "rowing-iso-lateral-hammer-strength", "name_fr": "Rowing ISO-Latéral Hammer Strength"},
               "standard": {"slug": "seated-cable-row", "name_fr": "Tirage horizontal câble"},
               "home":     {"slug": "dumbbell-row", "name_fr": "Rowing haltère unilatéral"}
             }
@@ -269,7 +269,7 @@ VALUES (
             "sets": 3, "reps": "10-15", "rest_sec": 120,
             "note": "Dos droit, tirer le coude vers la hanche. Volume dosé pour préserver le dos.",
             "by_tier": {
-              "premium":  {"slug": "seated-cable-row", "name_fr": "Iso-Lateral Row Hammer Strength"},
+              "premium":  {"slug": "rowing-iso-lateral-hammer-strength", "name_fr": "Rowing ISO-Latéral Hammer Strength"},
               "standard": {"slug": "seated-cable-row", "name_fr": "Tirage horizontal câble"},
               "home":     {"slug": "barbell-row", "name_fr": "Rowing barre"}
             }
@@ -381,7 +381,7 @@ VALUES (
             "sets": 4, "reps": "8-12", "rest_sec": 150,
             "note": "Mouvement principal dos — compression maximale des scapulas.",
             "by_tier": {
-              "premium":  {"slug": "seated-cable-row", "name_fr": "Iso-Lateral Row Hammer Strength"},
+              "premium":  {"slug": "rowing-iso-lateral-hammer-strength", "name_fr": "Rowing ISO-Latéral Hammer Strength"},
               "standard": {"slug": "seated-cable-row", "name_fr": "Tirage horizontal câble"},
               "home":     {"slug": "barbell-row", "name_fr": "Rowing barre"}
             }
@@ -522,7 +522,7 @@ VALUES (
             "sets": 3, "reps": "10-15", "rest_sec": 120,
             "note": "Angle 30-40°, étirement maximal en bas. Faisceau claviculaire du pectoral.",
             "by_tier": {
-              "premium":  {"slug": "incline-barbell-bench-press", "name_fr": "Incline Chest Press Hammer Strength"},
+              "premium":  {"slug": "developpe-incline-hammer-strength", "name_fr": "Développé Incliné Hammer Strength"},
               "standard": {"slug": "incline-barbell-bench-press", "name_fr": "Développé incliné haltères"},
               "home":     {"slug": "incline-barbell-bench-press", "name_fr": "Développé incliné haltères"}
             }
@@ -578,7 +578,7 @@ VALUES (
             "sets": 3, "reps": "10-15", "rest_sec": 120,
             "note": "Rowing horizontal — compression scapulas en fin de mouvement.",
             "by_tier": {
-              "premium":  {"slug": "seated-cable-row", "name_fr": "Iso-Lateral Row Hammer Strength"},
+              "premium":  {"slug": "rowing-iso-lateral-hammer-strength", "name_fr": "Rowing ISO-Latéral Hammer Strength"},
               "standard": {"slug": "seated-cable-row", "name_fr": "Tirage horizontal câble"},
               "home":     {"slug": "barbell-row", "name_fr": "Rowing barre"}
             }
@@ -736,7 +736,7 @@ VALUES (
             "sets": 4, "reps": "8-12", "rest_sec": 180,
             "note": "Rowing horizontal heavy — dos droit, coude vers hanche, compression 1s.",
             "by_tier": {
-              "premium":  {"slug": "seated-cable-row", "name_fr": "Iso-Lateral Row Hammer Strength"},
+              "premium":  {"slug": "rowing-iso-lateral-hammer-strength", "name_fr": "Rowing ISO-Latéral Hammer Strength"},
               "standard": {"slug": "seated-cable-row", "name_fr": "Tirage horizontal câble"},
               "home":     {"slug": "barbell-row", "name_fr": "Rowing barre Pendlay"}
             }

@@ -34,16 +34,32 @@ export default async function ProgramsPage() {
       .eq('is_public', true)
       .order('sessions_per_week', { ascending: true }),
     supabase.from('profiles')
-      .select('current_program_id, goal, level, equipment, gym_id, gym_equipment_profiles(tier, name, logo_emoji)')
+      .select('current_program_id, goal, level, equipment, gym_id, subscription_status, gym_equipment_profiles(tier, name, logo_emoji, features)')
       .eq('id', user.id).single(),
   ])
 
-  // Résoudre le tier de la salle de l'utilisateur
-  type GymRef = { tier: string; name: string; logo_emoji: string } | null
+  // Résoudre les infos de salle de l'utilisateur
+  type GymRef = { tier: string; name: string; logo_emoji: string; features: string[] } | null
   const gymRef = (profile as unknown as { gym_equipment_profiles?: GymRef })?.gym_equipment_profiles ?? null
   const gymTier = (gymRef?.tier as 'premium' | 'standard' | 'home' | null) ?? null
   const gymName = gymRef?.name ?? null
   const gymEmoji = gymRef?.logo_emoji ?? null
+  const gymFeatures = gymRef?.features ?? null
+
+  // Plan et quota générateur IA
+  const subStatus = (profile as unknown as { subscription_status?: string })?.subscription_status ?? 'free'
+  const isPro = subStatus === 'pro' || subStatus === 'lifetime'
+
+  const startOfMonth = new Date()
+  startOfMonth.setDate(1)
+  startOfMonth.setHours(0, 0, 0, 0)
+  const { count: aiUsed } = await supabase
+    .from('programs')
+    .select('id', { count: 'exact', head: true })
+    .eq('created_by', user.id)
+    .eq('is_ai_generated', true)
+    .gte('created_at', startOfMonth.toISOString())
+  const generationsLeft = Math.max(0, 3 - (aiUsed ?? 0))
 
   return (
     <div className="p-4 max-w-lg mx-auto">
@@ -60,6 +76,9 @@ export default async function ProgramsPage() {
         gymTier={gymTier}
         gymName={gymName}
         gymEmoji={gymEmoji}
+        gymFeatures={gymFeatures}
+        isPro={isPro}
+        generationsLeft={generationsLeft}
       />
     </div>
   )

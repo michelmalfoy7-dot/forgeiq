@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Dumbbell, Calendar, Clock, CheckCircle, X, ChevronRight, Filter, Eye } from 'lucide-react'
+import { Plus, Dumbbell, Calendar, Clock, CheckCircle, X, ChevronRight, Filter, Eye, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 
 type TierKey = 'premium' | 'standard' | 'home'
@@ -19,6 +19,8 @@ type ProgramExercise = {
   // Format v2 — sélection par tier salle
   slot?: string
   by_tier?: Record<TierKey, ExerciseTierOption>
+  // Format v3 — sélection par équipement spécifique (hammer_strength, technogym, etc.)
+  by_feature?: Record<string, ExerciseTierOption>
   // Communs
   sets: number
   reps: string
@@ -46,13 +48,31 @@ type Program = {
   is_custom: boolean
 }
 
-// Nom d'affichage d'un exercice selon le tier de la salle
-// Priorité : by_tier[tier] → by_tier.standard → name_fr → 'Exercice'
-function getExerciseName(ex: ProgramExercise, tier: TierKey | null): string {
+/**
+ * Résout le nom d'affichage d'un exercice selon l'équipement réel de la salle.
+ * Cascade de priorité :
+ *  1. by_feature[feature] — pour chaque équipement listé dans gymFeatures (ordre du tableau)
+ *  2. by_tier[tier]       — fallback par catégorie de salle
+ *  3. name_fr             — ancien format v1
+ */
+function getExerciseName(
+  ex: ProgramExercise,
+  tier: TierKey | null,
+  gymFeatures?: string[] | null
+): string {
+  // Résolution précise par équipement disponible
+  if (ex.by_feature && gymFeatures && gymFeatures.length > 0) {
+    for (const feature of gymFeatures) {
+      const match = ex.by_feature[feature]
+      if (match?.name_fr) return match.name_fr
+    }
+  }
+  // Fallback par tier de salle
   if (ex.by_tier) {
     const key = tier ?? 'standard'
     return ex.by_tier[key]?.name_fr ?? ex.by_tier.standard?.name_fr ?? 'Exercice'
   }
+  // Ancien format v1
   return ex.name_fr ?? 'Exercice'
 }
 
@@ -70,6 +90,9 @@ type Props = {
   gymTier?: TierKey | null
   gymName?: string | null
   gymEmoji?: string | null
+  gymFeatures?: string[] | null
+  isPro?: boolean
+  generationsLeft?: number
 }
 
 const LEVEL_LABELS: Record<string, string> = {
@@ -104,9 +127,10 @@ function Badge({ label, color = 'accent' }: { label: string; color?: 'accent' | 
   )
 }
 
-function AdoptModal({ program, onClose, onConfirm, loading, gymTier, gymName, gymEmoji }: {
+function AdoptModal({ program, onClose, onConfirm, loading, gymTier, gymName, gymEmoji, gymFeatures }: {
   program: Program; onClose: () => void; onConfirm: () => void; loading: boolean
   gymTier: TierKey | null; gymName: string | null; gymEmoji: string | null
+  gymFeatures: string[] | null
 }) {
   const [expandedDay, setExpandedDay] = useState<number | null>(null)
 
@@ -178,7 +202,7 @@ function AdoptModal({ program, onClose, onConfirm, loading, gymTier, gymName, gy
                 {isExpanded && exercises.length > 0 && (
                   <div className="px-3 pb-3 space-y-1.5" style={{ background: '#B4FF4A05' }}>
                     {exercises.map((ex, j) => {
-                      const exName = getExerciseName(ex, gymTier)
+                      const exName = getExerciseName(ex, gymTier, gymFeatures)
                       return (
                         <div key={j} className="flex items-start gap-2">
                           <span className="text-[10px] mt-0.5 font-black w-4 flex-shrink-0"
@@ -226,7 +250,7 @@ function AdoptModal({ program, onClose, onConfirm, loading, gymTier, gymName, gy
   )
 }
 
-export function ProgramsClient({ programs, currentProgramId, userGoal, userLevel, userEquipment, gymTier = null, gymName = null, gymEmoji = null }: Props) {
+export function ProgramsClient({ programs, currentProgramId, userGoal, userLevel, userEquipment, gymTier = null, gymName = null, gymEmoji = null, gymFeatures = null, isPro = false, generationsLeft = 0 }: Props) {
   const router = useRouter()
   const [filterLevel, setFilterLevel] = useState<string>('all')
   const [filterGoal, setFilterGoal] = useState<string>('all')
@@ -283,6 +307,48 @@ export function ProgramsClient({ programs, currentProgramId, userGoal, userLevel
           <span className="text-base">🏋️</span>
           <span className="flex-1">Configure ta salle pour des exercices adaptés</span>
           <ChevronRight className="w-4 h-4 flex-shrink-0" />
+        </Link>
+      )}
+
+      {/* Carte générateur IA — Pro/Lifetime uniquement */}
+      {isPro ? (
+        <Link href="/programs/generate"
+          className="flex items-center gap-3 px-4 py-3.5 rounded-2xl mb-4"
+          style={{ background: '#B4FF4A10', border: '1px solid #B4FF4A40' }}>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: 'var(--fiq-accent)' }}>
+            <Sparkles className="w-4 h-4" style={{ color: 'var(--bg)' }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-black text-sm" style={{ color: 'var(--fiq-accent)' }}>
+              Générer mon programme IA
+            </p>
+            <p className="text-[10px] mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+              Sur mesure · PRs · Salle · {generationsLeft}/3 restantes ce mois
+            </p>
+          </div>
+          <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
+        </Link>
+      ) : (
+        <Link href="/pricing"
+          className="flex items-center gap-3 px-4 py-3 rounded-2xl mb-4"
+          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+            <Sparkles className="w-4 h-4" style={{ color: 'var(--fiq-muted)' }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm" style={{ color: 'var(--fiq-text)' }}>
+              Programme IA personnalisé
+            </p>
+            <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+              Disponible en Pro · Adapté à tes PRs et ta salle
+            </p>
+          </div>
+          <span className="text-[10px] font-black px-2 py-0.5 rounded-full flex-shrink-0"
+            style={{ background: '#B4FF4A22', color: 'var(--fiq-accent)', border: '1px solid #B4FF4A44' }}>
+            PRO
+          </span>
         </Link>
       )}
 
@@ -484,6 +550,7 @@ export function ProgramsClient({ programs, currentProgramId, userGoal, userLevel
           gymTier={gymTier ?? null}
           gymName={gymName ?? null}
           gymEmoji={gymEmoji ?? null}
+          gymFeatures={gymFeatures ?? null}
         />
       )}
     </>

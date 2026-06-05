@@ -62,11 +62,19 @@ export default async function ProgramDetailPage({ params }: Props) {
       .eq('slug', slug)
       .single(),
     supabase.from('profiles')
-      .select('current_program_id')
+      .select('current_program_id, gym_id, gym_equipment_profiles(tier, name, logo_emoji, features)')
       .eq('id', user.id).single(),
   ])
 
   if (!program) notFound()
+
+  // Résoudre les infos de salle pour adapter les exercices affichés
+  type GymRef = { tier: string; name: string; logo_emoji: string; features: string[] } | null
+  const gymRef = (profile as unknown as { gym_equipment_profiles?: GymRef })?.gym_equipment_profiles ?? null
+  const gymTier = (gymRef?.tier as 'premium' | 'standard' | 'home' | null) ?? null
+  const gymName = gymRef?.name ?? null
+  const gymEmoji = gymRef?.logo_emoji ?? null
+  const gymFeatures = gymRef?.features ?? null
 
   return (
     <div className="p-4 max-w-lg mx-auto pb-24">
@@ -88,6 +96,10 @@ export default async function ProgramDetailPage({ params }: Props) {
       <ProgramDetailClient
         program={program}
         currentProgramId={profile?.current_program_id ?? null}
+        gymTier={gymTier}
+        gymName={gymName}
+        gymEmoji={gymEmoji}
+        gymFeatures={gymFeatures}
       />
     </div>
   )
