@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { WorkoutPost } from '@/components/social/WorkoutPost'
 import { FollowButton } from '@/components/social/FollowButton'
+import { ShareBig5Button } from '@/components/social/ShareBig5Button'
 import type { FeedPost } from '@/components/social/WorkoutPost'
 import { buildExercisesMap } from '@/lib/utils/social'
 import { categorizeBig5 } from '@/lib/utils/big5'
@@ -301,10 +302,12 @@ export default async function PublicProfilePage({ params }: PageProps) {
           <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--fiq-border)' }}>
             <div className="flex items-center justify-between">
               <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Records — Big 5</p>
-              <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                style={{ background: '#B4FF4A15', color: 'var(--fiq-accent)', border: '1px solid #B4FF4A30' }}>
-                {big5Filled.length}/5
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                  style={{ background: '#B4FF4A15', color: 'var(--fiq-accent)', border: '1px solid #B4FF4A30' }}>
+                  {big5Filled.length}/5
+                </span>
+              </div>
             </div>
           </div>
           <div className="divide-y" style={{ borderColor: 'var(--fiq-border)' }}>
@@ -331,6 +334,14 @@ export default async function PublicProfilePage({ params }: PageProps) {
                 )}
               </div>
             ))}
+          </div>
+          {/* Bouton partage carte Big5 */}
+          <div className="px-4 py-3" style={{ borderTop: '1px solid var(--fiq-border)' }}>
+            <ShareBig5Button
+              userId={targetProfile.user_id}
+              username={targetProfile.username}
+              displayName={targetProfile.display_name ?? targetProfile.username ?? 'athlete'}
+            />
           </div>
         </div>
       )}
