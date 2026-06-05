@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
+import Link from 'next/link'
 import Image from 'next/image'
 import { WorkoutPost } from '@/components/social/WorkoutPost'
 import { FollowButton } from '@/components/social/FollowButton'
@@ -289,20 +290,26 @@ export default async function PublicProfilePage({ params }: PageProps) {
           </div>
         </div>
 
-        {/* Compteurs followers/following */}
+        {/* Compteurs followers/following — cliquables */}
         <div className="flex gap-4">
-          <div className="text-center">
+          <Link
+            href={`/u/${targetProfile.username}/followers`}
+            className="text-center transition-opacity active:opacity-70"
+          >
             <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>
               {targetProfile.followers_count ?? 0}
             </p>
             <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>abonnés</p>
-          </div>
-          <div className="text-center">
+          </Link>
+          <Link
+            href={`/u/${targetProfile.username}/followers?tab=following`}
+            className="text-center transition-opacity active:opacity-70"
+          >
             <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>
               {targetProfile.following_count ?? 0}
             </p>
             <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>abonnements</p>
-          </div>
+          </Link>
         </div>
 
         {/* Bouton Follow (si pas son propre profil) */}
