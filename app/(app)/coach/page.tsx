@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, Send, Bot, User, Sparkles, Trash2, Crown, AlertTriangle } from 'lucide-react'
+import { Loader2, Send, Bot, User, Sparkles, Trash2, Crown, AlertTriangle, Utensils, Beef, Moon } from 'lucide-react'
+import { FiqDumbbell } from '@/components/ui/FiqIcons'
 import Link from 'next/link'
 import { PaywallModal } from '@/components/ui/PaywallModal'
 
@@ -498,25 +499,25 @@ export default function CoachPage() {
           {/* Sommeil profond */}
           {dailyCtx.sleep_deep_min !== null && (
             <span className="whitespace-nowrap flex-shrink-0" style={{ color: dailyCtx.sleep_deep_min < 60 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
-              😴 {dailyCtx.sleep_deep_min}min
+              <Moon size={11} style={{ display: 'inline', marginRight: 3 }} />{dailyCtx.sleep_deep_min}min
             </span>
           )}
           {/* Calories consommées */}
           {dailyCtx.calories_consumed !== null && (
             <span className="whitespace-nowrap flex-shrink-0" style={{ color: 'var(--fiq-muted)' }}>
-              🍽️ <span style={{ color: 'var(--fiq-text)', fontWeight: 700 }}>{dailyCtx.calories_consumed}</span> kcal
+              <Utensils size={11} style={{ display: 'inline', marginRight: 3 }} /><span style={{ color: 'var(--fiq-text)', fontWeight: 700 }}>{dailyCtx.calories_consumed}</span> kcal
             </span>
           )}
           {/* Protéines */}
           {dailyCtx.protein_g !== null && (
             <span className="whitespace-nowrap flex-shrink-0" style={{ color: dailyCtx.protein_g < proteinTarget - 20 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
-              🥩 {dailyCtx.protein_g}g/{proteinTarget}g
+              <Beef size={11} style={{ display: 'inline', marginRight: 3 }} />{dailyCtx.protein_g}g/{proteinTarget}g
             </span>
           )}
           {/* Dernière séance + tonnage */}
           {dailyCtx.last_session_name && (
             <span className="whitespace-nowrap flex-shrink-0" style={{ color: 'var(--fiq-muted)' }}>
-              🏋️ <span style={{ color: 'var(--fiq-text)', fontWeight: 700 }}>{dailyCtx.last_session_name}</span>
+              <FiqDumbbell size={11} style={{ display: 'inline', marginRight: 3 }} /><span style={{ color: 'var(--fiq-text)', fontWeight: 700 }}>{dailyCtx.last_session_name}</span>
               {dailyCtx.last_tonnage != null && (
                 <span> · {Math.round(dailyCtx.last_tonnage / 1000 * 10) / 10}t</span>
               )}

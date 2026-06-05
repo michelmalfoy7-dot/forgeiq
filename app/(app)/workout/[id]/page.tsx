@@ -5,7 +5,8 @@ import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Dumbbell } from 'lucide-react'
+import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Dumbbell, Zap } from 'lucide-react'
+import { FiqDumbbell, FiqPR, FiqStreak, FiqCircuit, FiqCheck, FiqAlert } from '@/components/ui/FiqIcons'
 import { Confetti } from '@/components/ui/Confetti'
 import { PlateCalculatorModal } from '@/components/workout/PlateCalculatorModal'
 import { roundWeight, weightDelta } from '@/lib/utils/numbers'
@@ -1003,7 +1004,9 @@ export default function WorkoutSessionPage() {
       <div className="min-h-screen flex items-center justify-center p-6" style={{ background: 'var(--bg)' }}>
         {summary.newPRs.length > 0 && <Confetti active />}
         <div className="w-full max-w-sm space-y-6 text-center">
-          <div className="text-5xl">🏆</div>
+          <div className="flex justify-center">
+            <FiqPR size={52} style={{ color: 'var(--fiq-accent)' }} />
+          </div>
           <div>
             <h2 className="text-2xl fiq-display" style={{ color: 'var(--fiq-text)' }}>Séance terminée !</h2>
             <p className="text-sm mt-1" style={{ color: 'var(--fiq-muted)' }}>{formatTime(elapsed)} d&apos;entraînement</p>
@@ -1031,7 +1034,10 @@ export default function WorkoutSessionPage() {
                 </p>
               </div>
               {summary.newPRs.map((name) => (
-                <p key={name} className="text-sm" style={{ color: 'var(--fiq-text)' }}>🎯 {name}</p>
+                <p key={name} className="text-sm flex items-center gap-1.5" style={{ color: 'var(--fiq-text)' }}>
+                  <Check className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
+                  {name}
+                </p>
               ))}
             </div>
           )}
@@ -1125,7 +1131,8 @@ export default function WorkoutSessionPage() {
               {/* Header */}
               <div className="flex items-center justify-between">
                 <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>
-                  🔥 Fais voir ta séance !
+                  <FiqStreak size={14} style={{ color: 'var(--fiq-orange)', display: 'inline', marginRight: 4 }} />
+                  Fais voir ta séance !
                 </p>
                 <button onClick={() => setShareDismissed(true)} className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
                   Passer
@@ -1164,8 +1171,9 @@ export default function WorkoutSessionPage() {
                     </div>
                     {summary.newPRs.length > 0 && (
                       <div>
-                        <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-yellow)' }}>
-                          🏆 {summary.newPRs.length}
+                        <p className="text-lg font-black fiq-data flex items-center gap-1" style={{ color: 'var(--fiq-yellow)' }}>
+                          <FiqPR size={16} />
+                          {summary.newPRs.length}
                         </p>
                         <p className="text-[9px] uppercase tracking-widest" style={{ color: '#6B7280' }}>
                           PR{summary.newPRs.length > 1 ? 's' : ''}
@@ -1246,7 +1254,9 @@ export default function WorkoutSessionPage() {
           )}
 
           {sharePosted && !shareId && (
-            <p className="text-xs text-center" style={{ color: 'var(--fiq-accent)' }}>✅ Publié dans le feed !</p>
+            <p className="text-xs text-center flex items-center justify-center gap-1" style={{ color: 'var(--fiq-accent)' }}>
+              <FiqCheck size={13} /> Publié dans le feed !
+            </p>
           )}
 
           <Button
@@ -1286,8 +1296,8 @@ export default function WorkoutSessionPage() {
             whiteSpace: 'nowrap',
           }}
         >
-          <span style={{ fontSize: 13, color: 'var(--fiq-accent)', fontWeight: 700 }}>
-            ✅ Routine sauvegardée dans {programName}
+          <span className="flex items-center gap-1.5" style={{ fontSize: 13, color: 'var(--fiq-accent)', fontWeight: 700 }}>
+            <FiqCheck size={14} /> Routine sauvegardée dans {programName}
           </span>
         </div>
       )}
@@ -1477,7 +1487,9 @@ export default function WorkoutSessionPage() {
       <div className="px-4 mt-4 space-y-4">
         {groups.length === 0 && (
           <div className="fiq-card text-center py-8">
-            <p className="text-3xl mb-2">💪</p>
+            <div className="flex justify-center mb-2">
+              <FiqDumbbell size={36} style={{ color: 'var(--fiq-muted)' }} />
+            </div>
             <p className="font-semibold" style={{ color: 'var(--fiq-text)' }}>Ajoute ton premier exercice</p>
             <p className="text-sm mt-1" style={{ color: 'var(--fiq-muted)' }}>Clique sur le bouton ci-dessous</p>
           </div>
@@ -1505,12 +1517,12 @@ export default function WorkoutSessionPage() {
               {isFirstInGroup && (
                 <div className="flex items-center gap-1.5 mb-1.5 ml-1">
                   {isCircuit ? (
-                    <span className="text-xs font-black uppercase tracking-wider" style={{ color: 'var(--fiq-blue)' }}>
-                      🔄 Circuit {circuitLetter}
+                    <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1" style={{ color: 'var(--fiq-blue)' }}>
+                      <FiqCircuit size={12} /> Circuit {circuitLetter}
                     </span>
                   ) : (
-                    <span className="text-xs font-black uppercase tracking-wider" style={{ color: 'var(--fiq-orange)' }}>
-                      ⚡ Superset
+                    <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1" style={{ color: 'var(--fiq-orange)' }}>
+                      <Zap size={12} /> Superset
                     </span>
                   )}
                 </div>
@@ -1585,7 +1597,9 @@ export default function WorkoutSessionPage() {
               {formatTime(restTimer)}
             </span>
             <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
-              {restTimer <= 10 ? '🔥 Go bientôt' : 'repos'}
+              {restTimer <= 10
+                ? <span className="flex items-center gap-1"><FiqStreak size={11} style={{ color: 'var(--fiq-orange)' }} /> Go bientôt</span>
+                : 'repos'}
             </span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -1652,8 +1666,8 @@ export default function WorkoutSessionPage() {
                           const ssId = groups[supersetTargetIdx]?.superset_id
                           const count = ssId ? getLinkedCount(ssId, groups) : 0
                           return count >= 2
-                            ? '🔄 Ajouter au circuit'
-                            : '⚡ Ajouter au superset'
+                            ? <span className="flex items-center gap-1"><FiqCircuit size={14} /> Ajouter au circuit</span>
+                            : <span className="flex items-center gap-1"><Zap size={14} /> Ajouter au superset</span>
                         })()
                       : 'Choisir un exercice'}
                   </h2>
@@ -1797,7 +1811,9 @@ export default function WorkoutSessionPage() {
             style={{ background: 'var(--surface)', border: '1px solid var(--fiq-border)' }}
           >
             <div className="text-center">
-              <p className="text-2xl mb-2">⚠️</p>
+              <div className="flex justify-center mb-2">
+                <FiqAlert size={28} style={{ color: 'var(--fiq-yellow)' }} />
+              </div>
               <h3 className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>Séance en cours !</h3>
               <p className="text-sm mt-1" style={{ color: 'var(--fiq-muted)' }}>
                 Ta progression est sauvegardée automatiquement. Tu pourras la reprendre plus tard.
@@ -2136,7 +2152,8 @@ function ExerciseCard({
           className="text-[11px] flex items-center gap-1 px-2 py-1 rounded-lg"
           style={{ color: groupColor, background: groupBg, border: `1px solid ${groupBorder}` }}
         >
-          {isInCircuit ? '🔄' : '⚡'} + {isInCircuit ? 'au circuit' : 'exercice lié'}
+          {isInCircuit ? <FiqCircuit size={11} style={{ display: 'inline' }} /> : <Zap size={11} style={{ display: 'inline' }} />}
+          {' '}+ {isInCircuit ? 'au circuit' : 'exercice lié'}
         </button>
         {inSuperset && (
           <button

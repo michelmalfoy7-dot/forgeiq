@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { LayoutDashboard, Dumbbell, Utensils, Users, User } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
+import { FiqAlert } from '@/components/ui/FiqIcons'
 
 const NAV_ITEMS = [
   { href: '/dashboard', icon: LayoutDashboard, label: "Aujourd'hui" },
@@ -124,30 +125,48 @@ export function BottomNav() {
                 className="flex-1 flex flex-col items-center justify-center py-2.5 gap-1 relative"
                 style={{
                   color: isActive ? 'var(--fiq-accent)' : 'rgba(107, 114, 128, 0.75)',
-                  transform: isActive ? 'translateY(-1px)' : 'none',
-                  transition: 'color 150ms ease, transform 150ms ease',
+                  transition: 'color 150ms ease',
                 }}
               >
                 {/* Barre accent en haut de l'item actif */}
                 <span
                   className="absolute top-0 left-1/2 -translate-x-1/2 rounded-b-full transition-all duration-200"
                   style={{
-                    width: isActive ? 20 : 0,
+                    width: isActive ? 24 : 0,
                     height: 2.5,
                     background: 'var(--fiq-accent)',
                     opacity: isActive ? 1 : 0,
+                    boxShadow: isActive ? '0 0 8px rgba(180,255,74,0.6)' : 'none',
                   }}
                 />
 
+                {/* Pill background actif */}
+                {isActive && (
+                  <span
+                    className="absolute inset-x-1.5 rounded-2xl pointer-events-none"
+                    style={{
+                      top: 6, bottom: 4,
+                      background: 'rgba(180, 255, 74, 0.07)',
+                      border: '1px solid rgba(180, 255, 74, 0.14)',
+                    }}
+                  />
+                )}
+
                 {/* Icône + badges */}
-                <div className="relative">
+                <div
+                  className="relative z-10"
+                  style={{
+                    transform: isActive ? 'translateY(-1px) scale(1.08)' : 'scale(1)',
+                    transition: 'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+                  }}
+                >
                   <Icon
                     style={{
                       width: 20,
                       height: 20,
                       strokeWidth: isActive ? 2.5 : 1.8,
                       transition: 'stroke-width 150ms ease',
-                      filter: isActive ? 'drop-shadow(0 0 6px rgba(180, 255, 74, 0.45))' : 'none',
+                      filter: isActive ? 'drop-shadow(0 0 8px rgba(180, 255, 74, 0.5))' : 'none',
                     }}
                   />
                   {/* Badge vert si séance en cours (sur l'icône Séance) */}
@@ -212,7 +231,9 @@ export function BottomNav() {
             style={{ background: 'var(--surface)', border: '1px solid var(--fiq-border)' }}
           >
             <div className="text-center">
-              <p className="text-2xl mb-2">⚠️</p>
+              <div className="flex justify-center mb-2">
+                <FiqAlert size={28} style={{ color: 'var(--fiq-yellow)' }} />
+              </div>
               <h3 className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>Séance en cours !</h3>
               <p className="text-sm mt-1" style={{ color: 'var(--fiq-muted)' }}>
                 Ta progression est sauvegardée. Tu peux la reprendre en revenant sur &quot;Séance&quot;.

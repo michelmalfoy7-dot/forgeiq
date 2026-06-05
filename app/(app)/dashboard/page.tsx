@@ -10,6 +10,7 @@ import { UpgradeBanner } from '@/components/dashboard/UpgradeBanner'
 import { CancelWorkoutButton } from '@/components/dashboard/CancelWorkoutButton'
 import { formatSleep } from '@/lib/formatSleep'
 import { Dumbbell, TrendingUp, ClipboardList, MessageCircle, Utensils, Users } from 'lucide-react'
+import { FiqBreakfast, FiqLunch, FiqDinner, FiqSnack, FiqStreak } from '@/components/ui/FiqIcons'
 import { calcDailyTarget } from '@/lib/utils/tdee'
 import { VolumeHebdoWidget } from '@/components/dashboard/VolumeHebdoWidget'
 
@@ -295,10 +296,10 @@ export default async function DashboardPage() {
   // Indicateur fiabilité EWMA
   const weightDaysCount = (weekLogs ?? []).filter(l => l.weight_kg != null).length
   const ewmaLabel = weightDaysCount < 7
-    ? `⚠️ ${weightDaysCount}/7j`
+    ? `${weightDaysCount}/7j`
     : weightDaysCount < 14
-    ? '📊 En calibration'
-    : '✅ Fiable'
+    ? 'En calibration'
+    : 'Fiable'
 
   // Streak check-in
   const checkInDates = (weekLogs ?? []).map(l => l.log_date)
@@ -326,7 +327,7 @@ export default async function DashboardPage() {
           </h1>
           {streak >= 2 && (
             <div className="flex items-center gap-1.5 mt-1">
-              <span className="text-sm">🔥</span>
+              <FiqStreak size={14} style={{ color: 'var(--fiq-orange)' }} />
               <span className="text-xs font-bold" style={{ color: 'var(--fiq-orange)' }}>
                 {streak} jours d&apos;affilée
               </span>
@@ -404,18 +405,18 @@ export default async function DashboardPage() {
             {/* Indicateurs repas — actif = coloré, non loggé = grisé */}
             <div className="flex items-center gap-0.5">
               {[
-                { type: 'breakfast', icon: '🌅', label: 'Petit-déj' },
-                { type: 'lunch',     icon: '☀️', label: 'Déjeuner' },
-                { type: 'dinner',    icon: '🌙', label: 'Dîner' },
-                { type: 'snack',     icon: '🍎', label: 'Collation' },
-              ].map(({ type, icon }) => (
+                { type: 'breakfast', Icon: FiqBreakfast, color: 'var(--fiq-accent)' },
+                { type: 'lunch',     Icon: FiqLunch,     color: 'var(--fiq-yellow)' },
+                { type: 'dinner',    Icon: FiqDinner,    color: 'var(--fiq-blue)'   },
+                { type: 'snack',     Icon: FiqSnack,     color: 'var(--fiq-orange)' },
+              ].map(({ type, Icon, color }) => (
                 <span
                   key={type}
-                  className="text-sm leading-none"
-                  style={{ opacity: loggedMealTypes.has(type) ? 1 : 0.2 }}
+                  className="leading-none"
+                  style={{ opacity: loggedMealTypes.has(type) ? 1 : 0.18 }}
                   title={type}
                 >
-                  {icon}
+                  <Icon size={15} style={{ color }} />
                 </span>
               ))}
             </div>
