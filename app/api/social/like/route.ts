@@ -48,8 +48,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ data: null, error: likeError.message }, { status: 400 })
     }
 
-    // Incrémenter le compteur de likes (fire-and-forget, non bloquant pour la réponse)
+    // Incrémenter le compteur de likes (fire-and-forget)
     updateLikesCount(supabase, body.share_id, 1).catch(() => null)
+
+    // Notification au propriétaire du post (fire-and-forget, silencieux si table absente)
+    createLikeNotification(supabase, user.id, body.share_id).catch(() => null)
 
     return NextResponse.json({ data: { liked: true }, error: null })
   } catch {
@@ -87,4 +90,29 @@ export async function DELETE(request: Request) {
   } catch {
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
   }
+}
+
+// ── Helpers notification ──────────────────────────────────────────────────────
+
+async function createLikeNotification(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  actorId: string,
+  shareId: string
+) {
+  // Trouver le propriétaire du post
+  const { data: share } = await supabase
+    .from('workout_shares')
+    .select('user_id')
+    .eq('id', shareId)
+    .maybeSingle()
+
+  // Pas de notif si on like son propre post
+  if (!share || share.user_id === actorId) return
+
+  await supabase.from('notifications').insert({
+    user_id:      share.user_id,
+    actor_id:     actorId,
+    type:         'like',
+    reference_id: shareId,
+  })
 }

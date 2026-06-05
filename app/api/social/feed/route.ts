@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { buildExercisesMap } from '@/lib/utils/social'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,10 +23,9 @@ export async function GET(request: NextRequest) {
       .eq('follower_id', user.id)
 
     const followingIds = (followsData ?? []).map((f: { following_id: string }) => f.following_id)
-    // Inclure ses propres posts dans le feed
     const feedUserIds = [...followingIds, user.id]
 
-    // Récupérer les workout_shares des utilisateurs suivis + soi-même
+    // Récupérer les posts paginés
     const { data: shares, error } = await supabase
       .from('workout_shares')
       .select(`
@@ -50,43 +50,52 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + PAGE_SIZE - 1)
 
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
+    if (!shares || shares.length === 0) return NextResponse.json({ data: [], error: null })
 
-    if (!shares || shares.length === 0) {
-      return NextResponse.json({ data: [], error: null })
-    }
-
-    // Récupérer les profils sociaux des auteurs
     const authorIds = [...new Set(shares.map((s: { user_id: string }) => s.user_id))]
+    const shareIds  = shares.map((s: { id: string }) => s.id)
+    const workoutIds = shares.map((s: { workout_id: string }) => s.workout_id).filter(Boolean)
 
-    const { data: socialProfiles } = await supabase
-      .from('social_profiles')
-      .select('user_id, username, display_name, avatar_url')
-      .in('user_id', authorIds)
+    // Fetch en parallèle : profils, likes, sets exercices
+    const [
+      { data: socialProfiles },
+      { data: authProfiles },
+      { data: userLikes },
+      { data: setsData },
+    ] = await Promise.all([
+      supabase
+        .from('social_profiles')
+        .select('user_id, username, display_name, avatar_url')
+        .in('user_id', authorIds),
+      supabase
+        .from('profiles')
+        .select('id, display_name')
+        .in('id', authorIds),
+      supabase
+        .from('likes')
+        .select('workout_share_id')
+        .eq('user_id', user.id)
+        .in('workout_share_id', shareIds),
+      workoutIds.length > 0
+        ? supabase
+            .from('workout_sets')
+            .select('workout_id, exercise_name, weight_kg, reps, set_type')
+            .in('workout_id', workoutIds)
+            .neq('set_type', 'warmup')
+            .gt('weight_kg', 0)
+            .gt('reps', 0)
+            .order('set_number', { ascending: true })
+        : Promise.resolve({ data: [] }),
+    ])
 
-    // Récupérer les profils Supabase (pour le display_name fallback)
-    const { data: authProfiles } = await supabase
-      .from('profiles')
-      .select('id, display_name')
-      .in('id', authorIds)
+    const likedShareIds    = new Set((userLikes ?? []).map((l: { workout_share_id: string }) => l.workout_share_id))
+    const socialMap        = new Map((socialProfiles ?? []).map((p: { user_id: string; username: string | null; display_name: string | null; avatar_url: string | null }) => [p.user_id, p]))
+    const authMap          = new Map((authProfiles ?? []).map((p: { id: string; display_name: string | null }) => [p.id, p]))
+    const exercisesByWorkout = buildExercisesMap(setsData ?? [])
 
-    // Vérifier quels posts l'utilisateur actuel a aimés
-    const shareIds = shares.map((s: { id: string }) => s.id)
-    const { data: userLikes } = await supabase
-      .from('likes')
-      .select('workout_share_id')
-      .eq('user_id', user.id)
-      .in('workout_share_id', shareIds)
-
-    const likedShareIds = new Set((userLikes ?? []).map((l: { workout_share_id: string }) => l.workout_share_id))
-
-    // Construire une map pour accès rapide
-    const socialMap = new Map((socialProfiles ?? []).map((p: { user_id: string; username: string | null; display_name: string | null; avatar_url: string | null }) => [p.user_id, p]))
-    const authMap = new Map((authProfiles ?? []).map((p: { id: string; display_name: string | null }) => [p.id, p]))
-
-    // Assembler le feed enrichi
     const feed = shares.map((share) => {
-      const social = socialMap.get(share.user_id)
-      const auth = authMap.get(share.user_id)
+      const social  = socialMap.get(share.user_id)
+      const auth    = authMap.get(share.user_id)
       const workout = (share.workouts as unknown) as {
         session_name: string | null
         total_tonnage_kg: number | null
@@ -103,6 +112,7 @@ export async function GET(request: NextRequest) {
         comments_count: share.comments_count,
         created_at: share.created_at,
         is_liked: likedShareIds.has(share.id),
+        exercises: exercisesByWorkout.get(share.workout_id) ?? [],
         author: {
           username: social?.username ?? null,
           display_name: social?.display_name ?? auth?.display_name ?? 'Athlète',

@@ -2,9 +2,11 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Search, Users, Compass } from 'lucide-react'
-import { WorkoutPost } from '@/components/social/WorkoutPost'
 import { SocialProfileSetup } from '@/components/social/SocialProfileSetup'
-import type { FeedPost, ExerciseInPost } from '@/components/social/WorkoutPost'
+import { FeedList } from '@/components/social/FeedList'
+import { NotificationBell } from '@/components/social/NotificationBell'
+import type { FeedPost } from '@/components/social/WorkoutPost'
+import { buildExercisesMap } from '@/lib/utils/social'
 
 export const dynamic = 'force-dynamic'
 
@@ -157,11 +159,12 @@ export default async function SocialPage() {
           </Link>
           <Link
             href="/social/search"
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
+            className="flex items-center justify-center w-9 h-9 rounded-xl"
             style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
           >
-            <Search className="w-3.5 h-3.5" />
+            <Search className="w-4 h-4" />
           </Link>
+          <NotificationBell />
         </div>
       </div>
 
@@ -170,13 +173,9 @@ export default async function SocialPage() {
         <SocialProfileSetup />
       )}
 
-      {/* Feed */}
+      {/* Feed avec scroll infini */}
       {socialProfile && feed.length > 0 && (
-        <div className="space-y-3">
-          {feed.map((post) => (
-            <WorkoutPost key={post.id} post={post} />
-          ))}
-        </div>
+        <FeedList initialPosts={feed} />
       )}
 
       {/* Feed vide mais profil créé */}
@@ -215,55 +214,3 @@ export default async function SocialPage() {
   )
 }
 
-// ── Utilitaire : grouper les sets par workout → exercice ──────────────────────
-type RawSet = {
-  workout_id: string
-  exercise_name: string
-  weight_kg: number
-  reps: number
-  set_type: string | null
-}
-
-function buildExercisesMap(sets: RawSet[]): Map<string, ExerciseInPost[]> {
-  // workout_id → exercise_name → { maxKg, maxReps, count, order }
-  const workoutExMap = new Map<string, Map<string, { maxKg: number; maxReps: number; count: number; order: number }>>()
-
-  for (const set of sets) {
-    if (!workoutExMap.has(set.workout_id)) workoutExMap.set(set.workout_id, new Map())
-    const exMap = workoutExMap.get(set.workout_id)!
-    const existing = exMap.get(set.exercise_name)
-
-    if (!existing) {
-      exMap.set(set.exercise_name, {
-        maxKg: set.weight_kg,
-        maxReps: set.reps,
-        count: 1,
-        order: exMap.size, // ordre d'apparition dans la séance
-      })
-    } else {
-      const isBetter =
-        set.weight_kg > existing.maxKg ||
-        (set.weight_kg === existing.maxKg && set.reps > existing.maxReps)
-      exMap.set(set.exercise_name, {
-        maxKg: isBetter ? set.weight_kg : existing.maxKg,
-        maxReps: isBetter ? set.reps : existing.maxReps,
-        count: existing.count + 1,
-        order: existing.order,
-      })
-    }
-  }
-
-  const result = new Map<string, ExerciseInPost[]>()
-  for (const [workoutId, exMap] of workoutExMap.entries()) {
-    const exercises = Array.from(exMap.entries())
-      .sort(([, a], [, b]) => a.order - b.order) // ordre de la séance
-      .map(([name, data]) => ({
-        name,
-        top_set_kg: data.maxKg,
-        top_set_reps: data.maxReps,
-        set_count: data.count,
-      }))
-    result.set(workoutId, exercises)
-  }
-  return result
-}

@@ -4,7 +4,8 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { ArrowLeft, UserPlus, TrendingUp, Users, Flame } from 'lucide-react'
 import { WorkoutPost } from '@/components/social/WorkoutPost'
-import type { FeedPost, ExerciseInPost } from '@/components/social/WorkoutPost'
+import type { FeedPost } from '@/components/social/WorkoutPost'
+import { buildExercisesMap } from '@/lib/utils/social'
 
 export const dynamic = 'force-dynamic'
 
@@ -278,49 +279,3 @@ export default async function ExplorerPage() {
   )
 }
 
-// ── Utilitaire : grouper les sets par workout → exercice ──────────────────────
-type RawSet = {
-  workout_id: string
-  exercise_name: string
-  weight_kg: number
-  reps: number
-  set_type: string | null
-}
-
-function buildExercisesMap(sets: RawSet[]): Map<string, ExerciseInPost[]> {
-  const workoutExMap = new Map<string, Map<string, { maxKg: number; maxReps: number; count: number; order: number }>>()
-
-  for (const set of sets) {
-    if (!workoutExMap.has(set.workout_id)) workoutExMap.set(set.workout_id, new Map())
-    const exMap = workoutExMap.get(set.workout_id)!
-    const existing = exMap.get(set.exercise_name)
-
-    if (!existing) {
-      exMap.set(set.exercise_name, { maxKg: set.weight_kg, maxReps: set.reps, count: 1, order: exMap.size })
-    } else {
-      const isBetter =
-        set.weight_kg > existing.maxKg ||
-        (set.weight_kg === existing.maxKg && set.reps > existing.maxReps)
-      exMap.set(set.exercise_name, {
-        maxKg: isBetter ? set.weight_kg : existing.maxKg,
-        maxReps: isBetter ? set.reps : existing.maxReps,
-        count: existing.count + 1,
-        order: existing.order,
-      })
-    }
-  }
-
-  const result = new Map<string, ExerciseInPost[]>()
-  for (const [workoutId, exMap] of workoutExMap.entries()) {
-    const exercises = Array.from(exMap.entries())
-      .sort(([, a], [, b]) => a.order - b.order)
-      .map(([name, data]) => ({
-        name,
-        top_set_kg: data.maxKg,
-        top_set_reps: data.maxReps,
-        set_count: data.count,
-      }))
-    result.set(workoutId, exercises)
-  }
-  return result
-}

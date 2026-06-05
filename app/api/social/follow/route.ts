@@ -62,6 +62,13 @@ export async function POST(request: Request) {
       updateSocialCounter(supabase, body.target_user_id, 'followers_count', 1),
     ])
 
+    // Notification au suivi (fire-and-forget, silencieux si table absente)
+    void supabase.from('notifications').insert({
+      user_id:  body.target_user_id,
+      actor_id: user.id,
+      type:     'follow',
+    })
+
     return NextResponse.json({ data: { following: true }, error: null })
   } catch {
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
