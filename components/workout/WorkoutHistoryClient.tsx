@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
-import { ChevronDown, ChevronUp, Dumbbell, Trophy, Calendar, ArrowLeft, ChevronDown as LoadMore, List, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronUp, Dumbbell, Trophy, Calendar, ArrowLeft, ChevronDown as LoadMore, List, ChevronLeft, ChevronRight, Share2, Loader2, CheckCircle2, X } from 'lucide-react'
 
 const PAGE_SIZE = 20
 const DAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
@@ -73,6 +73,8 @@ function groupByMonth(workouts: Workout[]): { label: string; workouts: Workout[]
   }))
 }
 
+type ShareState = 'idle' | 'inputting' | 'loading' | 'done'
+
 function WorkoutCard({ workout }: { workout: Workout }) {
   const [open, setOpen] = useState(false)
   const groups = useMemo(() => groupByExercise(
@@ -82,6 +84,33 @@ function WorkoutCard({ workout }: { workout: Workout }) {
   const duration = calcDuration(workout.completed_at, workout.session_date)
   const totalSets = workout.workout_sets.filter(s => !s.is_warmup).length
   const dateFormatted = formatDate(workout.session_date)
+
+  // État partage
+  const [shareState, setShareState] = useState<ShareState>('idle')
+  const [caption, setCaption]       = useState('')
+  const [shareId, setShareId]       = useState<string | null>(null)
+
+  async function handleShare() {
+    setShareState('loading')
+    try {
+      const res = await fetch('/api/social/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workout_id: workout.id, caption: caption.trim() || null }),
+      })
+      const json = await res.json() as { data: { id: string } | null; error: string | null }
+      if (json.data?.id) {
+        setShareId(json.data.id)
+        setShareState('done')
+      } else {
+        // Erreur — retour à inputting pour laisser retenter
+        setShareState('inputting')
+        alert(json.error ?? 'Erreur lors du partage')
+      }
+    } catch {
+      setShareState('inputting')
+    }
+  }
 
   return (
     <div className="rounded-2xl overflow-hidden"
@@ -194,6 +223,91 @@ function WorkoutCard({ workout }: { workout: Workout }) {
               </p>
             </div>
           )}
+
+          {/* ── Bloc partage ─────────────────────────────────────────────── */}
+          <div className="px-4 pb-4 pt-2" style={{ borderTop: '1px solid var(--fiq-border)' }}>
+
+            {/* État : partagé avec succès */}
+            {shareState === 'done' && shareId && (
+              <div className="flex items-center justify-between gap-3 py-2 px-3 rounded-xl"
+                style={{ background: '#B4FF4A10', border: '1px solid #B4FF4A30' }}>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
+                  <span className="text-xs font-bold" style={{ color: 'var(--fiq-accent)' }}>
+                    Publié sur le feed !
+                  </span>
+                </div>
+                <Link
+                  href={`/social/post/${shareId}`}
+                  className="text-xs font-black px-2.5 py-1 rounded-lg"
+                  style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+                >
+                  Voir →
+                </Link>
+              </div>
+            )}
+
+            {/* État : saisie caption */}
+            {shareState === 'inputting' && (
+              <div className="space-y-2">
+                <textarea
+                  value={caption}
+                  onChange={e => setCaption(e.target.value)}
+                  placeholder="Ajoute une note (optionnel)… 💪"
+                  rows={2}
+                  maxLength={280}
+                  className="w-full text-sm outline-none resize-none"
+                  style={{
+                    background: 'var(--fiq-faint)',
+                    border: '1px solid var(--fiq-border)',
+                    borderRadius: 10,
+                    padding: '8px 12px',
+                    color: 'var(--fiq-text)',
+                  }}
+                  // eslint-disable-next-line jsx-a11y/no-autofocus
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setShareState('idle'); setCaption('') }}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-black"
+                    style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)', border: '1px solid var(--fiq-border)' }}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    Annuler
+                  </button>
+                  <button
+                    onClick={handleShare}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-black"
+                    style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    Publier
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* État : chargement */}
+            {shareState === 'loading' && (
+              <div className="flex items-center justify-center gap-2 py-2">
+                <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--fiq-accent)' }} />
+                <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Publication en cours…</span>
+              </div>
+            )}
+
+            {/* État : idle — bouton Partager */}
+            {shareState === 'idle' && (
+              <button
+                onClick={() => setShareState('inputting')}
+                className="flex items-center gap-2 text-xs font-black px-3 py-2 rounded-xl transition-opacity active:opacity-70"
+                style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)', border: '1px solid var(--fiq-border)' }}
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                Partager cette séance
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

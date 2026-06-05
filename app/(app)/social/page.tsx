@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Search, Users, Compass } from 'lucide-react'
+import { Search, Users, Compass, Trophy } from 'lucide-react'
 import { SocialProfileSetup } from '@/components/social/SocialProfileSetup'
 import { FeedList } from '@/components/social/FeedList'
 import { NotificationBell } from '@/components/social/NotificationBell'
@@ -153,6 +153,14 @@ export default async function SocialPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href="/social/leaderboard"
+            className="flex items-center justify-center w-9 h-9 rounded-xl"
+            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: '#F59E0B' }}
+            title="Classement"
+          >
+            <Trophy className="w-4 h-4" />
+          </Link>
           <Link
             href="/social/explorer"
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
