@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Heart, Share2, Dumbbell, Clock, MessageCircle, Loader2 } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { CommentSheet } from './CommentSheet'
 
 export type ExerciseInPost = {
   name: string
@@ -57,10 +58,12 @@ function formatTonnage(kg: number): string {
 }
 
 export function WorkoutPost({ post }: { post: FeedPost }) {
-  const [liked, setLiked] = useState(post.is_liked)
-  const [likesCount, setLikesCount] = useState(post.likes_count)
-  const [liking, setLiking] = useState(false)
-  const [sharing, setSharing] = useState(false)
+  const [liked, setLiked]               = useState(post.is_liked)
+  const [likesCount, setLikesCount]     = useState(post.likes_count)
+  const [commentsCount, setCommentsCount] = useState(post.comments_count)
+  const [liking, setLiking]             = useState(false)
+  const [sharing, setSharing]           = useState(false)
+  const [showComments, setShowComments] = useState(false)
 
   async function handleLike() {
     if (liking) return
@@ -278,6 +281,16 @@ export function WorkoutPost({ post }: { post: FeedPost }) {
         </p>
       )}
 
+      {/* ── Sheet commentaires ── */}
+      {showComments && (
+        <CommentSheet
+          shareId={post.id}
+          initialCount={commentsCount}
+          onClose={() => setShowComments(false)}
+          onCountChange={(delta) => setCommentsCount((n) => Math.max(0, n + delta))}
+        />
+      )}
+
       {/* ── Actions ── */}
       <div className="flex items-center gap-1 px-3 pb-3 pt-1 border-t" style={{ borderColor: 'var(--fiq-border)' }}>
         {/* Like */}
@@ -296,15 +309,18 @@ export function WorkoutPost({ post }: { post: FeedPost }) {
           </span>
         </button>
 
-        {/* Commentaires — compteur affiché, système complet Sprint 7 */}
+        {/* Commentaires */}
         <button
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all active:scale-95"
-          style={{ color: 'var(--fiq-muted)' }}
-          onClick={() => {/* TODO Sprint 7 : ouvrir sheet commentaires */}}
+          style={{ color: showComments ? 'var(--fiq-blue)' : 'var(--fiq-muted)' }}
+          onClick={() => setShowComments(true)}
         >
-          <MessageCircle className="w-4 h-4" />
+          <MessageCircle
+            className="w-4 h-4"
+            style={{ fill: showComments ? 'var(--fiq-blue)' : 'none', stroke: showComments ? 'var(--fiq-blue)' : 'var(--fiq-muted)' }}
+          />
           <span className="text-xs font-bold">
-            {post.comments_count > 0 ? post.comments_count : 'Commenter'}
+            {commentsCount > 0 ? commentsCount : 'Commenter'}
           </span>
         </button>
 
