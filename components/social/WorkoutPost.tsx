@@ -208,9 +208,13 @@ export function WorkoutPost({ post }: { post: FeedPost }) {
         </div>
       )}
 
-      {/* ── Exercices — top sets par exercice ── */}
+      {/* ── Exercices — cliquables → page détail ── */}
       {post.exercises && post.exercises.length > 0 && (
-        <div className="px-4 py-3 space-y-2" style={{ borderBottom: '1px solid var(--fiq-border)' }}>
+        <Link
+          href={`/social/post/${post.id}`}
+          className="block px-4 py-3 space-y-2 transition-opacity active:opacity-70"
+          style={{ borderBottom: '1px solid var(--fiq-border)' }}
+        >
           {post.exercises.slice(0, 4).map((ex, i) => (
             <div key={i} className="flex items-center justify-between gap-2">
               <span className="text-xs truncate flex-1" style={{ color: 'var(--fiq-muted)' }}>
@@ -233,11 +237,16 @@ export function WorkoutPost({ post }: { post: FeedPost }) {
             </div>
           ))}
           {post.exercises.length > 4 && (
-            <p className="text-[11px]" style={{ color: 'var(--fiq-muted)' }}>
-              +{post.exercises.length - 4} exercice{post.exercises.length - 4 > 1 ? 's' : ''}
+            <p className="text-[11px]" style={{ color: 'var(--fiq-accent)' }}>
+              +{post.exercises.length - 4} exercice{post.exercises.length - 4 > 1 ? 's' : ''} → voir tout
             </p>
           )}
-        </div>
+          {post.exercises.length <= 4 && (
+            <p className="text-[11px]" style={{ color: 'var(--fiq-muted)' }}>
+              Voir le détail →
+            </p>
+          )}
+        </Link>
       )}
 
       {/* ── Auteur + date ── */}
