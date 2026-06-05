@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { Heart, Share2, Dumbbell, Clock, MessageCircle, Loader2, MoreHorizontal, Pencil, Trash2, X, Check } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -56,6 +56,28 @@ function formatRelativeDate(dateString: string): string {
 function formatTonnage(kg: number): string {
   if (kg >= 1000) return `${(kg / 1000).toFixed(1)}t`
   return `${kg.toLocaleString('fr-FR')} kg`
+}
+
+// Rend une caption avec les #hashtags en liens cliquables
+function renderCaption(text: string): React.ReactNode {
+  const parts = text.split(/(#[\wÀ-ɏЀ-ӿ]+)/g)
+  return parts.map((part, i) => {
+    if (/^#[\wÀ-ɏЀ-ӿ]+$/.test(part)) {
+      const tag = part.slice(1).toLowerCase()
+      return (
+        <Link
+          key={i}
+          href={`/social/tag/${encodeURIComponent(tag)}`}
+          className="font-black"
+          style={{ color: 'var(--fiq-accent)' }}
+          onClick={e => e.stopPropagation()}
+        >
+          {part}
+        </Link>
+      )
+    }
+    return <span key={i}>{part}</span>
+  })
 }
 
 export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id: string) => void }) {
@@ -366,7 +388,7 @@ export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id
         </div>
       ) : caption ? (
         <p className="text-sm leading-relaxed px-4 pb-3" style={{ color: 'var(--fiq-text)' }}>
-          {caption}
+          {renderCaption(caption)}
         </p>
       ) : null}
 
