@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import Link from 'next/link'
+import { FiqAlert } from '@/components/ui/FiqIcons'
 
 export default function DashboardError({
   error,
@@ -18,7 +19,9 @@ export default function DashboardError({
   return (
     <div className="p-4 max-w-lg mx-auto pt-12 space-y-6">
       <div className="text-center space-y-2">
-        <p className="text-4xl">⚠️</p>
+        <div className="flex justify-center">
+          <FiqAlert size={40} style={{ color: 'var(--fiq-yellow)' }} />
+        </div>
         <h1 className="text-xl font-black" style={{ color: 'var(--fiq-text)' }}>
           Erreur dashboard
         </h1>

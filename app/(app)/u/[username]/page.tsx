@@ -9,6 +9,7 @@ import { ShareBig5Button } from '@/components/social/ShareBig5Button'
 import type { FeedPost } from '@/components/social/WorkoutPost'
 import { buildExercisesMap } from '@/lib/utils/social'
 import { categorizeBig5 } from '@/lib/utils/big5'
+import { FiqDumbbell, FiqStreak } from '@/components/ui/FiqIcons'
 
 export const dynamic = 'force-dynamic'
 
@@ -344,7 +345,9 @@ export default async function PublicProfilePage({ params }: PageProps) {
         {streak >= 2 && (
           <div className="fiq-card text-center" style={{ background: '#FF6B3510', borderColor: '#FF6B3530' }}>
             <p className="text-xs font-semibold mb-1" style={{ color: 'var(--fiq-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Streak</p>
-            <p className="text-xl font-black fiq-data" style={{ color: 'var(--fiq-orange)' }}>🔥 {streak}</p>
+            <p className="text-xl font-black fiq-data flex items-center justify-center gap-1.5" style={{ color: 'var(--fiq-orange)' }}>
+              <FiqStreak size={20} style={{ color: 'var(--fiq-orange)' }} />{streak}
+            </p>
             <p className="text-[10px] mt-0.5" style={{ color: 'var(--fiq-muted)' }}>jours d&apos;affilée</p>
           </div>
         )}
@@ -439,7 +442,9 @@ export default async function PublicProfilePage({ params }: PageProps) {
         </div>
       ) : (
         <div className="fiq-card text-center py-8">
-          <p className="text-2xl mb-2">🏋️</p>
+          <div className="flex justify-center mb-2">
+            <FiqDumbbell size={32} style={{ color: 'var(--fiq-muted)' }} />
+          </div>
           <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>
             Aucune séance partagée pour l&apos;instant
           </p>

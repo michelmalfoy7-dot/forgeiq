@@ -2,7 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ProfileClient } from '@/components/profile/ProfileClient'
-import { Users } from 'lucide-react'
+import { Users, ClipboardList } from 'lucide-react'
+import { FiqDumbbell } from '@/components/ui/FiqIcons'
 import { categorizeBig5 } from '@/lib/utils/big5'
 
 export const dynamic = 'force-dynamic'
@@ -78,7 +79,7 @@ export default async function ProfilePage() {
           className="rounded-2xl p-4 flex flex-col gap-2"
           style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}
         >
-          <span className="text-2xl">🏋️</span>
+          <FiqDumbbell size={28} style={{ color: 'var(--fiq-accent)' }} />
           <div>
             <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Exercices</p>
             <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>230+ exercices</p>
@@ -89,7 +90,7 @@ export default async function ProfilePage() {
           className="rounded-2xl p-4 flex flex-col gap-2"
           style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}
         >
-          <span className="text-2xl">📋</span>
+          <ClipboardList className="w-7 h-7" style={{ color: 'var(--fiq-blue)' }} />
           <div>
             <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Programmes</p>
             <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Entraînements guidés</p>

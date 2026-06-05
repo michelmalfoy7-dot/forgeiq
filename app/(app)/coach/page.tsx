@@ -426,7 +426,7 @@ export default function CoachPage() {
       // Si le stream s'est fermé sans contenu → afficher l'erreur au lieu d'une bulle vide
       const finalContent = full.trim()
         ? full
-        : '⚠️ Je n\'ai pas pu générer de réponse. Réessaie dans quelques secondes.'
+        : 'Je n\'ai pas pu générer de réponse. Réessaie dans quelques secondes.'
 
       setMessages(prev => {
         const updated = [...prev]
@@ -439,7 +439,7 @@ export default function CoachPage() {
         const updated = [...prev]
         updated[updated.length - 1] = {
           role: 'assistant',
-          content: '⚠️ Erreur de connexion. Vérifie ta connexion et réessaie.',
+          content: 'Erreur de connexion. Vérifie ta connexion et réessaie.',
           streaming: false,
         }
         return updated
@@ -493,7 +493,7 @@ export default function CoachPage() {
           {/* Poids lissé */}
           {dailyCtx.weight_trend != null && (
             <span className="whitespace-nowrap flex-shrink-0" style={{ color: 'var(--fiq-muted)' }}>
-              ⚖️ <span style={{ color: 'var(--fiq-accent)', fontWeight: 800 }}>{dailyCtx.weight_trend}kg</span>
+              <span style={{ color: 'var(--fiq-muted)', fontSize: 9 }}>⚖</span>{' '}<span style={{ color: 'var(--fiq-accent)', fontWeight: 800 }}>{dailyCtx.weight_trend}kg</span>
             </span>
           )}
           {/* Sommeil profond */}
@@ -642,8 +642,8 @@ export default function CoachPage() {
               }
             }}
             placeholder={
-              limitReached && isFree ? '🔒 5 messages utilisés — Passe en Pro...'
-              : limitReached ? '🔒 Limite du mois atteinte — reviens le 1er ou passe en Pro...'
+              limitReached && isFree ? '5 messages utilisés — Passe en Pro...'
+              : limitReached ? 'Limite du mois atteinte — reviens le 1er ou passe en Pro...'
               : 'Pose ta question au coach...'
             }
             disabled={loading || (isFree && limitReached)}
@@ -695,7 +695,7 @@ export default function CoachPage() {
               </button>
             ) : (
               <p className="text-xs text-center" style={{ color: 'var(--fiq-muted)' }}>
-                🎁 <span className="font-black" style={{ color: 'var(--fiq-accent)' }}>{5 - coachCount}</span> message{5 - coachCount > 1 ? 's' : ''} offert{5 - coachCount > 1 ? 's' : ''} restant{5 - coachCount > 1 ? 's' : ''} ·{' '}
+                <span className="font-black" style={{ color: 'var(--fiq-accent)' }}>{5 - coachCount}</span> message{5 - coachCount > 1 ? 's' : ''} offert{5 - coachCount > 1 ? 's' : ''} restant{5 - coachCount > 1 ? 's' : ''} ·{' '}
                 <button onClick={() => setShowPaywall(true)} style={{ color: 'var(--fiq-accent)', fontWeight: 700 }}>
                   Passer en Pro
                 </button>

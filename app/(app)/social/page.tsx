@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Search, Users, Compass, Trophy } from 'lucide-react'
+import { FiqDumbbell } from '@/components/ui/FiqIcons'
 import { SocialProfileSetup } from '@/components/social/SocialProfileSetup'
 import { FeedList } from '@/components/social/FeedList'
 import { NotificationBell } from '@/components/social/NotificationBell'
@@ -193,7 +194,7 @@ export default async function SocialPage() {
       {/* Feed vide mais profil créé */}
       {socialProfile && feed.length === 0 && (
         <div className="fiq-card text-center py-10 space-y-4">
-          <div className="text-4xl">🏋️</div>
+          <div className="flex justify-center"><FiqDumbbell size={40} style={{ color: 'var(--fiq-muted)' }} /></div>
           <div>
             <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>
               Suis des athlètes pour voir leur progression ici

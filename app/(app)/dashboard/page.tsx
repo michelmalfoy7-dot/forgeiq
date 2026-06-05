@@ -9,8 +9,8 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { UpgradeBanner } from '@/components/dashboard/UpgradeBanner'
 import { CancelWorkoutButton } from '@/components/dashboard/CancelWorkoutButton'
 import { formatSleep } from '@/lib/formatSleep'
-import { Dumbbell, TrendingUp, ClipboardList, MessageCircle, Utensils, Users } from 'lucide-react'
-import { FiqBreakfast, FiqLunch, FiqDinner, FiqSnack, FiqStreak } from '@/components/ui/FiqIcons'
+import { Dumbbell, TrendingUp, ClipboardList, MessageCircle, Utensils, Users, BarChart2, CalendarDays, Zap } from 'lucide-react'
+import { FiqBreakfast, FiqLunch, FiqDinner, FiqSnack, FiqStreak, FiqAlert, FiqCheck } from '@/components/ui/FiqIcons'
 import { calcDailyTarget } from '@/lib/utils/tdee'
 import { VolumeHebdoWidget } from '@/components/dashboard/VolumeHebdoWidget'
 
@@ -267,15 +267,15 @@ export default async function DashboardPage() {
     const sysBP = todayLog.sys_bp
 
     if (deepSleep !== null && deepSleep < 60)
-      alerts.push({ type: 'yellow', message: '😴 Sommeil profond insuffisant', sub: `${formatSleep(deepSleep)} — réduis le volume d'entraînement de 15-20% aujourd'hui.` })
+      alerts.push({ type: 'yellow', message: 'Sommeil profond insuffisant', sub: `${formatSleep(deepSleep)} — réduis le volume d'entraînement de 15-20% aujourd'hui.` })
 
     if (proteinToday !== null && proteinToday < proteinTarget.min)
-      alerts.push({ type: 'yellow', message: '🥩 Protéines en dessous de l\'objectif', sub: `${proteinToday}g — objectif ${proteinTarget.min}g · pense à une source supplémentaire.` })
+      alerts.push({ type: 'yellow', message: 'Protéines en dessous de l\'objectif', sub: `${proteinToday}g — objectif ${proteinTarget.min}g · pense à une source supplémentaire.` })
 
     if (sysBP !== null && sysBP > 135)
-      alerts.push({ type: 'red', message: '🫀 Tension systolique élevée', sub: `${sysBP} mmHg — consulte un médecin si ça persiste.` })
+      alerts.push({ type: 'red', message: 'Tension systolique élevée', sub: `${sysBP} mmHg — consulte un médecin si ça persiste.` })
   } else {
-    alerts.push({ type: 'blue', message: '📋 Bilan du jour non renseigné', sub: 'Complète ton check-in pour des recommandations personnalisées.' })
+    alerts.push({ type: 'blue', message: 'Bilan du jour non renseigné', sub: 'Complète ton check-in pour des recommandations personnalisées.' })
   }
 
   // Alerte déficit trop agressif après séance lourde (> 25 000 kg)
@@ -288,7 +288,7 @@ export default async function DashboardPage() {
       : ''
     alerts.push({
       type: 'yellow',
-      message: '⚡ Déficit trop agressif post-séance lourde',
+      message: 'Déficit trop agressif post-séance lourde',
       sub: `Tu as soulevé ${tonnageLabel} aujourd'hui (+${dailyTarget.workoutKcal} kcal dépensées). Mange encore ~${toEat} kcal ce soir pour préserver ta masse musculaire.`,
     })
   }
@@ -323,7 +323,7 @@ export default async function DashboardPage() {
         <div>
           <p className="fiq-label">Bonjour</p>
           <h1 className="text-2xl fiq-display mt-0.5" style={{ color: 'var(--fiq-text)' }}>
-            {prenom} 👋
+            {prenom}
           </h1>
           {streak >= 2 && (
             <div className="flex items-center gap-1.5 mt-1">
@@ -492,8 +492,8 @@ export default async function DashboardPage() {
 
             {/* TDEE compact — une seule ligne */}
             {!dailyTarget.isCustom && (
-              <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
-                {'📊 '}
+              <p className="text-[10px] flex items-center gap-1" style={{ color: 'var(--fiq-muted)' }}>
+                <BarChart2 className="w-3 h-3 shrink-0" />
                 {dailyTarget.usedFallback
                   ? `Estimé : ${dailyTarget.tdee.toLocaleString('fr-FR')} kcal`
                   : (
@@ -589,7 +589,10 @@ export default async function DashboardPage() {
               <div>
                 <p className="fiq-label">Séance du jour</p>
                 <h2 className="text-lg font-black mt-0.5" style={{ color: 'var(--fiq-accent)' }}>
-                  ✅ {latestTodayWorkout.session_name}
+                  <span className="inline-flex items-center gap-1.5">
+                    <FiqCheck size={18} style={{ color: 'var(--fiq-accent)' }} />
+                    {latestTodayWorkout.session_name}
+                  </span>
                 </h2>
                 {suggestion?.program_name && (
                   <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>{suggestion.program_name}</p>
@@ -620,9 +623,10 @@ export default async function DashboardPage() {
             )}
 
             {suggestion && (
-              <div className="text-xs px-3 py-2 rounded-lg font-semibold"
+              <div className="text-xs px-3 py-2 rounded-lg font-semibold flex items-center gap-1.5"
                 style={{ background: '#B4FF4A18', color: 'var(--fiq-accent)', border: '1px solid #B4FF4A33' }}>
-                📅 Prochaine : {suggestion.session_name}
+                <CalendarDays className="w-3.5 h-3.5 shrink-0" />
+                Prochaine : {suggestion.session_name}
               </div>
             )}
 
@@ -676,9 +680,10 @@ export default async function DashboardPage() {
             )}
 
             {suggestion && (
-              <div className="text-xs px-3 py-2 rounded-lg"
+              <div className="text-xs px-3 py-2 rounded-lg flex items-center gap-1.5"
                 style={{ background: '#F59E0B18', color: '#F59E0B', border: '1px solid #F59E0B44' }}>
-                ⚠️ Séance programme non effectuée :{' '}
+                <FiqAlert size={13} style={{ color: '#F59E0B', flexShrink: 0 }} />
+                Séance programme non effectuée :{' '}
                 <span className="font-black">{suggestion.session_name}</span>
               </div>
             )}
@@ -723,20 +728,21 @@ export default async function DashboardPage() {
 
             {suggestion?.adaptation_reason && !suggestion?.adjustment_reason && (
               <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
-                💡 {suggestion.adaptation_reason}
+                {suggestion.adaptation_reason}
               </p>
             )}
 
             {suggestion?.volume_adjustment === 'reduce' && (
-              <div className="text-xs px-3 py-2 rounded-lg font-semibold"
+              <div className="text-xs px-3 py-2 rounded-lg font-semibold flex items-center gap-1.5"
                 style={{ background: '#FF6B3518', color: 'var(--fiq-orange)', border: '1px solid #FF6B3544' }}>
-                ⚠️ Volume réduit — {suggestion.adjustment_reason}
+                <FiqAlert size={13} style={{ color: 'var(--fiq-orange)', flexShrink: 0 }} />
+                Volume réduit — {suggestion.adjustment_reason}
               </div>
             )}
             {suggestion?.volume_adjustment === 'increase' && (
               <div className="text-xs px-3 py-2 rounded-lg space-y-0.5"
                 style={{ background: '#3D8BFF18', color: 'var(--fiq-blue)', border: '1px solid #3D8BFF44' }}>
-                <p className="font-black">⚡ {suggestion.adjustment_reason}</p>
+                <p className="font-black flex items-center gap-1.5"><Zap className="w-3 h-3 shrink-0" />{suggestion.adjustment_reason}</p>
                 <p style={{ opacity: 0.75 }}>{suggestion.adaptation_reason}</p>
               </div>
             )}

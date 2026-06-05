@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
+import { Zap, Star, Target } from 'lucide-react'
+import { FiqDumbbell } from '@/components/ui/FiqIcons'
 import type { Metadata } from 'next'
 
 export const dynamic = 'force-dynamic'
@@ -74,9 +76,9 @@ const FORCE_LABEL: Record<string, string> = {
 const FORCE_EMOJI: Record<string, string> = {
   push:  '⬆',
   pull:  '⬇',
-  legs:  '🦵',
-  core:  '🎯',
-  carry: '💼',
+  legs:  '▽',
+  core:  '◎',
+  carry: '◈',
 }
 
 const DIFF_COLORS = ['', '#22C55E', '#84CC16', '#EAB308', '#F97316', '#EF4444']
@@ -328,7 +330,7 @@ export default async function ExerciseDetailPage({ params }: Props) {
           style={{ background: '#B4FF4A08', border: '1px solid #B4FF4A25' }}
         >
           <p className="text-xs font-black uppercase flex items-center gap-1.5" style={{ color: 'var(--fiq-accent)', letterSpacing: '0.08em' }}>
-            ⚡ Conseil pro
+            <Zap className="w-3.5 h-3.5" /> Conseil pro
           </p>
           <p className="text-sm leading-relaxed" style={{ color: 'var(--fiq-text)' }}>
             {ex.tips}
@@ -351,8 +353,8 @@ export default async function ExerciseDetailPage({ params }: Props) {
                   className="rounded-xl p-3 text-center"
                   style={{ background: '#B4FF4A10', border: '1px solid #B4FF4A25' }}
                 >
-                  <p className="text-[10px] font-black uppercase mb-1" style={{ color: 'var(--fiq-accent)', letterSpacing: '0.08em' }}>
-                    🏆 Top Set
+                  <p className="text-[10px] font-black uppercase mb-1 flex items-center justify-center gap-1" style={{ color: 'var(--fiq-accent)', letterSpacing: '0.08em' }}>
+                    <Star className="w-3 h-3" /> Top Set
                   </p>
                   <p className="text-xl font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>
                     {prTopSet.value}
@@ -368,8 +370,8 @@ export default async function ExerciseDetailPage({ params }: Props) {
                   className="rounded-xl p-3 text-center"
                   style={{ background: '#3D8BFF10', border: '1px solid #3D8BFF25' }}
                 >
-                  <p className="text-[10px] font-black uppercase mb-1" style={{ color: '#3D8BFF', letterSpacing: '0.08em' }}>
-                    🎯 1RM estimé
+                  <p className="text-[10px] font-black uppercase mb-1 flex items-center justify-center gap-1" style={{ color: '#3D8BFF', letterSpacing: '0.08em' }}>
+                    <Target className="w-3 h-3" /> 1RM estimé
                   </p>
                   <p className="text-xl font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>
                     {Math.round(Number(pr1RM.value))}
@@ -431,7 +433,9 @@ export default async function ExerciseDetailPage({ params }: Props) {
       {/* État vide */}
       {!prTopSet && !pr1RM && recentSessions.length === 0 && (
         <div className="fiq-card text-center py-6">
-          <p className="text-2xl mb-2">🏋️</p>
+          <div className="flex justify-center mb-2">
+            <FiqDumbbell size={32} style={{ color: 'var(--fiq-muted)' }} />
+          </div>
           <p className="text-sm font-semibold" style={{ color: 'var(--fiq-muted)' }}>
             Aucune donnée encore
           </p>

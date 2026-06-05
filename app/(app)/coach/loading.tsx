@@ -1,4 +1,5 @@
 import { Skeleton } from '@/components/ui/Skeleton'
+import { Zap } from 'lucide-react'
 
 export default function CoachLoading() {
   return (
@@ -6,7 +7,7 @@ export default function CoachLoading() {
       {/* Header */}
       <div className="px-4 pt-4 pb-3 flex items-center gap-3" style={{ borderBottom: '1px solid var(--fiq-border)' }}>
         <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'var(--fiq-accent)' }}>
-          <span className="text-base">🤖</span>
+          <Zap className="w-4 h-4" style={{ color: 'var(--bg)' }} />
         </div>
         <div className="space-y-1">
           <Skeleton className="h-4 w-24" />

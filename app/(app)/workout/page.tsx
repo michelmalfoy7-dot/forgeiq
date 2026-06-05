@@ -18,7 +18,7 @@ const ACTIVITIES = [
   { name: 'Tennis',           emoji: '🎾', hasDistance: false },
   { name: 'Combat / Boxe',    emoji: '🥊', hasDistance: false },
   { name: 'Stretching',       emoji: '🤸', hasDistance: false },
-  { name: 'Autre sport',      emoji: '🏅', hasDistance: false },
+  { name: 'Autre sport',      emoji: '◈',  hasDistance: false },
 ]
 
 const EFFORT_LABELS = ['', 'Très facile', 'Facile', 'Modéré', 'Intense', 'Maximal']
@@ -415,7 +415,7 @@ export default function WorkoutPage() {
                     border: `1px solid ${volumeColors[suggestion.volume_adjustment]}44`,
                   }}
                 >
-                  {suggestion.volume_adjustment === 'reduce' ? '⚠️ Volume réduit' : '⚡ Volume augmenté'} — {suggestion.adjustment_reason}
+                  {suggestion.volume_adjustment === 'reduce' ? '↓ Volume réduit' : '↑ Volume augmenté'} — {suggestion.adjustment_reason}
                 </div>
               )}
 

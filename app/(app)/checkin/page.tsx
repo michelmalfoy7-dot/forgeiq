@@ -220,11 +220,11 @@ export default function CheckinPage() {
   const proteinTarget = macroTarget.protein_g
 
   if (!isNaN(deepSleep) && deepSleep < 60)
-    alerts.push({ type: 'yellow', msg: '⚠️ Sommeil profond insuffisant', sub: `${deepSleep}min détectés — réduis le volume d'entraînement de 15-20% aujourd'hui.` })
+    alerts.push({ type: 'yellow', msg: 'Sommeil profond insuffisant', sub: `${deepSleep}min détectés — réduis le volume d'entraînement de 15-20% aujourd'hui.` })
   if (!isNaN(protein) && protein < proteinTarget - 20)
-    alerts.push({ type: 'yellow', msg: '🥩 Protéines en dessous de l\'objectif', sub: `${protein}g / ${proteinTarget}g — pense à ajouter une source de protéines.` })
+    alerts.push({ type: 'yellow', msg: 'Protéines en dessous de l\'objectif', sub: `${protein}g / ${proteinTarget}g — pense à ajouter une source de protéines.` })
   if (!isNaN(sysBP) && sysBP > 135)
-    alerts.push({ type: 'red', msg: '🫀 Tension systolique élevée', sub: `${sysBP} mmHg — consulte un médecin si ça persiste plusieurs jours.` })
+    alerts.push({ type: 'red', msg: 'Tension systolique élevée', sub: `${sysBP} mmHg — consulte un médecin si ça persiste plusieurs jours.` })
   const cal = parseInt(form.calories) || 0
   const prot = parseFloat(form.protein_g) || 0
   const carb = parseFloat(form.carbs_g) || 0
@@ -367,12 +367,12 @@ export default function CheckinPage() {
             <p className="fiq-label mb-2">Phases (données montre / app)</p>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { key: 'sleep_deep_min' as keyof LogData, label: 'Profond', emoji: '🌑', phH: '1', phM: '30' },
-                { key: 'sleep_light_min' as keyof LogData, label: 'Léger',   emoji: '🌓', phH: '4', phM: '00' },
-                { key: 'sleep_rem_min'   as keyof LogData, label: 'REM',     emoji: '🌙', phH: '1', phM: '30' },
-              ].map(({ key, label, emoji, phH, phM }) => (
+                { key: 'sleep_deep_min' as keyof LogData, label: 'Profond', color: '#8B5CF6', phH: '1', phM: '30' },
+                { key: 'sleep_light_min' as keyof LogData, label: 'Léger',   color: '#6366F1', phH: '4', phM: '00' },
+                { key: 'sleep_rem_min'   as keyof LogData, label: 'REM',     color: '#A78BFA', phH: '1', phM: '30' },
+              ].map(({ key, label, color, phH, phM }) => (
                 <div key={key}>
-                  <p className="text-[10px] mb-1.5 text-center" style={{ color: 'var(--muted)' }}>{emoji} {label}</p>
+                  <p className="text-[10px] mb-1.5 text-center font-semibold" style={{ color }}>{label}</p>
                   <SleepHMinInput
                     valueMin={form[key] as string}
                     onChange={(min) => set(key, min ? String(min) : '')}
@@ -522,7 +522,6 @@ export default function CheckinPage() {
               onChange={(v) => set('fatigue_score', v)}
               lowLabel="Frais" highLabel="Épuisé"
               lowColor="var(--accent)" highColor="var(--red)"
-              emoji={form.fatigue_score <= 3 ? '💪' : form.fatigue_score <= 6 ? '😐' : '😴'}
             />
             <ScoreSlider
               label="Motivation"
@@ -530,7 +529,6 @@ export default function CheckinPage() {
               onChange={(v) => set('motivation_score', v)}
               lowLabel="Démotivé" highLabel="Au top"
               lowColor="var(--red)" highColor="var(--accent)"
-              emoji={form.motivation_score <= 3 ? '😴' : form.motivation_score <= 6 ? '😐' : '💪'}
             />
           </div>
 
@@ -790,10 +788,10 @@ function EwmaTrend({ current, trend }: { current: number; trend: number }) {
 }
 
 function ScoreSlider({
-  label, value, onChange, lowLabel, highLabel, lowColor, highColor, emoji,
+  label, value, onChange, lowLabel, highLabel, lowColor, highColor,
 }: {
   label: string; value: number; onChange: (v: number) => void
-  lowLabel: string; highLabel: string; lowColor: string; highColor: string; emoji: string
+  lowLabel: string; highLabel: string; lowColor: string; highColor: string
 }) {
   const pct = (value - 1) / 9
   const color = interpolateColor(lowColor, highColor, pct)
@@ -803,7 +801,6 @@ function ScoreSlider({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <label className="fiq-label">{label}</label>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 18 }}>{emoji}</span>
           <span className="fiq-data" style={{ fontSize: 20, fontWeight: 900, color }}>{value}<span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>/10</span></span>
         </div>
       </div>

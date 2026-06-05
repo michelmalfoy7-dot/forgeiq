@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Dumbbell, Zap } from 'lucide-react'
+import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Dumbbell, Zap, MessageCircle } from 'lucide-react'
 import { FiqDumbbell, FiqPR, FiqStreak, FiqCircuit, FiqCheck, FiqAlert } from '@/components/ui/FiqIcons'
 import { Confetti } from '@/components/ui/Confetti'
 import { PlateCalculatorModal } from '@/components/workout/PlateCalculatorModal'
@@ -508,8 +508,8 @@ export default function WorkoutSessionPage() {
         if ('Notification' in window && Notification.permission === 'granted'
             && document.visibilityState !== 'visible') {
           try {
-            new Notification('ForgeIQ ⚡', {
-              body: 'Repos terminé — GO ! 💪',
+            new Notification('ForgeIQ', {
+              body: 'Repos terminé — GO !',
               icon: '/icons/icon-192.png',
               tag: 'rest-timer',
             })
@@ -900,8 +900,8 @@ export default function WorkoutSessionPage() {
 
   // ── Partage natif mobile ──────────────────────────────────
   async function handleNativeShare() {
-    const stats = `💪 ${sessionName} · ${summary?.tonnage.toLocaleString('fr-FR')} kg soulevés · ${summary?.sets} séries`
-      + (summary && summary.newPRs.length > 0 ? ` · 🏆 ${summary.newPRs.length} PR${summary.newPRs.length > 1 ? 's' : ''}` : '')
+    const stats = `${sessionName} · ${summary?.tonnage.toLocaleString('fr-FR')} kg soulevés · ${summary?.sets} séries`
+      + (summary && summary.newPRs.length > 0 ? ` · ${summary.newPRs.length} PR${summary.newPRs.length > 1 ? 's' : ''}` : '')
     const caption = shareCaption.trim()
     // Inclure le message utilisateur en tête si présent
     const text = caption ? `${caption}\n\n${stats}` : stats
@@ -943,8 +943,8 @@ export default function WorkoutSessionPage() {
     setSharingCard(true)
     const slug = sessionName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
     const fallbackText = [
-      `💪 ${sessionName} — via ForgeIQ`,
-      summary ? `⚡ ${summary.tonnage.toLocaleString('fr-FR')} kg · ${summary.sets} séries` : '',
+      `${sessionName} — via ForgeIQ`,
+      summary ? `${summary.tonnage.toLocaleString('fr-FR')} kg · ${summary.sets} séries` : '',
       shareCaption.trim(),
       'getforgeiq.com',
     ].filter(Boolean).join('\n')
@@ -1046,7 +1046,10 @@ export default function WorkoutSessionPage() {
           {(aiInsightsLoading || aiInsights) && (
             <div className="fiq-card text-left space-y-3">
               <div className="flex items-center gap-2">
-                <span className="text-sm">🤖</span>
+                <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'var(--fiq-accent)' }}>
+                  <Zap className="w-3 h-3" style={{ color: 'var(--bg)' }} />
+                </div>
                 <p className="text-xs font-black uppercase tracking-wider" style={{ color: 'var(--fiq-accent)' }}>
                   Analyse ForgeIQ
                 </p>
@@ -1115,7 +1118,7 @@ export default function WorkoutSessionPage() {
                     className="mt-1 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black"
                     style={{ border: '1px solid #3D8BFF44', color: '#3D8BFF', background: '#3D8BFF0A' }}
                   >
-                    💬 Creuser avec le coach →
+                    <MessageCircle className="w-3.5 h-3.5" /> Creuser avec le coach →
                   </a>
                 </>
               ) : null}
@@ -1211,7 +1214,7 @@ export default function WorkoutSessionPage() {
               >
                 {sharing
                   ? <><Loader2 className="w-4 h-4 animate-spin" /> Publication…</>
-                  : <>📤 Poster sur ForgeIQ</>
+                  : <><Plus className="w-4 h-4" /> Poster sur ForgeIQ</>
                 }
               </button>
             </div>
@@ -1224,7 +1227,7 @@ export default function WorkoutSessionPage() {
               style={{ background: '#B4FF4A10', border: '1px solid #B4FF4A40' }}
             >
               <div className="flex items-center gap-2">
-                <span className="text-xl">🎉</span>
+                <FiqCheck size={22} style={{ color: 'var(--fiq-accent)' }} />
                 <div>
                   <p className="text-sm font-black" style={{ color: 'var(--fiq-accent)' }}>Live sur ForgeIQ !</p>
                   <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Ta séance est visible dans la communauté</p>
@@ -1239,7 +1242,7 @@ export default function WorkoutSessionPage() {
                 >
                   {sharingCard
                     ? <><Loader2 className="w-4 h-4 animate-spin" /> Génération…</>
-                    : <>🖼️ Partager la carte</>
+                    : <>Partager la carte</>
                   }
                 </button>
                 <a
@@ -1356,7 +1359,7 @@ export default function WorkoutSessionPage() {
             >
               {savingRoutine
                 ? <><Loader2 className="w-4 h-4 animate-spin" />Sauvegarde…</>
-                : <>💾 Oui, mettre à jour la routine</>
+                : <><Check className="w-4 h-4" /> Oui, mettre à jour la routine</>
               }
             </button>
           </div>
@@ -1404,7 +1407,7 @@ export default function WorkoutSessionPage() {
               style={{ color: 'var(--fiq-text)' }}
             >
               {sessionName}
-              <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>✏️</span>
+              <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>✎</span>
             </button>
           )}
           <div className="flex items-center gap-2 mt-0.5">
@@ -1433,7 +1436,7 @@ export default function WorkoutSessionPage() {
               style={{ color: '#B4FF4A', border: '1px solid #B4FF4A44', background: '#B4FF4A0A' }}
               title={`Sauvegarder dans ${programName}`}
             >
-              💾
+              <Check className="w-3 h-3" />
             </button>
           )}
           {/* Bouton quitter (si séance en cours) */}
@@ -1767,8 +1770,8 @@ export default function WorkoutSessionPage() {
               {filteredExercises.slice(0, 80).map((ex) => {
                 const alreadyAdded = recentExerciseIds.has(ex.id)
                 const equipIcons: Record<string, string> = {
-                  barbell: '🏋️', dumbbell: '💪', cable: '🔗',
-                  machine: '⚙️', bodyweight: '🤸', kettlebell: '🫙', smith: '📐',
+                  barbell: 'BB', dumbbell: 'DB', cable: '~',
+                  machine: 'M', bodyweight: 'BW', kettlebell: 'KB', smith: 'SM',
                 }
                 return (
                   <button
@@ -1786,7 +1789,7 @@ export default function WorkoutSessionPage() {
                         {alreadyAdded && <span className="ml-1.5 text-xs" style={{ color: 'var(--fiq-accent)' }}>✓</span>}
                       </p>
                       <p className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--fiq-muted)' }}>
-                        <span>{equipIcons[ex.equipment] ?? '🏋️'} {ex.equipment}</span>
+                        <span>{equipIcons[ex.equipment] ?? 'EQ'} · {ex.equipment}</span>
                         <span style={{ opacity: 0.4 }}>·</span>
                         <span>{(ex.muscle_primary ?? []).slice(0, 2).join(', ')}</span>
                         {ex.is_bilateral_dumbbell && (
@@ -1874,7 +1877,7 @@ const SET_TYPE_CONFIG: Record<SetType, { label: string; color: string; bg: strin
   top_set: { label: '★',  color: '#F59E0B',            bg: '#F59E0B22' },  // Top set — charge maximale
   backoff: { label: 'B',  color: 'var(--fiq-blue)',    bg: '#3D8BFF22' },  // Back-off — charge réduite, volume
   dropset: { label: '⬇', color: 'var(--fiq-orange)',  bg: '#FF6B3522' },  // Drop set — enchaîné sans repos
-  failure: { label: '💥', color: 'var(--fiq-red)',     bg: '#EF444422' },  // Echec musculaire
+  failure: { label: 'X',  color: 'var(--fiq-red)',     bg: '#EF444422' },  // Echec musculaire
 }
 
 // ── Composant exercice avec sets ──────────────────────────────

@@ -255,7 +255,7 @@ export default async function ExplorerPage() {
       {hotFeed.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-center gap-2">
-            <span className="text-base">🔥</span>
+            <Flame className="w-4 h-4" style={{ color: 'var(--fiq-orange)' }} />
             <h2 className="text-sm font-black uppercase tracking-wider" style={{ color: 'var(--fiq-text)', letterSpacing: '0.06em' }}>
               Tendances cette semaine
             </h2>

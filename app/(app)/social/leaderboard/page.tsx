@@ -17,14 +17,13 @@ type LeaderEntry = {
 
 type TabType = 'tonnage' | 'sessions' | 'prs'
 
-const TABS: { key: TabType; label: string; icon: React.ReactNode; unit: (v: number) => string; color: string; emoji: string }[] = [
+const TABS: { key: TabType; label: string; icon: React.ReactNode; unit: (v: number) => string; color: string }[] = [
   {
     key: 'tonnage',
     label: 'Tonnage',
     icon: <Dumbbell className="w-3.5 h-3.5" />,
     unit: (v) => v > 1000 ? `${(v / 1000).toFixed(1)}t` : `${v}kg`,
     color: 'var(--fiq-accent)',
-    emoji: '🏋️',
   },
   {
     key: 'sessions',
@@ -32,7 +31,6 @@ const TABS: { key: TabType; label: string; icon: React.ReactNode; unit: (v: numb
     icon: <Flame className="w-3.5 h-3.5" />,
     unit: (v) => `${v} séance${v > 1 ? 's' : ''}`,
     color: 'var(--fiq-orange)',
-    emoji: '🔥',
   },
   {
     key: 'prs',
@@ -40,7 +38,6 @@ const TABS: { key: TabType; label: string; icon: React.ReactNode; unit: (v: numb
     icon: <Zap className="w-3.5 h-3.5" />,
     unit: (v) => `${v} PR${v > 1 ? 's' : ''}`,
     color: '#A855F7',
-    emoji: '⚡',
   },
 ]
 
@@ -194,7 +191,7 @@ export default function LeaderboardPage() {
         </div>
       ) : entries !== null && entries.length === 0 ? (
         <div className="fiq-card text-center py-12">
-          <p className="text-4xl mb-3">{currentTab.emoji}</p>
+          <div className="flex justify-center mb-3" style={{ color: currentTab.color }}>{currentTab.icon}</div>
           <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>Pas encore de données</p>
           <p className="text-sm mt-1" style={{ color: 'var(--fiq-muted)' }}>
             Entraîne-toi cette semaine pour apparaître ici !
@@ -261,7 +258,7 @@ function PodiumCard({
         className="text-xs font-black text-center truncate w-full"
         style={{ color: entry.is_me ? tab.color : 'var(--fiq-text)', maxWidth: position === 1 ? 96 : 76 }}
       >
-        {entry.display_name}{entry.is_me ? ' 🫵' : ''}
+        {entry.display_name}{entry.is_me ? ' (toi)' : ''}
       </p>
 
       {/* Valeur */}
