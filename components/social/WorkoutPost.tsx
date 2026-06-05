@@ -5,6 +5,7 @@ import { Heart, Share2, Dumbbell, Clock, MessageCircle, Loader2, MoreHorizontal,
 import Image from 'next/image'
 import Link from 'next/link'
 import { CommentSheet } from './CommentSheet'
+import { ReactionsBar } from './ReactionsBar'
 
 export type ExerciseInPost = {
   name: string
@@ -421,6 +422,9 @@ export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id
           onCountChange={(delta) => setCommentsCount((n) => Math.max(0, n + delta))}
         />
       )}
+
+      {/* ── Réactions emoji ── */}
+      <ReactionsBar shareId={post.id} />
 
       {/* ── Actions ── */}
       <div className="flex items-center gap-1 px-3 pb-3 pt-1 border-t" style={{ borderColor: 'var(--fiq-border)' }}>

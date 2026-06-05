@@ -9,6 +9,7 @@ import { ShareBig5Button } from '@/components/social/ShareBig5Button'
 import type { FeedPost } from '@/components/social/WorkoutPost'
 import { buildExercisesMap } from '@/lib/utils/social'
 import { categorizeBig5 } from '@/lib/utils/big5'
+import { ShareWrappedButton } from '@/components/social/ShareWrappedButton'
 import { FiqDumbbell, FiqStreak } from '@/components/ui/FiqIcons'
 
 export const dynamic = 'force-dynamic'
@@ -408,6 +409,11 @@ export default async function PublicProfilePage({ params }: PageProps) {
             />
           </div>
         </div>
+      )}
+
+      {/* Bilan annuel Wrapped — visible uniquement sur son propre profil */}
+      {isOwnProfile && totalSessions >= 3 && (
+        <ShareWrappedButton userId={targetProfile.user_id} />
       )}
 
       {/* QR code — partager le profil IRL */}

@@ -1,8 +1,30 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 import { X, Send, Loader2, Trash2 } from 'lucide-react'
+
+// Rend le texte d'un commentaire avec les @mentions en liens verts
+function renderComment(text: string): React.ReactNode {
+  const parts = text.split(/(@\w[\w.]*)/g)
+  return parts.map((part, i) => {
+    if (/^@\w[\w.]*$/.test(part)) {
+      return (
+        <Link
+          key={i}
+          href={`/u/${part.slice(1).toLowerCase()}`}
+          className="font-black"
+          style={{ color: 'var(--fiq-accent)' }}
+          onClick={e => e.stopPropagation()}
+        >
+          {part}
+        </Link>
+      )
+    }
+    return <span key={i}>{part}</span>
+  })
+}
 
 type Comment = {
   id: string
@@ -201,7 +223,7 @@ export function CommentSheet({ shareId, initialCount, onClose, onCountChange }: 
                         </span>
                       </div>
                       <p className="text-sm mt-0.5 leading-relaxed" style={{ color: 'var(--fiq-text)' }}>
-                        {comment.content}
+                        {renderComment(comment.content)}
                       </p>
                     </div>
 

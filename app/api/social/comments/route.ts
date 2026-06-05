@@ -91,7 +91,7 @@ export async function POST(request: Request) {
       } catch { /* silencieux */ }
     })()
 
-    // Notification au propriétaire du post (fire-and-forget)
+    // Notification au propriétaire du post + mentions @username (fire-and-forget)
     void (async () => {
       try {
         const { data: share } = await supabase
@@ -99,19 +99,45 @@ export async function POST(request: Request) {
           .select('user_id')
           .eq('id', body.share_id)
           .maybeSingle()
-        if (share && share.user_id !== user.id) {
+
+        const shareOwnerId = share?.user_id
+
+        // Notification commentaire au propriétaire
+        if (shareOwnerId && shareOwnerId !== user.id) {
           await supabase.from('notifications').insert({
-            user_id:      share.user_id,
+            user_id:      shareOwnerId,
             actor_id:     user.id,
             type:         'comment',
             reference_id: body.share_id,
           })
-          void sendPushToUser(share.user_id, {
+          void sendPushToUser(shareOwnerId, {
             title: '💬 ForgeIQ',
             body:  'Quelqu\'un a commenté ta séance !',
             url:   '/social/notifications',
             tag:   'comment',
           })
+        }
+
+        // Détection des @mentions dans le commentaire
+        const mentionMatches = content.match(/@(\w[\w.]*)/g)
+        if (mentionMatches && mentionMatches.length > 0) {
+          const usernames = [...new Set(mentionMatches.map(m => m.slice(1).toLowerCase()))]
+          const { data: mentionedProfiles } = await supabase
+            .from('social_profiles')
+            .select('user_id, username')
+            .in('username', usernames)
+
+          for (const mp of (mentionedProfiles ?? [])) {
+            // Ne pas notifier l'auteur du commentaire ni le proprio du post (déjà notifié)
+            if (mp.user_id !== user.id && mp.user_id !== shareOwnerId) {
+              await supabase.from('notifications').insert({
+                user_id:      mp.user_id,
+                actor_id:     user.id,
+                type:         'mention',
+                reference_id: body.share_id,
+              })
+            }
+          }
         }
       } catch { /* silencieux */ }
     })()
