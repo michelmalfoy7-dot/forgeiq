@@ -1,10 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Search, Users } from 'lucide-react'
+import { Search, Users, Compass } from 'lucide-react'
 import { WorkoutPost } from '@/components/social/WorkoutPost'
 import { SocialProfileSetup } from '@/components/social/SocialProfileSetup'
-import type { FeedPost } from '@/components/social/WorkoutPost'
+import type { FeedPost, ExerciseInPost } from '@/components/social/WorkoutPost'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,6 +80,22 @@ export default async function SocialPage() {
       const authMap = new Map((authProfiles ?? []).map((p: { id: string; display_name: string | null }) => [p.id, p]))
       const likedIds = new Set((userLikes ?? []).map((l: { workout_share_id: string }) => l.workout_share_id))
 
+      // Récupérer les sets des workouts pour afficher les exercices dans chaque post
+      const workoutIds = shares.map((s: { workout_id: string }) => s.workout_id).filter(Boolean)
+      const { data: setsData } = workoutIds.length > 0
+        ? await supabase
+            .from('workout_sets')
+            .select('workout_id, exercise_name, weight_kg, reps, set_type')
+            .in('workout_id', workoutIds)
+            .neq('set_type', 'warmup')
+            .gt('weight_kg', 0)
+            .gt('reps', 0)
+            .order('set_number', { ascending: true })
+        : { data: [] }
+
+      // Grouper les sets par workout → exercice, garder le meilleur set par exercice
+      const exercisesByWorkout = buildExercisesMap(setsData ?? [])
+
       feed = shares.map((share) => {
         const social = socialMap.get(share.user_id)
         const auth = authMap.get(share.user_id)
@@ -99,6 +115,7 @@ export default async function SocialPage() {
           comments_count: share.comments_count,
           created_at: share.created_at,
           is_liked: likedIds.has(share.id),
+          exercises: exercisesByWorkout.get(share.workout_id),
           author: {
             username: social?.username ?? null,
             display_name: social?.display_name ?? auth?.display_name ?? 'Athlète',
@@ -129,14 +146,23 @@ export default async function SocialPage() {
             Progressez ensemble
           </p>
         </div>
-        <Link
-          href="/social/search"
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
-          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
-        >
-          <Search className="w-3.5 h-3.5" />
-          Rechercher
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/social/explorer"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
+            style={{ background: '#B4FF4A15', border: '1px solid #B4FF4A30', color: 'var(--fiq-accent)' }}
+          >
+            <Compass className="w-3.5 h-3.5" />
+            Explorer
+          </Link>
+          <Link
+            href="/social/search"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
+            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
+          >
+            <Search className="w-3.5 h-3.5" />
+          </Link>
+        </div>
       </div>
 
       {/* Pas encore de profil social — CTA création */}
@@ -165,16 +191,79 @@ export default async function SocialPage() {
               Partage aussi tes séances après l&apos;entraînement
             </p>
           </div>
-          <Link
-            href="/social/search"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-sm"
-            style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
-          >
-            <Users className="w-4 h-4" />
-            Découvrir des athlètes
-          </Link>
+          <div className="flex flex-col gap-2">
+            <Link
+              href="/social/explorer"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-black text-sm"
+              style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+            >
+              <Compass className="w-4 h-4" />
+              Explorer la communauté
+            </Link>
+            <Link
+              href="/social/search"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm"
+              style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)' }}
+            >
+              <Users className="w-4 h-4" />
+              Rechercher des athlètes
+            </Link>
+          </div>
         </div>
       )}
     </div>
   )
+}
+
+// ── Utilitaire : grouper les sets par workout → exercice ──────────────────────
+type RawSet = {
+  workout_id: string
+  exercise_name: string
+  weight_kg: number
+  reps: number
+  set_type: string | null
+}
+
+function buildExercisesMap(sets: RawSet[]): Map<string, ExerciseInPost[]> {
+  // workout_id → exercise_name → { maxKg, maxReps, count, order }
+  const workoutExMap = new Map<string, Map<string, { maxKg: number; maxReps: number; count: number; order: number }>>()
+
+  for (const set of sets) {
+    if (!workoutExMap.has(set.workout_id)) workoutExMap.set(set.workout_id, new Map())
+    const exMap = workoutExMap.get(set.workout_id)!
+    const existing = exMap.get(set.exercise_name)
+
+    if (!existing) {
+      exMap.set(set.exercise_name, {
+        maxKg: set.weight_kg,
+        maxReps: set.reps,
+        count: 1,
+        order: exMap.size, // ordre d'apparition dans la séance
+      })
+    } else {
+      const isBetter =
+        set.weight_kg > existing.maxKg ||
+        (set.weight_kg === existing.maxKg && set.reps > existing.maxReps)
+      exMap.set(set.exercise_name, {
+        maxKg: isBetter ? set.weight_kg : existing.maxKg,
+        maxReps: isBetter ? set.reps : existing.maxReps,
+        count: existing.count + 1,
+        order: existing.order,
+      })
+    }
+  }
+
+  const result = new Map<string, ExerciseInPost[]>()
+  for (const [workoutId, exMap] of workoutExMap.entries()) {
+    const exercises = Array.from(exMap.entries())
+      .sort(([, a], [, b]) => a.order - b.order) // ordre de la séance
+      .map(([name, data]) => ({
+        name,
+        top_set_kg: data.maxKg,
+        top_set_reps: data.maxReps,
+        set_count: data.count,
+      }))
+    result.set(workoutId, exercises)
+  }
+  return result
 }

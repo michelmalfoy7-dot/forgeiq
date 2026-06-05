@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { MuscleVolume } from '@/app/api/progress/volume-weekly/route'
+import type { MuscleVolume } from '@/lib/utils/volume'
 
 // Couleur selon le statut du volume
 function statusColor(status: MuscleVolume['status']): string {

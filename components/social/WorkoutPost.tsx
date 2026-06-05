@@ -1,8 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { Heart, Share2, Dumbbell, Zap, Clock } from 'lucide-react'
+import { Heart, Share2, Dumbbell, Clock, MessageCircle, Loader2 } from 'lucide-react'
 import Image from 'next/image'
+import Link from 'next/link'
+
+export type ExerciseInPost = {
+  name: string
+  top_set_kg: number
+  top_set_reps: number
+  set_count: number
+}
 
 export type FeedPost = {
   id: string
@@ -13,6 +21,7 @@ export type FeedPost = {
   comments_count: number
   created_at: string
   is_liked: boolean
+  exercises?: ExerciseInPost[]
   author: {
     username: string | null
     display_name: string
@@ -51,6 +60,7 @@ export function WorkoutPost({ post }: { post: FeedPost }) {
   const [liked, setLiked] = useState(post.is_liked)
   const [likesCount, setLikesCount] = useState(post.likes_count)
   const [liking, setLiking] = useState(false)
+  const [sharing, setSharing] = useState(false)
 
   async function handleLike() {
     if (liking) return
@@ -77,16 +87,60 @@ export function WorkoutPost({ post }: { post: FeedPost }) {
   }
 
   async function handleShare() {
-    const text = [
-      `💪 ${post.workout?.session_name ?? 'Séance'} — via ForgeIQ`,
+    if (sharing) return
+    setSharing(true)
+
+    const profileUrl = post.author.username
+      ? `${window.location.origin}/u/${post.author.username}`
+      : window.location.origin
+    const fallbackText = [
+      `💪 ${post.workout?.session_name ?? 'Séance'} — ${post.author.display_name}`,
       post.workout?.total_tonnage_kg ? `⚡ ${formatTonnage(post.workout.total_tonnage_kg)} soulevés` : '',
       post.caption ?? '',
-      'getforgeiq.com',
+      profileUrl,
     ].filter(Boolean).join('\n')
+
+    try {
+      // 1. Essayer de partager la carte image (Web Share API level 2 — iOS 15+, Android)
+      const cardRes = await fetch(`/api/social/card?id=${post.id}`)
+      if (cardRes.ok) {
+        const blob = await cardRes.blob()
+        const slug = (post.workout?.session_name ?? 'seance')
+          .toLowerCase()
+          .replace(/\s+/g, '-')
+          .replace(/[^a-z0-9-]/g, '')
+        const file = new File([blob], `forgeiq-${slug}.png`, { type: 'image/png' })
+
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            text: fallbackText,
+          })
+          return
+        }
+
+        // 2. Pas de Web Share avec fichiers → télécharger l'image directement
+        const blobUrl = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = blobUrl
+        a.download = `forgeiq-${slug}.png`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
+        return
+      }
+    } catch {
+      // Fallback texte si la génération échoue
+    } finally {
+      setSharing(false)
+    }
+
+    // 3. Fallback final : partage texte + URL
     if (navigator.share) {
-      await navigator.share({ text }).catch(() => {})
+      await navigator.share({ text: fallbackText, url: profileUrl }).catch(() => {})
     } else {
-      await navigator.clipboard.writeText(text).catch(() => {})
+      await navigator.clipboard.writeText(fallbackText).catch(() => {})
     }
   }
 
@@ -151,8 +205,43 @@ export function WorkoutPost({ post }: { post: FeedPost }) {
         </div>
       )}
 
+      {/* ── Exercices — top sets par exercice ── */}
+      {post.exercises && post.exercises.length > 0 && (
+        <div className="px-4 py-3 space-y-2" style={{ borderBottom: '1px solid var(--fiq-border)' }}>
+          {post.exercises.slice(0, 4).map((ex, i) => (
+            <div key={i} className="flex items-center justify-between gap-2">
+              <span className="text-xs truncate flex-1" style={{ color: 'var(--fiq-muted)' }}>
+                {ex.name}
+              </span>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <span className="text-xs font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>
+                  {ex.top_set_kg}kg
+                </span>
+                <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+                  × {ex.top_set_reps}
+                </span>
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold"
+                  style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)' }}
+                >
+                  {ex.set_count}s
+                </span>
+              </div>
+            </div>
+          ))}
+          {post.exercises.length > 4 && (
+            <p className="text-[11px]" style={{ color: 'var(--fiq-muted)' }}>
+              +{post.exercises.length - 4} exercice{post.exercises.length - 4 > 1 ? 's' : ''}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* ── Auteur + date ── */}
-      <div className="flex items-center gap-3 px-4 py-3">
+      <Link
+        href={post.author.username ? `/u/${post.author.username}` : '#'}
+        className="flex items-center gap-3 px-4 py-3 transition-opacity active:opacity-70"
+      >
         <div className="relative w-9 h-9 rounded-xl overflow-hidden flex-shrink-0"
           style={{ background: 'var(--fiq-accent)' }}>
           {post.author.avatar_url ? (
@@ -180,7 +269,7 @@ export function WorkoutPost({ post }: { post: FeedPost }) {
             </p>
           </div>
         </div>
-      </div>
+      </Link>
 
       {/* Caption */}
       {post.caption && (
@@ -207,28 +296,33 @@ export function WorkoutPost({ post }: { post: FeedPost }) {
           </span>
         </button>
 
+        {/* Commentaires — compteur affiché, système complet Sprint 7 */}
+        <button
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all active:scale-95"
+          style={{ color: 'var(--fiq-muted)' }}
+          onClick={() => {/* TODO Sprint 7 : ouvrir sheet commentaires */}}
+        >
+          <MessageCircle className="w-4 h-4" />
+          <span className="text-xs font-bold">
+            {post.comments_count > 0 ? post.comments_count : 'Commenter'}
+          </span>
+        </button>
+
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Share */}
+        {/* Share — génère une carte image PNG */}
         <button
           onClick={handleShare}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all active:scale-95"
-          style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)' }}
+          disabled={sharing}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-60"
+          style={{ background: 'var(--fiq-faint)', color: sharing ? 'var(--fiq-accent)' : 'var(--fiq-muted)' }}
         >
-          <Share2 className="w-3.5 h-3.5" />
-          Partager
-        </button>
-
-        {/* Zap — motivation */}
-        <button
-          className="flex items-center gap-1 px-2.5 py-2 rounded-xl transition-all active:scale-95"
-          style={{ color: 'var(--fiq-accent)' }}
-          onClick={() => {
-            // Future : réaction "🔥"
-          }}
-        >
-          <Zap className="w-4 h-4" style={{ fill: 'var(--fiq-accent)' }} />
+          {sharing
+            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            : <Share2 className="w-3.5 h-3.5" />
+          }
+          {sharing ? 'Carte…' : 'Partager'}
         </button>
       </div>
     </div>

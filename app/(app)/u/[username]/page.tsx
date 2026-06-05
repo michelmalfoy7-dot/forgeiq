@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { WorkoutPost } from '@/components/social/WorkoutPost'
 import { FollowButton } from '@/components/social/FollowButton'
-import type { FeedPost } from '@/components/social/WorkoutPost'
+import type { FeedPost, ExerciseInPost } from '@/components/social/WorkoutPost'
 import { categorizeBig5 } from '@/lib/utils/big5'
 
 export const dynamic = 'force-dynamic'
@@ -147,15 +147,30 @@ export default async function PublicProfilePage({ params }: PageProps) {
 
   // Vérifier les likes de l'utilisateur connecté
   const shareIds = (shares ?? []).map((s: { id: string }) => s.id)
-  const { data: userLikes } = shareIds.length > 0
-    ? await supabase
-        .from('likes')
-        .select('workout_share_id')
-        .eq('user_id', user.id)
-        .in('workout_share_id', shareIds)
-    : { data: [] }
+  const workoutIds = (shares ?? []).map((s: { workout_id: string }) => s.workout_id).filter(Boolean)
+
+  const [{ data: userLikes }, { data: setsData }] = await Promise.all([
+    shareIds.length > 0
+      ? supabase
+          .from('likes')
+          .select('workout_share_id')
+          .eq('user_id', user.id)
+          .in('workout_share_id', shareIds)
+      : Promise.resolve({ data: [] }),
+    workoutIds.length > 0
+      ? supabase
+          .from('workout_sets')
+          .select('workout_id, exercise_name, weight_kg, reps, set_type')
+          .in('workout_id', workoutIds)
+          .neq('set_type', 'warmup')
+          .gt('weight_kg', 0)
+          .gt('reps', 0)
+          .order('set_number', { ascending: true })
+      : Promise.resolve({ data: [] }),
+  ])
 
   const likedIds = new Set((userLikes ?? []).map((l: { workout_share_id: string }) => l.workout_share_id))
+  const exercisesByWorkout = buildExercisesMap(setsData ?? [])
 
   const feed: FeedPost[] = (shares ?? []).map((share) => {
     const workout = (share.workouts as unknown) as {
@@ -174,6 +189,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
       comments_count: share.comments_count,
       created_at: share.created_at,
       is_liked: likedIds.has(share.id),
+      exercises: exercisesByWorkout.get(share.workout_id),
       author: {
         username: targetProfile.username,
         display_name: targetProfile.display_name ?? targetProfile.username ?? 'Athlète',
@@ -338,4 +354,51 @@ export default async function PublicProfilePage({ params }: PageProps) {
       )}
     </div>
   )
+}
+
+// ── Utilitaire : grouper les sets par workout → exercice ──────────────────────
+type RawSet = {
+  workout_id: string
+  exercise_name: string
+  weight_kg: number
+  reps: number
+  set_type: string | null
+}
+
+function buildExercisesMap(sets: RawSet[]): Map<string, ExerciseInPost[]> {
+  const workoutExMap = new Map<string, Map<string, { maxKg: number; maxReps: number; count: number; order: number }>>()
+
+  for (const set of sets) {
+    if (!workoutExMap.has(set.workout_id)) workoutExMap.set(set.workout_id, new Map())
+    const exMap = workoutExMap.get(set.workout_id)!
+    const existing = exMap.get(set.exercise_name)
+
+    if (!existing) {
+      exMap.set(set.exercise_name, { maxKg: set.weight_kg, maxReps: set.reps, count: 1, order: exMap.size })
+    } else {
+      const isBetter =
+        set.weight_kg > existing.maxKg ||
+        (set.weight_kg === existing.maxKg && set.reps > existing.maxReps)
+      exMap.set(set.exercise_name, {
+        maxKg: isBetter ? set.weight_kg : existing.maxKg,
+        maxReps: isBetter ? set.reps : existing.maxReps,
+        count: existing.count + 1,
+        order: existing.order,
+      })
+    }
+  }
+
+  const result = new Map<string, ExerciseInPost[]>()
+  for (const [workoutId, exMap] of workoutExMap.entries()) {
+    const exercises = Array.from(exMap.entries())
+      .sort(([, a], [, b]) => a.order - b.order)
+      .map(([name, data]) => ({
+        name,
+        top_set_kg: data.maxKg,
+        top_set_reps: data.maxReps,
+        set_count: data.count,
+      }))
+    result.set(workoutId, exercises)
+  }
+  return result
 }
