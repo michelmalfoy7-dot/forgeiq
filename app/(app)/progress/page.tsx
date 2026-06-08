@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { ProgressChartsLazy as ProgressCharts } from '@/components/progress/ProgressChartsLazy'
 import { ProgressPhotos } from '@/components/progress/ProgressPhotos'
+import { MeasurementsSection } from '@/components/progress/MeasurementsSection'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,6 +77,12 @@ export default async function ProgressPage() {
         weeklyTonnage={weeklyTonnage}
         personalRecords={prs ?? []}
       />
+
+      {/* Séparateur */}
+      <div className="mt-6 mb-4" style={{ height: '1px', background: 'var(--fiq-border)' }} />
+
+      {/* Mensurations corporelles */}
+      <MeasurementsSection />
 
       {/* Séparateur */}
       <div className="mt-6 mb-4" style={{ height: '1px', background: 'var(--fiq-border)' }} />
