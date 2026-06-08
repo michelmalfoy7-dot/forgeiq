@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Dumbbell, Zap, MessageCircle } from 'lucide-react'
+import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Dumbbell, Zap, MessageCircle, Share2 } from 'lucide-react'
 import { FiqDumbbell, FiqPR, FiqStreak, FiqCircuit, FiqCheck, FiqAlert } from '@/components/ui/FiqIcons'
 import { Confetti } from '@/components/ui/Confetti'
 import { PlateCalculatorModal } from '@/components/workout/PlateCalculatorModal'
@@ -150,6 +150,8 @@ export default function WorkoutSessionPage() {
   const [shareDismissed, setShareDismissed] = useState(false)
   const [shareId, setShareId] = useState<string | null>(null)
   const [sharingCard, setSharingCard] = useState(false)
+  // Format carte : 'square' (1080×1080) | 'story' (1080×1920)
+  const [cardFormat, setCardFormat] = useState<'square' | 'story'>('square')
   // Programme lié à la séance (pour "sauvegarder la routine")
   const [programId, setProgramId]             = useState<string | null>(null)
   const [programName, setProgramName]         = useState<string>('')
@@ -937,11 +939,13 @@ export default function WorkoutSessionPage() {
     finally { setSharing(false) }
   }
 
-  // ── Partage carte image PNG (post + natif) ────────────────
+  // ── Partage carte image PNG (post feed → shareId) ────────────
   async function handleShareCard(id: string) {
     if (sharingCard) return
     setSharingCard(true)
     const slug = sessionName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+    const dateStr = new Date().toLocaleDateString('fr-FR').replace(/\//g, '-')
+    const fileName = `forgeiq-${slug}-${dateStr}.jpg`
     const fallbackText = [
       `${sessionName} — via ForgeIQ`,
       summary ? `${summary.tonnage.toLocaleString('fr-FR')} kg · ${summary.sets} séries` : '',
@@ -949,18 +953,18 @@ export default function WorkoutSessionPage() {
       'getforgeiq.com',
     ].filter(Boolean).join('\n')
     try {
-      const cardRes = await fetch(`/api/social/card?id=${id}`)
+      const cardRes = await fetch(`/api/social/card?id=${id}&format=${cardFormat}`)
       if (cardRes.ok) {
         const blob = await cardRes.blob()
-        const file = new File([blob], `forgeiq-${slug}.png`, { type: 'image/png' })
+        const file = new File([blob], fileName, { type: 'image/jpeg' })
         if (navigator.canShare?.({ files: [file] })) {
           await navigator.share({ files: [file], text: fallbackText })
           return
         }
-        // Fallback : télécharger l'image
+        // Fallback desktop : télécharger l'image
         const url = URL.createObjectURL(blob)
         const a   = document.createElement('a')
-        a.href = url; a.download = `forgeiq-${slug}.png`
+        a.href = url; a.download = fileName
         document.body.appendChild(a); a.click(); document.body.removeChild(a)
         setTimeout(() => URL.revokeObjectURL(url), 1000)
         return
@@ -968,6 +972,52 @@ export default function WorkoutSessionPage() {
     } catch { /* Fallback texte */ }
     finally   { setSharingCard(false) }
     // Fallback texte
+    if (navigator.share) await navigator.share({ text: fallbackText }).catch(() => {})
+    else await navigator.clipboard.writeText(fallbackText).catch(() => {})
+  }
+
+  // ── Partage carte DIRECTE (avant post feed, route /own) ──────
+  async function handleShareOwnCard(fmt: 'square' | 'story' = 'square') {
+    if (sharingCard) return
+    setSharingCard(true)
+    const slug = sessionName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+    const dateStr = new Date().toLocaleDateString('fr-FR').replace(/\//g, '-')
+    const fileName = `forgeiq-${slug}-${dateStr}.jpg`
+    const fallbackText = [
+      `${sessionName} — via ForgeIQ`,
+      summary ? `${summary.tonnage.toLocaleString('fr-FR')} kg · ${summary.sets} séries` : '',
+      summary?.newPRs.length ? `🏆 ${summary.newPRs.length} PR${summary.newPRs.length > 1 ? 's' : ''}` : '',
+      'getforgeiq.com',
+    ].filter(Boolean).join('\n')
+
+    try {
+      const cardRes = await fetch(`/api/social/card/own?workout_id=${workoutId}&format=${fmt}`)
+      if (cardRes.ok) {
+        const blob = await cardRes.blob()
+        const file = new File([blob], fileName, { type: 'image/jpeg' })
+
+        // Web Share API avec fichier (iOS / Android)
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: `Ma séance ForgeIQ — ${sessionName}`,
+            text:  `${summary ? `${Math.round(summary.tonnage / 1000)}t soulevés 💪` : ''}${summary?.newPRs.length ? ` · 🏆 ${summary.newPRs.length} PR` : ''}\ngetforgeiq.com`,
+          })
+          return
+        }
+
+        // Fallback desktop : téléchargement direct
+        const url = URL.createObjectURL(blob)
+        const a   = document.createElement('a')
+        a.href = url; a.download = fileName
+        document.body.appendChild(a); a.click(); document.body.removeChild(a)
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+        return
+      }
+    } catch { /* Annulé ou erreur silencieuse */ }
+    finally   { setSharingCard(false) }
+
+    // Fallback texte si la carte ne se génère pas
     if (navigator.share) await navigator.share({ text: fallbackText }).catch(() => {})
     else await navigator.clipboard.writeText(fallbackText).catch(() => {})
   }
@@ -1187,6 +1237,39 @@ export default function WorkoutSessionPage() {
                 </div>
               </div>
 
+              {/* Sélecteur format carte + bouton partage direct */}
+              <div className="space-y-2">
+                {/* Tabs format */}
+                <div className="flex gap-1.5">
+                  {([['square', '⬜ Post carré'], ['story', '📱 Story']] as const).map(([f, label]) => (
+                    <button
+                      key={f}
+                      onClick={() => setCardFormat(f)}
+                      className="flex-1 py-1.5 rounded-lg text-xs font-black transition-all"
+                      style={{
+                        background: cardFormat === f ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
+                        color:      cardFormat === f ? 'var(--bg)'         : 'var(--fiq-muted)',
+                        border: `1px solid ${cardFormat === f ? 'transparent' : 'var(--fiq-border)'}`,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {/* Partage direct (sans poster dans le feed) */}
+                <button
+                  onClick={() => handleShareOwnCard(cardFormat)}
+                  disabled={sharingCard}
+                  className="w-full py-2.5 rounded-xl font-black text-sm flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-60"
+                  style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+                >
+                  {sharingCard
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Génération…</>
+                    : <><Share2 className="w-4 h-4" /> Partager la carte</>
+                  }
+                </button>
+              </div>
+
               {/* Caption */}
               <div className="space-y-1">
                 <textarea
@@ -1205,7 +1288,7 @@ export default function WorkoutSessionPage() {
                 </p>
               </div>
 
-              {/* Bouton principal : poster + générer carte */}
+              {/* Bouton principal : poster dans le feed ForgeIQ */}
               <button
                 onClick={handleShareToFeed}
                 disabled={sharing}
@@ -1233,6 +1316,23 @@ export default function WorkoutSessionPage() {
                   <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Ta séance est visible dans la communauté</p>
                 </div>
               </div>
+              {/* Sélecteur format */}
+              <div className="flex gap-1.5">
+                {([['square', '⬜ Post carré'], ['story', '📱 Story']] as const).map(([f, label]) => (
+                  <button
+                    key={f}
+                    onClick={() => setCardFormat(f)}
+                    className="flex-1 py-1.5 rounded-lg text-xs font-black transition-all"
+                    style={{
+                      background: cardFormat === f ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
+                      color:      cardFormat === f ? 'var(--bg)'         : 'var(--fiq-muted)',
+                      border: `1px solid ${cardFormat === f ? 'transparent' : 'var(--fiq-border)'}`,
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleShareCard(shareId)}
@@ -1242,7 +1342,7 @@ export default function WorkoutSessionPage() {
                 >
                   {sharingCard
                     ? <><Loader2 className="w-4 h-4 animate-spin" /> Génération…</>
-                    : <>Partager la carte</>
+                    : <><Share2 className="w-4 h-4" /> Partager la carte</>
                   }
                 </button>
                 <a

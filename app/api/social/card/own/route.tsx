@@ -1,163 +1,131 @@
+/**
+ * GET /api/social/card/own?workout_id=...&format=square|story
+ *
+ * Génère la carte image pour la propre séance de l'utilisateur authentifié
+ * SANS nécessiter un post public dans le feed.
+ * Utilisé pour partager directement depuis l'écran de fin de séance.
+ */
 import { ImageResponse } from 'next/og'
-import { createClient } from '@supabase/supabase-js'
+import { createClient }  from '@/lib/supabase/server'
 
-// Service role pour lire les données publiques sans contrainte RLS
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 30
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers partagés ──────────────────────────────────────────────────────────
 
-/** Formatage tonnage */
 function fmt(kg: number): string {
   return kg >= 1000 ? `${(kg / 1000).toFixed(1)}t` : `${Math.round(kg)} kg`
 }
 
-/**
- * Abréviation intelligente des noms d'exercices pour la carte.
- * Supprime les suffixes de marques et raccourcit les mots courants.
- */
 function abbrev(name: string, maxLen = 30): string {
   if (name.length <= maxLen) return name
-
   let s = name
     .replace(/\s+Hammer Strength$/i, ' HS')
-    .replace(/\s+Technogym$/i,        ' TG')
-    .replace(/\s+Life Fitness$/i,      ' LF')
-    .replace(/\s+Matrix$/i,            ' MX')
-    .replace(/\s+Precor$/i,            '')
-    .replace(/ISO Latéral/gi,          'ISO Lat')
-    .replace(/Unilatéral/gi,           'Uni')
-    .replace(/Couché\s*/gi,            '')
-    .replace(/Assis\s*/gi,             '')
-    .replace(/\s{2,}/g,                ' ')
+    .replace(/\s+Technogym$/i,       ' TG')
+    .replace(/\s+Life Fitness$/i,     ' LF')
+    .replace(/\s+Matrix$/i,           ' MX')
+    .replace(/\s+Precor$/i,           '')
+    .replace(/ISO Latéral/gi,         'ISO Lat')
+    .replace(/Unilatéral/gi,          'Uni')
+    .replace(/Couché\s*/gi,           '')
+    .replace(/Assis\s*/gi,            '')
+    .replace(/\s{2,}/g,               ' ')
     .trim()
-
   if (s.length <= maxLen) return s
   return s.slice(0, maxLen - 1) + '…'
 }
 
-// ── Route GET ─────────────────────────────────────────────────────────────────
+// ── Route ────────────────────────────────────────────────────────────────────
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const shareId  = searchParams.get('id')
-    const format   = searchParams.get('format') ?? 'square'   // 'square' | 'story'
-    const isStory  = format === 'story'
+    const workoutId = searchParams.get('workout_id')
+    const format    = searchParams.get('format') ?? 'square'
+    const isStory   = format === 'story'
 
-    if (!shareId) return new Response('Missing id', { status: 400 })
+    if (!workoutId) return new Response('Missing workout_id', { status: 400 })
 
-    // ── Fetch du share (public uniquement) ───────────────────────────────────
-    const { data: share } = await supabaseAdmin
-      .from('workout_shares')
-      .select(`
-        id,
-        workout_id,
-        user_id,
-        caption,
-        created_at,
-        workouts (
-          session_name,
-          total_tonnage_kg,
-          total_sets,
-          completed_at
-        )
-      `)
-      .eq('id', shareId)
-      .eq('is_public', true)
-      .maybeSingle()
+    // Auth obligatoire
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return new Response('Unauthorized', { status: 401 })
 
-    if (!share) return new Response('Not found', { status: 404 })
+    // Fetch séance (uniquement la sienne)
+    const { data: workout } = await supabase
+      .from('workouts')
+      .select('id, session_name, total_tonnage_kg, total_sets')
+      .eq('id', workoutId)
+      .eq('user_id', user.id)
+      .single()
 
-    // ── Profil social de l'auteur ────────────────────────────────────────────
-    const { data: socialProfile } = await supabaseAdmin
+    if (!workout) return new Response('Not found', { status: 404 })
+
+    // Profil social
+    const { data: socialProfile } = await supabase
       .from('social_profiles')
       .select('username, display_name')
-      .eq('user_id', share.user_id)
+      .eq('user_id', user.id)
       .maybeSingle()
 
-    // ── Sets des exercices (avec flag PR) ────────────────────────────────────
-    const { data: sets } = await supabaseAdmin
+    // Sets avec flag PR
+    const { data: sets } = await supabase
       .from('workout_sets')
-      .select('exercise_name, weight_kg, reps, set_type, set_number, is_pr')
-      .eq('workout_id', share.workout_id)
+      .select('exercise_name, weight_kg, reps, set_type, is_pr')
+      .eq('workout_id', workoutId)
       .neq('set_type', 'warmup')
       .gt('weight_kg', 0)
       .gt('reps', 0)
-      .order('set_number', { ascending: true })
 
-    // Grouper par exercice — top set + tonnage total + flag PR
+    // Grouper + tri tonnage décroissant
     type ExerciseStat = {
-      maxKg: number
-      maxReps: number
-      tonnage: number
-      isPr: boolean
-      order: number
+      maxKg: number; maxReps: number; tonnage: number; isPr: boolean
     }
     const exerciseMap = new Map<string, ExerciseStat>()
 
     for (const set of sets ?? []) {
-      const existing = exerciseMap.get(set.exercise_name)
+      const existing   = exerciseMap.get(set.exercise_name)
       const setTonnage = (set.weight_kg ?? 0) * (set.reps ?? 0)
-
       if (!existing) {
         exerciseMap.set(set.exercise_name, {
           maxKg:   set.weight_kg ?? 0,
           maxReps: set.reps ?? 0,
           tonnage: setTonnage,
           isPr:    set.is_pr ?? false,
-          order:   exerciseMap.size,
         })
       } else {
-        const isBetter =
-          (set.weight_kg ?? 0) > existing.maxKg ||
-          ((set.weight_kg ?? 0) === existing.maxKg && (set.reps ?? 0) > existing.maxReps)
+        const isBetter = (set.weight_kg ?? 0) > existing.maxKg
         exerciseMap.set(set.exercise_name, {
           maxKg:   isBetter ? (set.weight_kg ?? 0) : existing.maxKg,
           maxReps: isBetter ? (set.reps ?? 0)      : existing.maxReps,
           tonnage: existing.tonnage + setTonnage,
           isPr:    existing.isPr || (set.is_pr ?? false),
-          order:   existing.order,
         })
       }
     }
 
-    // Tri par tonnage décroissant → exercices lourds (compound) en premier
     const allExercises = Array.from(exerciseMap.entries())
       .sort(([, a], [, b]) => b.tonnage - a.tonnage)
       .map(([name, data]) => ({
-        name,
-        kg:   data.maxKg,
-        reps: data.maxReps,
-        isPr: data.isPr,
+        name, kg: data.maxKg, reps: data.maxReps, isPr: data.isPr,
       }))
 
-    const MAX_SHOWN = 5
+    const MAX_SHOWN  = 5
     const exercises  = allExercises.slice(0, MAX_SHOWN)
     const extraCount = Math.max(0, allExercises.length - MAX_SHOWN)
     const prExercises = allExercises.filter(e => e.isPr).slice(0, 3)
 
-    const workout = share.workouts as unknown as {
-      session_name: string | null
-      total_tonnage_kg: number | null
-      total_sets: number | null
-    } | null
+    const sessionName = workout.session_name ?? 'Séance'
+    const tonnage     = workout.total_tonnage_kg
+    const totalSets   = workout.total_sets
+    const username    = socialProfile?.username ?? 'forgeiq'
+    const displayName = socialProfile?.display_name ?? username
+    const initial     = displayName[0].toUpperCase()
+    const nameShort   = sessionName.length > 20 ? sessionName.slice(0, 20) + '…' : sessionName
 
-    const sessionName  = workout?.session_name ?? 'Séance'
-    const tonnage      = workout?.total_tonnage_kg
-    const totalSets    = workout?.total_sets
-    const username     = socialProfile?.username ?? 'forgeiq'
-    const displayName  = socialProfile?.display_name ?? username
-    const initial      = displayName[0].toUpperCase()
-    const nameShort    = sessionName.length > 20 ? sessionName.slice(0, 20) + '…' : sessionName
-
-    // ── Dimensions selon format ───────────────────────────────────────────────
     const W = 1080
     const H = isStory ? 1920 : 1080
 
-    // ── ImageResponse ─────────────────────────────────────────────────────────
     return new ImageResponse(
       isStory
         ? renderStory({ nameShort, tonnage, totalSets, exercises, extraCount, prExercises, username, initial })
@@ -165,7 +133,7 @@ export async function GET(request: Request) {
       { width: W, height: H }
     )
   } catch (e) {
-    console.error('[social/card]', e)
+    console.error('[social/card/own]', e)
     return new Response('Erreur génération carte', { status: 500 })
   }
 }
@@ -173,27 +141,20 @@ export async function GET(request: Request) {
 // ── Layouts ───────────────────────────────────────────────────────────────────
 
 interface CardProps {
-  nameShort:    string
-  tonnage:      number | null
-  totalSets:    number | null
-  exercises:    { name: string; kg: number; reps: number; isPr: boolean }[]
-  extraCount:   number
-  prExercises:  { name: string; kg: number; reps: number }[]
-  username:     string
-  initial:      string
+  nameShort:   string
+  tonnage:     number | null
+  totalSets:   number | null
+  exercises:   { name: string; kg: number; reps: number; isPr: boolean }[]
+  extraCount:  number
+  prExercises: { name: string; kg: number; reps: number }[]
+  username:    string
+  initial:     string
 }
 
 function renderSquare(p: CardProps) {
   const { nameShort, tonnage, totalSets, exercises, extraCount, prExercises, username, initial } = p
   return (
-    <div
-      style={{
-        display: 'flex', flexDirection: 'column',
-        width: '100%', height: '100%',
-        background: '#0A0C0F', padding: '64px',
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-      }}
-    >
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', background: '#0A0C0F', padding: '64px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '48px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -209,13 +170,9 @@ function renderSquare(p: CardProps) {
           <span style={{ color: '#9CA3AF', fontSize: '18px' }}>@{username}</span>
         </div>
       </div>
-
-      {/* Nom séance */}
-      <div style={{ fontSize: '76px', fontWeight: 900, color: '#F0F2F5', letterSpacing: '-3px', lineHeight: '1', marginBottom: '16px' }}>
-        {nameShort}
-      </div>
+      {/* Nom */}
+      <div style={{ fontSize: '76px', fontWeight: 900, color: '#F0F2F5', letterSpacing: '-3px', lineHeight: '1', marginBottom: '16px' }}>{nameShort}</div>
       <div style={{ width: '72px', height: '5px', background: '#B4FF4A', borderRadius: '99px', marginBottom: '44px' }} />
-
       {/* Stats */}
       <div style={{ display: 'flex', gap: '52px', marginBottom: '44px' }}>
         {tonnage != null && (
@@ -232,14 +189,11 @@ function renderSquare(p: CardProps) {
         )}
         {prExercises.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: '60px', fontWeight: 900, color: '#F59E0B', letterSpacing: '-2px' }}>
-              {prExercises.length} PR{prExercises.length > 1 ? 's' : ''}
-            </span>
+            <span style={{ fontSize: '60px', fontWeight: 900, color: '#F59E0B', letterSpacing: '-2px' }}>{prExercises.length} PR{prExercises.length > 1 ? 's' : ''}</span>
             <span style={{ fontSize: '12px', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '5px', marginTop: '4px' }}>records</span>
           </div>
         )}
       </div>
-
       {/* Exercices */}
       {exercises.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
@@ -259,11 +213,10 @@ function renderSquare(p: CardProps) {
           )}
         </div>
       )}
-
       {/* Footer */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '32px', paddingTop: '24px', borderTop: '1px solid #1F242E' }}>
         <span style={{ color: '#4B5563', fontSize: '16px' }}>getforgeiq.com</span>
-        <div style={{ background: '#B4FF4A', padding: '10px 26px', borderRadius: '99px', display: 'flex', alignItems: 'center' }}>
+        <div style={{ background: '#B4FF4A', padding: '10px 26px', borderRadius: '99px' }}>
           <span style={{ color: '#0A0C0F', fontWeight: 900, fontSize: '16px' }}>Build smarter. Lift harder.</span>
         </div>
       </div>
@@ -274,15 +227,7 @@ function renderSquare(p: CardProps) {
 function renderStory(p: CardProps) {
   const { nameShort, tonnage, totalSets, exercises, extraCount, prExercises, username, initial } = p
   return (
-    <div
-      style={{
-        display: 'flex', flexDirection: 'column',
-        width: '100%', height: '100%',
-        background: 'linear-gradient(160deg, #0A0C0F 0%, #111318 50%, #0A0C0F 100%)',
-        padding: '80px 72px',
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-      }}
-    >
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', background: 'linear-gradient(160deg, #0A0C0F 0%, #111318 50%, #0A0C0F 100%)', padding: '80px 72px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '80px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -298,13 +243,9 @@ function renderStory(p: CardProps) {
           <span style={{ color: '#9CA3AF', fontSize: '20px' }}>@{username}</span>
         </div>
       </div>
-
-      {/* Nom séance — très grand */}
-      <div style={{ fontSize: '100px', fontWeight: 900, color: '#F0F2F5', letterSpacing: '-4px', lineHeight: '0.95', marginBottom: '24px' }}>
-        {nameShort}
-      </div>
+      {/* Nom */}
+      <div style={{ fontSize: '100px', fontWeight: 900, color: '#F0F2F5', letterSpacing: '-4px', lineHeight: '0.95', marginBottom: '24px' }}>{nameShort}</div>
       <div style={{ width: '80px', height: '6px', background: '#B4FF4A', borderRadius: '99px', marginBottom: '72px' }} />
-
       {/* Stats */}
       <div style={{ display: 'flex', gap: '64px', marginBottom: '72px' }}>
         {tonnage != null && (
@@ -320,7 +261,6 @@ function renderStory(p: CardProps) {
           </div>
         )}
       </div>
-
       {/* Exercices */}
       {exercises.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -340,7 +280,6 @@ function renderStory(p: CardProps) {
           )}
         </div>
       )}
-
       {/* PRs section */}
       {prExercises.length > 0 && (
         <div style={{ marginTop: '48px', padding: '28px', background: '#F59E0B10', borderRadius: '20px', border: '1px solid #F59E0B33' }}>
@@ -358,10 +297,8 @@ function renderStory(p: CardProps) {
           ))}
         </div>
       )}
-
       {/* Spacer */}
       <div style={{ flex: 1 }} />
-
       {/* Footer */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '40px', borderTop: '1px solid #1F242E' }}>
         <span style={{ color: '#4B5563', fontSize: '20px' }}>getforgeiq.com</span>

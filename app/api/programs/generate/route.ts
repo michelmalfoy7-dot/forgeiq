@@ -6,7 +6,8 @@ import {
   resolveSlot, type TierKey,
 } from '@/lib/programs/slots'
 
-export const dynamic = 'force-dynamic'
+export const dynamic    = 'force-dynamic'
+export const maxDuration = 60   // Vercel : génération IA peut prendre 20-30s
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
