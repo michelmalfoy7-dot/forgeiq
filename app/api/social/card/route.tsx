@@ -160,8 +160,8 @@ export async function GET(request: Request) {
     // ── ImageResponse ─────────────────────────────────────────────────────────
     return new ImageResponse(
       isStory
-        ? renderStory({ nameShort, tonnage, totalSets, exercises, extraCount, prExercises, username, initial })
-        : renderSquare({ nameShort, tonnage, totalSets, exercises, extraCount, prExercises, username, initial }),
+        ? renderStory({ nameShort, tonnage: tonnage ?? null, totalSets: totalSets ?? null, exercises, extraCount, prExercises, username, initial })
+        : renderSquare({ nameShort, tonnage: tonnage ?? null, totalSets: totalSets ?? null, exercises, extraCount, prExercises, username, initial }),
       { width: W, height: H }
     )
   } catch (e) {
