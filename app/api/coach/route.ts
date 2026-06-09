@@ -6,6 +6,7 @@ import { MUSCLE_GROUPS, VOLUME_TARGETS } from '@/lib/utils/volume'
 import { AI_MODELS } from '@/lib/utils/ai-models'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60 // Streaming Sonnet — peut prendre 30-50s sur longues réponses
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -341,8 +342,8 @@ export async function POST(req: NextRequest) {
 
       const counts: Record<string, number> = {}
       for (const s of weekSets ?? []) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const lib = s.exercises_library as any
+        type ExLib = { muscle_primary?: string[] } | null
+        const lib = s.exercises_library as ExLib | ExLib[]
         const muscles: string[] = Array.isArray(lib)
           ? (lib[0]?.muscle_primary ?? [])
           : (lib?.muscle_primary ?? [])

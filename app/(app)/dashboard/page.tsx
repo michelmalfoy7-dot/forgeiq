@@ -130,16 +130,21 @@ export default async function DashboardPage() {
   const loggedMealTypes = new Set((todayFoodLogs ?? []).map(l => (l as { meal_type?: string }).meal_type).filter(Boolean))
 
   // ── Séance en pause — infos du draft ────────────────────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pausedDraft = (pausedWorkoutRow as any)?.draft_state as { groups?: { sets?: { is_warmup?: boolean }[] }[]; saved_at?: string } | null
+  type PausedWorkout = {
+    id: string
+    session_name: string | null
+    started_at: string | null
+    draft_state: { groups?: { sets?: { is_warmup?: boolean }[] }[]; saved_at?: string } | null
+  }
+  const paused = pausedWorkoutRow as PausedWorkout | null
+  const pausedDraft = paused?.draft_state ?? null
   const pausedExerciseCount = pausedDraft?.groups?.length ?? 0
   const pausedSetCount = pausedDraft?.groups?.reduce(
     (acc: number, g: { sets?: { is_warmup?: boolean }[] }) =>
       acc + (g.sets?.filter(s => !s.is_warmup).length ?? 0), 0
   ) ?? 0
   // Durée écoulée depuis le démarrage (en minutes)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pausedStartedAt = (pausedWorkoutRow as any)?.started_at as string | null
+  const pausedStartedAt = paused?.started_at ?? null
   const pausedElapsedMin = pausedStartedAt
     ? Math.floor((Date.now() - new Date(pausedStartedAt).getTime()) / 60000)
     : null
@@ -542,8 +547,7 @@ export default async function DashboardPage() {
               <div>
                 <p className="fiq-label">Séance en pause</p>
                 <h2 className="text-lg font-black mt-0.5" style={{ color: 'var(--fiq-yellow)' }}>
-                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  ⏸ {(pausedWorkoutRow as any).session_name ?? 'Séance'}
+                  ⏸ {paused?.session_name ?? 'Séance'}
                 </h2>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
                   {pausedElapsedLabel ?? 'Interrompue'}
@@ -570,15 +574,13 @@ export default async function DashboardPage() {
             {/* Actions */}
             <div className="flex gap-2">
               <Link
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                href={`/workout/${(pausedWorkoutRow as any).id}`}
+                href={`/workout/${paused?.id}`}
                 className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-black text-sm transition-all"
                 style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
               >
                 ▶ Reprendre la séance
               </Link>
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              <CancelWorkoutButton workoutId={(pausedWorkoutRow as any).id} label="Abandonner" />
+              <CancelWorkoutButton workoutId={paused?.id ?? ''} label="Abandonner" />
             </div>
           </>
 

@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { AI_MODELS } from '@/lib/utils/ai-models'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 30 // Génération IA bilan — Vercel
 
 type BilanInsight = {
   emoji: string

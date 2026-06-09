@@ -52,8 +52,12 @@ export async function GET() {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function aggregateVolume(sets: any[]): MuscleVolume[] {
+type WorkoutSet = {
+  exercise_id: string
+  exercises_library: { muscle_primary: string[] } | { muscle_primary: string[] }[] | null
+}
+
+function aggregateVolume(sets: WorkoutSet[]): MuscleVolume[] {
   const counts: Record<string, number> = {}
 
   for (const s of sets) {

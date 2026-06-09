@@ -52,7 +52,9 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/coach') ||
     pathname.startsWith('/profile') ||
     pathname.startsWith('/pricing') ||
-    pathname.startsWith('/nutrition')
+    pathname.startsWith('/nutrition') ||
+    pathname.startsWith('/social') ||
+    pathname.startsWith('/admin')
 
   if (!user && isAppRoute && !isPublicRoute) {
     const url = request.nextUrl.clone()
