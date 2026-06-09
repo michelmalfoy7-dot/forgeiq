@@ -5,6 +5,7 @@ import {
   SLOT_MAP, VALID_SLOTS, SPLIT_BY_DAYS, MEV_MRV,
   resolveSlot, type TierKey,
 } from '@/lib/programs/slots'
+import { AI_MODELS } from '@/lib/utils/ai-models'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60   // génération Haiku peut prendre 20-30s
@@ -275,7 +276,7 @@ export async function POST(req: NextRequest) {
     let rawText = ''
     try {
       const message = await anthropic.messages.create({
-        model:      'claude-3-haiku-20240307',
+        model:      AI_MODELS.programs,
         max_tokens: 2048,
         messages:   [{ role: 'user', content: prompt }],
       })

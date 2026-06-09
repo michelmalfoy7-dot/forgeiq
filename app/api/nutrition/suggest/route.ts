@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { AI_MODELS } from '@/lib/utils/ai-models'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 20
@@ -118,7 +119,7 @@ Retourne UNIQUEMENT ce JSON valide (sans markdown, sans texte avant/après) :
 }`
 
     const res = await anthropic.messages.create({
-      model: 'claude-haiku-4-5',
+      model: AI_MODELS.meals,
       max_tokens: 1200,
       messages: [{ role: 'user', content: prompt }],
     })
