@@ -277,7 +277,7 @@ export async function POST(req: NextRequest) {
     try {
       const message = await anthropic.messages.create({
         model:      AI_MODELS.programs,
-        max_tokens: 2048,
+        max_tokens: 4096,  // 2048 trop court pour 5-6j × 6ex (JSON tronqué)
         messages:   [{ role: 'user', content: prompt }],
       })
       const textBlock = message.content.find((b) => b.type === 'text')
@@ -299,8 +299,14 @@ export async function POST(req: NextRequest) {
     // ── 8. Extraction JSON robuste ───────────────────────────────────────────────
     const jsonStr = extractJSON(rawText)
     if (!jsonStr) {
-      console.error('[generate] No JSON found in response:', rawText.slice(0, 300))
-      return NextResponse.json({ data: null, error: 'Format IA invalide. Réessaie.' }, { status: 500 })
+      // Log les 500 premiers chars pour diagnostic Vercel
+      console.error('[generate] No JSON found. rawText length:', rawText.length, '| start:', rawText.slice(0, 500))
+      const hint = rawText.length === 0
+        ? 'réponse vide'
+        : rawText.length < 100
+          ? 'réponse trop courte'
+          : 'JSON tronqué ou malformé'
+      return NextResponse.json({ data: null, error: `Format IA invalide (${hint}). Réessaie.` }, { status: 500 })
     }
 
     let haiku: HaikuResponse
