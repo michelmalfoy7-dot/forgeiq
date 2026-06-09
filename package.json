@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "analyze": "ANALYZE=true next build"
+    "analyze": "ANALYZE=true next build",
+    "comm:week": "cd ../communication && npm run week",
+    "comm:post": "cd ../communication && npm run post",
+    "comm:schedule": "cd ../communication && npm run schedule"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

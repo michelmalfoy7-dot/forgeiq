@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { AI_MODELS } from '@/lib/utils/ai-models'
 
 export const dynamic = 'force-dynamic'
 
@@ -219,7 +220,7 @@ Règles :
 - Ton : coach expert, direct, bienveillant. Pas de point d'exclamation excessifs`
 
     const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5',
+      model: AI_MODELS.summary,
       max_tokens: 700,
       messages: [{ role: 'user', content: prompt }],
     })

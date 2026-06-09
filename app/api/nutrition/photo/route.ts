@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { AI_MODELS } from '@/lib/utils/ai-models'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30 // Vercel — analyse vision peut prendre jusqu'à 30s
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
 
     const res = await anthropic.messages.create({
       // claude-haiku-4-5 : modèle vision Haiku — ~$0.003/analyse, qualité suffisante
-      model: 'claude-haiku-4-5',
+      model: AI_MODELS.photo,
       max_tokens: 800,
       messages: [
         {

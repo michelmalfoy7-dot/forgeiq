@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { AI_MODELS } from '@/lib/utils/ai-models'
 
 export const dynamic = 'force-dynamic'
 
@@ -185,7 +186,7 @@ weights = 75-85% du PR si disponible, sinon null.`
 
           const getCachedReason = unstable_cache(
             () => anthropic.messages.create({
-              model: 'claude-haiku-4-5-20251001',
+              model: AI_MODELS.alerts,
               max_tokens: 300,
               messages: [{ role: 'user', content: prompt }],
             }),
@@ -235,7 +236,7 @@ Inclure 4-6 exercices adaptés à la séance "${sessionName}". weight_kg basé s
           // Cache 24h par user+séance — 1 génération IA max par jour
           const getCachedSuggestion = unstable_cache(
             () => anthropic.messages.create({
-              model: 'claude-haiku-4-5-20251001',
+              model: AI_MODELS.alerts,
               max_tokens: 600,
               messages: [{ role: 'user', content: prompt }],
             }),

@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { AI_MODELS } from '@/lib/utils/ai-models'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -114,7 +115,7 @@ Règles :
 - Extrais uniquement les ingrédients réels (pas les ustensiles, pas les étapes de préparation)`
 
     const res = await anthropic.messages.create({
-      model: 'claude-haiku-4-5',
+      model: AI_MODELS.import,
       max_tokens: 1200,
       messages: [{ role: 'user', content: prompt }],
     })

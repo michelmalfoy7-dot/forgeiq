@@ -3,14 +3,14 @@ import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { calcDailyTarget } from '@/lib/utils/tdee'
 import { MUSCLE_GROUPS, VOLUME_TARGETS } from '@/lib/utils/volume'
+import { AI_MODELS } from '@/lib/utils/ai-models'
 
 export const dynamic = 'force-dynamic'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-// Haiku uniquement — le contexte préchargé (profil + séances + macros) suffit
-// pour des réponses qualitatives en coaching fitness. ~10x moins cher que Sonnet.
-const MODEL_COACH = 'claude-haiku-4-5-20251001'
+// Sonnet — coaching fitness avec contexte complet utilisateur
+const MODEL_COACH = AI_MODELS.coach
 
 // Limites selon le plan
 const LIMITS = {

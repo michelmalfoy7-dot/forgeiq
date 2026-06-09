@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Plus, Camera, ScanLine, Search, Trash2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, X, Check, Keyboard, Star, ChefHat, Minus, ArrowLeft, Link2, Sparkles } from 'lucide-react'
+import Link from 'next/link'
+import { Plus, Camera, ScanLine, Search, Trash2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, X, Check, Keyboard, Star, ChefHat, Minus, ArrowLeft, Link2, Sparkles, Calendar } from 'lucide-react'
 import { WaterWidget } from '@/components/nutrition/WaterWidget'
 import { FastingWidget } from '@/components/nutrition/FastingWidget'
 import { MicroNutrientWidget, MicroTotals } from '@/components/nutrition/MicroNutrientWidget'
@@ -2745,14 +2746,25 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
           <p className="fiq-label">Alimentation</p>
           <h1 className="text-2xl fiq-display mt-1" style={{ color: 'var(--fiq-text)' }}>Nutrition</h1>
         </div>
-        <button
-          onClick={() => setModalMeal('breakfast')}
-          className="mt-2 flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-sm"
-          style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
-        >
-          <Plus className="w-4 h-4" />
-          Ajouter
-        </button>
+        <div className="flex items-center gap-2 mt-2">
+          {/* Bouton planificateur repas */}
+          <Link
+            href="/nutrition/planner"
+            className="flex items-center justify-center w-9 h-9 rounded-xl"
+            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-accent)' }}
+            title="Planifier mes repas"
+          >
+            <Calendar className="w-4 h-4" />
+          </Link>
+          <button
+            onClick={() => setModalMeal('breakfast')}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-sm"
+            style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+          >
+            <Plus className="w-4 h-4" />
+            Ajouter
+          </button>
+        </div>
       </div>
 
       {/* Navigation date — ← Hier | Aujourd'hui | → */}
