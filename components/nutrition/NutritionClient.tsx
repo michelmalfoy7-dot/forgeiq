@@ -292,19 +292,39 @@ function BarcodeScannerView({
 
           const BarcodeDetectorClass = (window as Window & {
             BarcodeDetector: new (opts: { formats: string[] }) => {
-              detect: (src: HTMLVideoElement) => Promise<{ rawValue: string }[]>
+              detect: (src: ImageBitmapSource) => Promise<{ rawValue: string }[]>
             }
           }).BarcodeDetector
 
           const detector = new BarcodeDetectorClass({
-            formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39'],
+            formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code', 'itf', 'data_matrix'],
           })
+
+          let lastScanAt = 0
+          const SCAN_INTERVAL_MS = 150 // Évite de saturer l'API à 60fps
 
           const scanFrame = async () => {
             if (stopRef.current) return
+            const now = Date.now()
+            if (now - lastScanAt < SCAN_INTERVAL_MS) {
+              requestAnimationFrame(scanFrame)
+              return
+            }
+            lastScanAt = now
             try {
-              if (video.readyState >= 2) {
-                const codes = await detector.detect(video)
+              // readyState >= 3 (HAVE_FUTURE_DATA) + dimensions valides
+              if (video.readyState >= 3 && video.videoWidth > 0) {
+                // createImageBitmap capture une frame figée — plus fiable que passer video directement
+                let source: ImageBitmapSource = video
+                let bitmap: ImageBitmap | null = null
+                try {
+                  bitmap = await createImageBitmap(video)
+                  source = bitmap
+                } catch { /* fallback : passer video directement */ }
+
+                const codes = await detector.detect(source)
+                bitmap?.close()
+
                 if (codes.length > 0 && !stopRef.current) {
                   stopRef.current = true
                   setDetected(true)

@@ -38,10 +38,20 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        // Icônes PWA et manifest — cache 1 semaine
-        source: '/(manifest.json|icons/:path*|sw.js)',
+        // Manifest + icônes PWA — cache 1 semaine
+        source: '/(manifest.json|icons/:path*)',
         headers: [
           { key: 'Cache-Control', value: 'public, max-age=604800, stale-while-revalidate=86400' },
+        ],
+      },
+      {
+        // Service Worker — jamais mis en cache HTTP (doit être vérifié à chaque visite)
+        // updateViaCache:'none' dans ServiceWorkerRegister bypass déjà le cache JS,
+        // mais on le force en HTTP pour les browsers stricts (Firefox, Safari)
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Service-Worker-Allowed', value: '/' },
         ],
       },
       {

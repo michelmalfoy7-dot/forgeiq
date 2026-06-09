@@ -8,7 +8,7 @@
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "background_color": "#0A0C0F",
-  "theme_color": "#0A0C0F",
+  "theme_color": "#B4FF4A",
   "orientation": "portrait",
   "lang": "fr",
   "dir": "ltr",
@@ -18,6 +18,36 @@
     "client_mode": "navigate-existing"
   },
   "icons": [
+    {
+      "src": "/icons/icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
@@ -29,6 +59,12 @@
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-512.png",
@@ -56,28 +92,28 @@
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Séances — Programme et historique d'entraînement"
+      "label": "Seances — Programme et historique d'entrainement"
     },
     {
       "src": "/screenshots/screenshot-coach.png",
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Coach IA — Recommandations personnalisées"
+      "label": "Coach IA — Recommandations personnalisees"
     },
     {
       "src": "/screenshots/screenshot-nutrition.png",
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Nutrition — Macros, hydratation et jeûne intermittent"
+      "label": "Nutrition — Macros, hydratation et jeune intermittent"
     }
   ],
   "shortcuts": [
     {
-      "name": "Démarrer une séance",
-      "short_name": "Séance",
-      "description": "Logger une séance d'entraînement",
+      "name": "Demarrer une seance",
+      "short_name": "Seance",
+      "description": "Logger une seance d'entrainement",
       "url": "/workout",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     },
@@ -91,7 +127,7 @@
     {
       "name": "Coach IA",
       "short_name": "Coach",
-      "description": "Poser une question à ton coach",
+      "description": "Poser une question a ton coach",
       "url": "/coach",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
