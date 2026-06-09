@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Plus, Trash2, Search, X, Loader2, ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
+import { Plus, Trash2, Search, X, Loader2, ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack'
@@ -202,21 +202,33 @@ export default function MealPlannerPage() {
       {/* Header */}
       <div className="sticky top-0 z-30 px-4 pt-safe pb-3"
         style={{ background: 'var(--surface)', borderBottom: '1px solid var(--fiq-border)', backdropFilter: 'blur(12px)' }}>
-        <div className="flex items-center gap-3 mb-3">
-          <Link href="/nutrition"
-            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}>
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
+
+        {/* Titre + range semaine */}
+        <div className="pt-4 mb-3 flex items-start justify-between">
           <div>
-            <h1 className="text-xl font-black flex items-center gap-2"
-              style={{ color: 'var(--fiq-text)', letterSpacing: '-0.03em' }}>
-              <Calendar className="w-5 h-5" style={{ color: 'var(--fiq-accent)' }} />
-              Planifier mes repas
-            </h1>
-            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
-              {formatMonthRange(weekStart, addDays(weekStart, 6))}
-            </p>
+            <p className="fiq-label">Alimentation</p>
+            <h1 className="text-2xl fiq-display mt-1" style={{ color: 'var(--fiq-text)' }}>Nutrition</h1>
+          </div>
+          <p className="text-xs mt-3" style={{ color: 'var(--fiq-muted)' }}>
+            {formatMonthRange(weekStart, addDays(weekStart, 6))}
+          </p>
+        </div>
+
+        {/* Onglets Journal / Planifier */}
+        <div className="flex gap-1 p-1 rounded-2xl mb-3" style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+          <Link
+            href="/nutrition"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-black transition-all"
+            style={{ color: 'var(--fiq-muted)' }}
+          >
+            Journal
+          </Link>
+          <div
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-black"
+            style={{ background: 'var(--fiq-card)', color: 'var(--fiq-accent)', boxShadow: '0 1px 4px rgba(0,0,0,0.3)' }}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            Planifier
           </div>
         </div>
 
