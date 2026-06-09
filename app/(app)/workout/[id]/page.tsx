@@ -2157,11 +2157,12 @@ function ExerciseCard({
         </p>
       )}
 
-      <div className="grid grid-cols-[40px_1fr_1fr_60px_32px] gap-2">
+      <div className="grid grid-cols-[40px_1fr_1fr_48px_36px_32px] gap-1.5">
         <span className="fiq-label text-center">#</span>
         <span className="fiq-label text-center">Poids (kg)</span>
         <span className="fiq-label text-center">Reps</span>
         <span className="fiq-label text-center">RPE</span>
+        <span className="fiq-label text-center">RIR</span>
         <span />
       </div>
 
@@ -2175,8 +2176,19 @@ function ExerciseCard({
         const setType = s.set_type ?? 'work'
         const typeCfg = SET_TYPE_CONFIG[setType]
 
+        // RPE → RIR dérivé + code couleur effort
+        const rpeVal = parseFloat(String(s.rpe).replace(',', '.'))
+        const hasRpe = !isNaN(rpeVal) && rpeVal >= 1 && rpeVal <= 10
+        const rir = hasRpe ? Math.max(0, 10 - rpeVal) : null
+        const rpeAccent = hasRpe
+          ? rpeVal >= 9.5 ? '#EF4444'   // FAIL — rouge
+          : rpeVal >= 8.5 ? '#FF6B35'   // très dur — orange
+          : rpeVal >= 7  ? '#F59E0B'   // dur — jaune
+          : '#B4FF4A'                   // confortable — vert
+          : 'var(--fiq-border)'
+
         return (
-          <div key={s.id} className="grid grid-cols-[40px_1fr_1fr_60px_32px] gap-2 items-center">
+          <div key={s.id} className="grid grid-cols-[40px_1fr_1fr_48px_36px_32px] gap-1.5 items-center">
             {/* Numéro / badge type — tap pour cycler (sauf échauffement) */}
             <button
               className="flex items-center justify-center h-9 rounded-lg"
@@ -2224,8 +2236,23 @@ function ExerciseCard({
               value={s.rpe}
               onChange={(e) => onUpdateSet(s.id, 'rpe', e.target.value)}
               className="text-center text-sm h-9"
-              style={{ background: 'var(--surface)', borderColor: 'var(--fiq-border)', color: 'var(--fiq-text)' }}
+              style={{
+                background: 'var(--surface)',
+                borderColor: hasRpe ? rpeAccent : 'var(--fiq-border)',
+                color: hasRpe ? rpeAccent : 'var(--fiq-text)',
+                fontWeight: hasRpe ? 800 : undefined,
+              }}
             />
+            {/* RIR dérivé — lecture seule, code couleur */}
+            <div className="flex items-center justify-center h-9">
+              {rir !== null ? (
+                <span className="text-xs font-black tabular-nums" style={{ color: rpeAccent }}>
+                  {rir === 0 ? 'FAIL' : rir % 1 === 0 ? String(rir) : rir.toFixed(1)}
+                </span>
+              ) : (
+                <span className="text-xs" style={{ color: 'var(--fiq-border)' }}>—</span>
+              )}
+            </div>
             <button onClick={() => onRemoveSet(s.id)} className="flex items-center justify-center">
               <Trash2 className="w-3.5 h-3.5" style={{ color: 'var(--fiq-muted)' }} />
             </button>

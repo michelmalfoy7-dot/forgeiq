@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Plus, Camera, ScanLine, Search, Trash2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, X, Check, Keyboard, Star, ChefHat, Minus, ArrowLeft, Link2, Sparkles } from 'lucide-react'
+import Link from 'next/link'
+import { Plus, Camera, ScanLine, Search, Trash2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, X, Check, Keyboard, Star, ChefHat, Minus, ArrowLeft, Link2, Sparkles, Calendar } from 'lucide-react'
 import { WaterWidget } from '@/components/nutrition/WaterWidget'
 import { FastingWidget } from '@/components/nutrition/FastingWidget'
 import { MicroNutrientWidget, MicroTotals } from '@/components/nutrition/MicroNutrientWidget'
@@ -531,6 +532,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
   const [photoAnalysis, setPhotoAnalysis] = useState<PhotoAnalysis | null>(null)
   const [photoQuantities, setPhotoQuantities] = useState<Record<number, string>>({})
   const [photoNames, setPhotoNames] = useState<Record<number, string>>({})
+  const [photoDeleted, setPhotoDeleted] = useState<Set<number>>(new Set())
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0)
   const [photoError, setPhotoError] = useState('')
   // Favoris
@@ -772,6 +774,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
       setPhotoAnalysis(data)
       setPhotoQuantities(quantities)
       setPhotoNames(names)
+      setPhotoDeleted(new Set())
       setMode('photo-confirm')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur inconnue'
@@ -838,6 +841,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
     setAdding(true)
     try {
       for (const [idx, aliment] of photoAnalysis.aliments.entries()) {
+        if (photoDeleted.has(idx)) continue
         const qty = parseFloat(photoQuantities[idx] ?? String(aliment.quantite_estimee_g)) || aliment.quantite_estimee_g
         const per100 = (val: number | null) =>
           val != null && aliment.quantite_estimee_g > 0
@@ -2287,21 +2291,32 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
 
             <div className="space-y-2 max-h-72 overflow-y-auto">
               {photoAnalysis.aliments.map((aliment, idx) => {
+                if (photoDeleted.has(idx)) return null
                 const qtyRaw = photoQuantities[idx] ?? String(aliment.quantite_estimee_g)
                 const qty = parseFloat(qtyRaw) || aliment.quantite_estimee_g
                 const ratio = aliment.quantite_estimee_g > 0 ? qty / aliment.quantite_estimee_g : 1
                 return (
                   <div key={idx} className="rounded-xl p-3 space-y-2"
                     style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
-                    {/* Nom éditable */}
-                    <input
-                      type="text"
-                      value={photoNames[idx] ?? aliment.nom}
-                      onChange={e => setPhotoNames(prev => ({ ...prev, [idx]: e.target.value }))}
-                      className="w-full px-2 py-1 rounded-lg text-sm font-semibold outline-none"
-                      style={{ background: 'var(--fiq-surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
-                      placeholder="Nom de l'aliment"
-                    />
+                    {/* Ligne nom + bouton supprimer */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={photoNames[idx] ?? aliment.nom}
+                        onChange={e => setPhotoNames(prev => ({ ...prev, [idx]: e.target.value }))}
+                        className="flex-1 px-2 py-1 rounded-lg text-sm font-semibold outline-none min-w-0"
+                        style={{ background: 'var(--fiq-surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+                        placeholder="Nom de l'aliment"
+                      />
+                      <button
+                        onClick={() => setPhotoDeleted(prev => new Set([...prev, idx]))}
+                        className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                        style={{ background: '#EF444418', border: '1px solid #EF444433', color: 'var(--fiq-red)' }}
+                        title="Retirer cet aliment"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                     <div className="flex items-center gap-2">
                       {aliment.confiance === 'faible' && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0"
@@ -2356,20 +2371,26 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
               })}
             </div>
 
-            {photoAnalysis.aliments.length > 1 && (
-              <div className="rounded-xl px-3 py-2 flex items-center justify-between"
-                style={{ background: '#B4FF4A12', border: '1px solid #B4FF4A33' }}>
-                <span className="text-xs font-semibold" style={{ color: 'var(--fiq-accent)' }}>
-                  Total · {photoAnalysis.aliments.length} aliments
-                </span>
-                <span className="text-sm font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
-                  {Math.round(photoAnalysis.aliments.reduce((acc, a, i) => {
-                    const q = parseFloat(photoQuantities[i] ?? String(a.quantite_estimee_g)) || a.quantite_estimee_g
-                    return acc + (a.calories ?? 0) * (a.quantite_estimee_g > 0 ? q / a.quantite_estimee_g : 1)
-                  }, 0))} kcal
-                </span>
-              </div>
-            )}
+            {(() => {
+              const activeCount = photoAnalysis.aliments.length - photoDeleted.size
+              const totalKcal = Math.round(photoAnalysis.aliments.reduce((acc, a, i) => {
+                if (photoDeleted.has(i)) return acc
+                const q = parseFloat(photoQuantities[i] ?? String(a.quantite_estimee_g)) || a.quantite_estimee_g
+                return acc + (a.calories ?? 0) * (a.quantite_estimee_g > 0 ? q / a.quantite_estimee_g : 1)
+              }, 0))
+              if (activeCount <= 1) return null
+              return (
+                <div className="rounded-xl px-3 py-2 flex items-center justify-between"
+                  style={{ background: '#B4FF4A12', border: '1px solid #B4FF4A33' }}>
+                  <span className="text-xs font-semibold" style={{ color: 'var(--fiq-accent)' }}>
+                    Total · {activeCount} aliment{activeCount > 1 ? 's' : ''}
+                  </span>
+                  <span className="text-sm font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
+                    {totalKcal} kcal
+                  </span>
+                </div>
+              )
+            })()}
 
             <div>
               <label className="fiq-label block mb-1.5">Repas</label>
@@ -2389,21 +2410,30 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
               </div>
             </div>
 
-            <button
-              onClick={confirmAddAll}
-              disabled={adding}
-              className="w-full py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2"
-              style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
-            >
-              {adding
-                ? <Loader2 className="w-4 h-4 animate-spin" />
-                : <><Check className="w-4 h-4" />
-                    Ajouter {photoAnalysis.aliments.length > 1
-                      ? `les ${photoAnalysis.aliments.length} aliments`
-                      : 'au journal'}
-                  </>
-              }
-            </button>
+            {(() => {
+              const activeCount = photoAnalysis.aliments.length - photoDeleted.size
+              return (
+                <button
+                  onClick={confirmAddAll}
+                  disabled={adding || activeCount === 0}
+                  className="w-full py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2"
+                  style={{
+                    background: activeCount === 0 ? 'var(--fiq-faint)' : 'var(--fiq-accent)',
+                    color: activeCount === 0 ? 'var(--fiq-muted)' : 'var(--bg)',
+                    border: activeCount === 0 ? '1px solid var(--fiq-border)' : 'none',
+                  }}
+                >
+                  {adding
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : activeCount === 0
+                      ? 'Aucun aliment sélectionné'
+                      : <><Check className="w-4 h-4" />
+                          Ajouter {activeCount > 1 ? `les ${activeCount} aliments` : 'au journal'}
+                        </>
+                  }
+                </button>
+              )
+            })()}
           </div>
         )}
       </div>
@@ -2696,14 +2726,25 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
           <p className="fiq-label">Alimentation</p>
           <h1 className="text-2xl fiq-display mt-1" style={{ color: 'var(--fiq-text)' }}>Nutrition</h1>
         </div>
-        <button
-          onClick={() => setModalMeal('breakfast')}
-          className="mt-2 flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-sm"
-          style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
-        >
-          <Plus className="w-4 h-4" />
-          Ajouter
-        </button>
+        <div className="flex items-center gap-2 mt-2">
+          {/* Bouton planificateur repas */}
+          <Link
+            href="/nutrition/planner"
+            className="flex items-center justify-center w-9 h-9 rounded-xl"
+            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-accent)' }}
+            title="Planifier mes repas"
+          >
+            <Calendar className="w-4 h-4" />
+          </Link>
+          <button
+            onClick={() => setModalMeal('breakfast')}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-sm"
+            style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+          >
+            <Plus className="w-4 h-4" />
+            Ajouter
+          </button>
+        </div>
       </div>
 
       {/* Navigation date — ← Hier | Aujourd'hui | → */}
