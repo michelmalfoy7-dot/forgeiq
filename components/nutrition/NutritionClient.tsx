@@ -530,13 +530,15 @@ function saveStoredUnitMode(foodName: string, mode: 'g' | 'unit') {
 
 type ModalMode = 'choose' | 'search' | 'scan' | 'photo' | 'confirm' | 'photo-confirm' | 'favorites' | 'recipes' | 'create-recipe' | 'recipe-confirm'
 
-function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', targets, consumedToday }: {
+function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', targets, consumedToday, isPro = false, openPaywall = () => {} }: {
   onClose: () => void
   onAdded: (log: FoodLog) => void
   today: string
   initialMealType?: string
   targets?: Targets
   consumedToday?: { calories: number; protein_g: number; carbs_g: number; fat_g: number }
+  isPro?: boolean
+  openPaywall?: (trigger: 'photo' | 'general') => void
 }) {
   const [mode, setMode] = useState<ModalMode>('choose')
   // Recherche aliment
@@ -3084,6 +3086,8 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
             carbs_g:   totals.carbs_g,
             fat_g:     totals.fat_g,
           }}
+          isPro={isPro}
+          openPaywall={openPaywall}
         />
       )}
 
