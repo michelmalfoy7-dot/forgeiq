@@ -810,15 +810,19 @@ export default function WorkoutSessionPage() {
         setCompleted(true)
         if (timerRef.current) clearInterval(timerRef.current)
         stopRest()
-        // Lancer le bilan IA en arrière-plan (non bloquant)
+        // Lancer le bilan IA en arrière-plan (non bloquant — Pro uniquement)
         setAiInsightsLoading(true)
         fetch('/api/workout/bilan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ workout_id: workoutId }),
         })
-          .then(r => r.json())
-          .then(({ data: bilan }) => { if (bilan) setAiInsights(bilan) })
+          .then(r => {
+            // 403 paywall = user free → pas de bilan, pas de spinner, pas d'erreur
+            if (r.status === 403) { setAiInsightsLoading(false); return null }
+            return r.json()
+          })
+          .then(json => { if (json?.data) setAiInsights(json.data) })
           .catch(() => { /* silencieux — bilan optionnel */ })
           .finally(() => setAiInsightsLoading(false))
       } else {

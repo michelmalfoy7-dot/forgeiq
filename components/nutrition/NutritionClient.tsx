@@ -7,6 +7,7 @@ import { Plus, Camera, ScanLine, Search, Trash2, ChevronDown, ChevronUp, Chevron
 import { WaterWidget } from '@/components/nutrition/WaterWidget'
 import { FastingWidget } from '@/components/nutrition/FastingWidget'
 import { MicroNutrientWidget, MicroTotals } from '@/components/nutrition/MicroNutrientWidget'
+import { PaywallModal } from '@/components/ui/PaywallModal'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -120,6 +121,7 @@ type Props = {
   waterGoalMl?: number
   isRestDay?: boolean    // jour de repos (pas de séance complétée)
   workoutKcal?: number   // calories séance d'aujourd'hui (+0 si repos)
+  isPro?: boolean        // statut Pro — déterminé côté serveur
 }
 
 // ── Types analyse photo ────────────────────────────────────────
@@ -1320,16 +1322,24 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
             </button>
 
             <button
-              onClick={() => setMode('photo')}
+              onClick={() => isPro ? setMode('photo') : openPaywall('photo')}
               className="flex items-center gap-4 p-4 rounded-2xl text-left transition-all"
-              style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
+              style={{ background: 'var(--fiq-faint)', border: isPro ? '1px solid var(--fiq-border)' : '1px solid #B4FF4A44' }}
             >
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#FF6B3522' }}>
-                <Camera className="w-5 h-5" style={{ color: 'var(--fiq-orange)' }} />
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: isPro ? '#FF6B3522' : '#B4FF4A22' }}>
+                <Camera className="w-5 h-5" style={{ color: isPro ? 'var(--fiq-orange)' : 'var(--fiq-accent)' }} />
               </div>
-              <div>
-                <p className="font-black" style={{ color: 'var(--fiq-text)' }}>Photo du repas</p>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>IA ForgeIQ identifie les aliments et estime les macros</p>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="font-black" style={{ color: 'var(--fiq-text)' }}>Photo du repas</p>
+                  {!isPro && (
+                    <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md"
+                      style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>PRO</span>
+                  )}
+                </div>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+                  {isPro ? 'IA ForgeIQ identifie les aliments et estime les macros' : 'Analyse ton repas en photo — disponible en Pro'}
+                </p>
               </div>
             </button>
           </div>
@@ -2482,7 +2492,7 @@ function addDays(dateStr: string, n: number): string {
   return d.toISOString().split('T')[0]
 }
 
-export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 0, waterGoalMl = 2500, isRestDay, workoutKcal }: Props) {
+export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 0, waterGoalMl = 2500, isRestDay, workoutKcal, isPro = false }: Props) {
   const pathname = usePathname()
   const [logs, setLogs] = useState<FoodLog[]>(initialLogs)
   const [viewDate, setViewDate] = useState(today)       // date affichée (peut être ≠ today)
@@ -2491,6 +2501,15 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
   const [expandedMeals, setExpandedMeals] = useState<Set<string>>(new Set(['breakfast', 'lunch', 'dinner', 'snack']))
 
   const [microCollapsed, setMicroCollapsed] = useState(true)
+
+  // ── Paywall modal (features Pro) ─────────────────────────────
+  const [showPaywall, setShowPaywall] = useState(false)
+  const [paywallTrigger, setPaywallTrigger] = useState<'photo' | 'general'>('general')
+
+  function openPaywall(trigger: 'photo' | 'general') {
+    setPaywallTrigger(trigger)
+    setShowPaywall(true)
+  }
 
   // ── Suggestions IA repas ─────────────────────────────────────
   const [showSuggest, setShowSuggest] = useState(false)
@@ -2959,13 +2978,22 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
             </div>
           </button>
           <button
-            onClick={() => { setShowUrlImport(true); setUrlResult(null); setUrlError(null); setUrlInput('') }}
+            onClick={() => {
+              if (!isPro) { openPaywall('general'); return }
+              setShowUrlImport(true); setUrlResult(null); setUrlError(null); setUrlInput('')
+            }}
             className="flex-1 flex items-center gap-2.5 px-3 py-3 rounded-2xl transition-all"
-            style={{ background: '#3D8BFF12', border: '1px solid #3D8BFF33' }}
+            style={{ background: isPro ? '#3D8BFF12' : '#B4FF4A08', border: isPro ? '1px solid #3D8BFF33' : '1px solid #B4FF4A33' }}
           >
-            <Link2 className="w-4 h-4 shrink-0" style={{ color: 'var(--fiq-blue)' }} />
+            <Link2 className="w-4 h-4 shrink-0" style={{ color: isPro ? 'var(--fiq-blue)' : 'var(--fiq-accent)' }} />
             <div className="text-left">
-              <p className="text-xs font-black" style={{ color: 'var(--fiq-blue)' }}>Import URL</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-black" style={{ color: isPro ? 'var(--fiq-blue)' : 'var(--fiq-accent)' }}>Import URL</p>
+                {!isPro && (
+                  <span className="text-[9px] font-black px-1 py-0.5 rounded"
+                    style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>PRO</span>
+                )}
+              </div>
               <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>Recette depuis le web</p>
             </div>
           </button>
@@ -3373,6 +3401,14 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
             )}
           </div>
         </div>
+      )}
+
+      {/* ── Paywall modal — features Pro ── */}
+      {showPaywall && (
+        <PaywallModal
+          trigger={paywallTrigger}
+          onClose={() => setShowPaywall(false)}
+        />
       )}
     </div>
   )

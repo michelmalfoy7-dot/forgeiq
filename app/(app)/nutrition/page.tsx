@@ -31,7 +31,7 @@ export default async function NutritionPage() {
       .order('created_at', { ascending: true }),
     supabase
       .from('profiles')
-      .select('goal, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, water_goal_ml')
+      .select('goal, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, water_goal_ml, subscription_status, is_admin')
       .eq('id', user.id)
       .single(),
     // Steps + eau du jour
@@ -105,6 +105,12 @@ export default async function NutritionPage() {
     fat_g:     dailyTarget.macros.fat_g,
   }
 
+  // Statut Pro — déterminé côté serveur, transmis au client pour gating UI
+  const subStatus = (profile as unknown as { subscription_status?: string; is_admin?: boolean })
+  const isPro = subStatus?.is_admin === true
+    || subStatus?.subscription_status === 'pro'
+    || subStatus?.subscription_status === 'lifetime'
+
   return (
     <NutritionClient
       initialLogs={logs ?? []}
@@ -114,6 +120,7 @@ export default async function NutritionPage() {
       waterGoalMl={profile?.water_goal_ml ?? 2500}
       isRestDay={isRestDay}
       workoutKcal={dailyTarget.workoutKcal > 0 ? dailyTarget.workoutKcal : undefined}
+      isPro={isPro}
     />
   )
 }
