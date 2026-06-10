@@ -24,6 +24,7 @@ export type FeedPost = {
   created_at: string
   is_liked: boolean
   is_mine?: boolean
+  is_following?: boolean
   exercises?: ExerciseInPost[]
   author: {
     username: string | null
@@ -95,6 +96,30 @@ export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id
   const [saving, setSaving]             = useState(false)
   const [caption, setCaption]           = useState(post.caption)
   const [deleted, setDeleted]           = useState(false)
+  // Bouton suivre inline (discover feed)
+  const [isFollowing, setIsFollowing]   = useState(post.is_following ?? false)
+  const [followLoading, setFollowLoading] = useState(false)
+
+  async function handleFollow(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (followLoading) return
+    const wasFollowing = isFollowing
+    setIsFollowing(!wasFollowing)
+    setFollowLoading(true)
+    try {
+      const res = await fetch('/api/social/follow', {
+        method: wasFollowing ? 'DELETE' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_user_id: post.user_id }),
+      })
+      if (!res.ok) setIsFollowing(wasFollowing)
+    } catch {
+      setIsFollowing(wasFollowing)
+    } finally {
+      setFollowLoading(false)
+    }
+  }
 
   async function handleLike() {
     if (liking) return
@@ -353,6 +378,27 @@ export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id
             style={{ color: 'var(--fiq-muted)' }}
           >
             <MoreHorizontal className="w-4 h-4" />
+          </button>
+        )}
+
+        {/* Bouton Suivre — visible sur les posts d'athlètes non suivis */}
+        {!post.is_mine && (
+          <button
+            onClick={handleFollow}
+            disabled={followLoading}
+            className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-black transition-all active:scale-95 disabled:opacity-60"
+            style={isFollowing
+              ? { background: 'var(--fiq-faint)', color: 'var(--fiq-muted)', border: '1px solid var(--fiq-border)' }
+              : { background: 'var(--fiq-accent)', color: 'var(--bg)' }
+            }
+          >
+            {followLoading ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : isFollowing ? (
+              'Suivi ✓'
+            ) : (
+              '+ Suivre'
+            )}
           </button>
         )}
       </Link>

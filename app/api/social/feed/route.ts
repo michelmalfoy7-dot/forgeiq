@@ -14,19 +14,20 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const page = Number(searchParams.get('page') ?? 0)
+    const mode = searchParams.get('mode') ?? 'discover'
     const offset = page * PAGE_SIZE
 
-    // Récupérer les IDs des utilisateurs suivis
+    // Toujours récupérer les IDs suivis (pour le bouton "Suivre" dans discover)
     const { data: followsData } = await supabase
       .from('follows')
       .select('following_id')
       .eq('follower_id', user.id)
 
     const followingIds = (followsData ?? []).map((f: { following_id: string }) => f.following_id)
-    const feedUserIds = [...followingIds, user.id]
+    const followingSet = new Set(followingIds)
 
-    // Récupérer les posts paginés
-    const { data: shares, error } = await supabase
+    // Construire la requête selon le mode
+    let query = supabase
       .from('workout_shares')
       .select(`
         id,
@@ -44,19 +45,29 @@ export async function GET(request: NextRequest) {
           completed_at
         )
       `)
-      .in('user_id', feedUserIds)
       .eq('is_public', true)
       .order('created_at', { ascending: false })
       .range(offset, offset + PAGE_SIZE - 1)
 
+    if (mode === 'following') {
+      // Uniquement les gens suivis + soi-même
+      const feedUserIds = [...followingIds, user.id]
+      if (feedUserIds.length === 0) {
+        return NextResponse.json({ data: [], error: null })
+      }
+      query = query.in('user_id', feedUserIds)
+    }
+    // mode === 'discover' : tous les posts publics, aucun filtre user
+
+    const { data: shares, error } = await query
+
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
     if (!shares || shares.length === 0) return NextResponse.json({ data: [], error: null })
 
-    const authorIds = [...new Set(shares.map((s: { user_id: string }) => s.user_id))]
-    const shareIds  = shares.map((s: { id: string }) => s.id)
+    const authorIds  = [...new Set(shares.map((s: { user_id: string }) => s.user_id))]
+    const shareIds   = shares.map((s: { id: string }) => s.id)
     const workoutIds = shares.map((s: { workout_id: string }) => s.workout_id).filter(Boolean)
 
-    // Fetch en parallèle : profils, likes, sets exercices
     const [
       { data: socialProfiles },
       { data: authProfiles },
@@ -88,9 +99,9 @@ export async function GET(request: NextRequest) {
         : Promise.resolve({ data: [] }),
     ])
 
-    const likedShareIds    = new Set((userLikes ?? []).map((l: { workout_share_id: string }) => l.workout_share_id))
-    const socialMap        = new Map((socialProfiles ?? []).map((p: { user_id: string; username: string | null; display_name: string | null; avatar_url: string | null }) => [p.user_id, p]))
-    const authMap          = new Map((authProfiles ?? []).map((p: { id: string; display_name: string | null }) => [p.id, p]))
+    const likedShareIds      = new Set((userLikes ?? []).map((l: { workout_share_id: string }) => l.workout_share_id))
+    const socialMap          = new Map((socialProfiles ?? []).map((p: { user_id: string; username: string | null; display_name: string | null; avatar_url: string | null }) => [p.user_id, p]))
+    const authMap            = new Map((authProfiles ?? []).map((p: { id: string; display_name: string | null }) => [p.id, p]))
     const exercisesByWorkout = buildExercisesMap(setsData ?? [])
 
     const feed = shares.map((share) => {
@@ -113,6 +124,7 @@ export async function GET(request: NextRequest) {
         created_at: share.created_at,
         is_liked: likedShareIds.has(share.id),
         is_mine: share.user_id === user.id,
+        is_following: followingSet.has(share.user_id),
         exercises: exercisesByWorkout.get(share.workout_id) ?? [],
         author: {
           username: social?.username ?? null,

@@ -1,10 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Search, Users, Compass, Trophy } from 'lucide-react'
-import { FiqDumbbell } from '@/components/ui/FiqIcons'
+import { Search, Trophy } from 'lucide-react'
 import { SocialProfileSetup } from '@/components/social/SocialProfileSetup'
 import { FeedList } from '@/components/social/FeedList'
+import type { SuggestedAthlete } from '@/components/social/FeedList'
 import { NotificationBell } from '@/components/social/NotificationBell'
 import { PushPermissionPrompt } from '@/components/social/PushPermissionPrompt'
 import type { FeedPost } from '@/components/social/WorkoutPost'
@@ -12,145 +12,158 @@ import { buildExercisesMap } from '@/lib/utils/social'
 
 export const dynamic = 'force-dynamic'
 
+async function fetchFeedPosts(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  followingIds: string[],
+  followingSet: Set<string>,
+  mode: 'discover' | 'following'
+): Promise<FeedPost[]> {
+  let query = supabase
+    .from('workout_shares')
+    .select(`
+      id, workout_id, user_id, caption, likes_count, comments_count, is_public, created_at,
+      workouts ( session_name, total_tonnage_kg, total_sets, completed_at )
+    `)
+    .eq('is_public', true)
+    .order('created_at', { ascending: false })
+    .limit(20)
+
+  if (mode === 'following') {
+    const feedIds = [...followingIds, userId]
+    if (feedIds.length === 0) return []
+    query = query.in('user_id', feedIds)
+  }
+
+  const { data: shares } = await query
+  if (!shares || shares.length === 0) return []
+
+  const authorIds  = [...new Set(shares.map((s: { user_id: string }) => s.user_id))]
+  const workoutIds = shares.map((s: { workout_id: string }) => s.workout_id).filter(Boolean)
+
+  const [{ data: socialProfiles }, { data: authProfiles }, { data: userLikes }, { data: setsData }] = await Promise.all([
+    supabase.from('social_profiles').select('user_id, username, display_name, avatar_url').in('user_id', authorIds),
+    supabase.from('profiles').select('id, display_name').in('id', authorIds),
+    supabase.from('likes').select('workout_share_id').eq('user_id', userId).in('workout_share_id', shares.map((s: { id: string }) => s.id)),
+    workoutIds.length > 0
+      ? supabase.from('workout_sets').select('workout_id, exercise_name, weight_kg, reps, set_type')
+          .in('workout_id', workoutIds).neq('set_type', 'warmup').gt('weight_kg', 0).gt('reps', 0).order('set_number', { ascending: true })
+      : Promise.resolve({ data: [] }),
+  ])
+
+  const likedIds   = new Set((userLikes ?? []).map((l: { workout_share_id: string }) => l.workout_share_id))
+  const socialMap  = new Map((socialProfiles ?? []).map((p: { user_id: string; username: string | null; display_name: string | null; avatar_url: string | null }) => [p.user_id, p]))
+  const authMap    = new Map((authProfiles ?? []).map((p: { id: string; display_name: string | null }) => [p.id, p]))
+  const exMap      = buildExercisesMap(setsData ?? [])
+
+  return shares.map((share) => {
+    const social  = socialMap.get(share.user_id)
+    const auth    = authMap.get(share.user_id)
+    const workout = (share.workouts as unknown) as { session_name: string | null; total_tonnage_kg: number | null; total_sets: number | null; completed_at: string | null } | null
+    return {
+      id: share.id,
+      workout_id: share.workout_id,
+      user_id: share.user_id,
+      caption: share.caption,
+      likes_count: share.likes_count,
+      comments_count: share.comments_count,
+      created_at: share.created_at,
+      is_liked: likedIds.has(share.id),
+      is_mine: share.user_id === userId,
+      is_following: followingSet.has(share.user_id),
+      exercises: exMap.get(share.workout_id) ?? [],
+      author: {
+        username: social?.username ?? null,
+        display_name: social?.display_name ?? auth?.display_name ?? 'Athlète',
+        avatar_url: social?.avatar_url ?? null,
+      },
+      workout: workout ? {
+        session_name: workout.session_name,
+        total_tonnage_kg: workout.total_tonnage_kg,
+        total_sets: workout.total_sets,
+        completed_at: workout.completed_at,
+      } : null,
+    } satisfies FeedPost
+  })
+}
+
 export default async function SocialPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Récupérer le profil social de l'utilisateur courant
   const { data: socialProfile } = await supabase
     .from('social_profiles')
     .select('*')
     .eq('user_id', user.id)
     .maybeSingle()
 
-  // Récupérer le feed (utilisateurs suivis + soi-même)
-  let feed: FeedPost[] = []
+  // IDs suivis (base commune aux deux feeds)
+  const { data: followsData } = await supabase
+    .from('follows')
+    .select('following_id')
+    .eq('follower_id', user.id)
 
-  if (socialProfile) {
-    // Récupérer IDs suivis
-    const { data: followsData } = await supabase
-      .from('follows')
-      .select('following_id')
-      .eq('follower_id', user.id)
+  const followingIds = (followsData ?? []).map((f: { following_id: string }) => f.following_id)
+  const followingSet = new Set(followingIds)
 
-    const followingIds = (followsData ?? []).map((f: { following_id: string }) => f.following_id)
-    const feedUserIds = [...followingIds, user.id]
-
-    // Récupérer les posts
-    const { data: shares } = await supabase
-      .from('workout_shares')
-      .select(`
-        id,
-        workout_id,
-        user_id,
-        caption,
-        likes_count,
-        comments_count,
-        is_public,
-        created_at,
-        workouts (
-          session_name,
-          total_tonnage_kg,
-          total_sets,
-          completed_at
-        )
-      `)
-      .in('user_id', feedUserIds)
+  // Fetch en parallèle : discover + following + athlètes suggérés
+  const [discoverPosts, followingPosts, suggestedRaw] = await Promise.all([
+    fetchFeedPosts(supabase, user.id, followingIds, followingSet, 'discover'),
+    fetchFeedPosts(supabase, user.id, followingIds, followingSet, 'following'),
+    // Athlètes suggérés : profil public, non suivis, actifs (dernier post < 30j)
+    supabase
+      .from('social_profiles')
+      .select('user_id, username, display_name, avatar_url, followers_count')
       .eq('is_public', true)
-      .order('created_at', { ascending: false })
-      .limit(20)
+      .not('user_id', 'in', `(${[...followingIds, user.id].join(',') || user.id})`)
+      .order('followers_count', { ascending: false })
+      .limit(10),
+  ])
 
-    if (shares && shares.length > 0) {
-      const authorIds = [...new Set(shares.map((s: { user_id: string }) => s.user_id))]
-
-      const [{ data: socialProfiles }, { data: authProfiles }, { data: userLikes }] = await Promise.all([
-        supabase
-          .from('social_profiles')
-          .select('user_id, username, display_name, avatar_url')
-          .in('user_id', authorIds),
-        supabase
-          .from('profiles')
-          .select('id, display_name')
-          .in('id', authorIds),
-        supabase
-          .from('likes')
-          .select('workout_share_id')
-          .eq('user_id', user.id)
-          .in('workout_share_id', shares.map((s: { id: string }) => s.id)),
-      ])
-
-      const socialMap = new Map((socialProfiles ?? []).map((p: { user_id: string; username: string | null; display_name: string | null; avatar_url: string | null }) => [p.user_id, p]))
-      const authMap = new Map((authProfiles ?? []).map((p: { id: string; display_name: string | null }) => [p.id, p]))
-      const likedIds = new Set((userLikes ?? []).map((l: { workout_share_id: string }) => l.workout_share_id))
-
-      // Récupérer les sets des workouts pour afficher les exercices dans chaque post
-      const workoutIds = shares.map((s: { workout_id: string }) => s.workout_id).filter(Boolean)
-      const { data: setsData } = workoutIds.length > 0
-        ? await supabase
-            .from('workout_sets')
-            .select('workout_id, exercise_name, weight_kg, reps, set_type')
-            .in('workout_id', workoutIds)
-            .neq('set_type', 'warmup')
-            .gt('weight_kg', 0)
-            .gt('reps', 0)
-            .order('set_number', { ascending: true })
-        : { data: [] }
-
-      // Grouper les sets par workout → exercice, garder le meilleur set par exercice
-      const exercisesByWorkout = buildExercisesMap(setsData ?? [])
-
-      feed = shares.map((share) => {
-        const social = socialMap.get(share.user_id)
-        const auth = authMap.get(share.user_id)
-        const workout = (share.workouts as unknown) as {
-          session_name: string | null
-          total_tonnage_kg: number | null
-          total_sets: number | null
-          completed_at: string | null
-        } | null
-
-        return {
-          id: share.id,
-          workout_id: share.workout_id,
-          user_id: share.user_id,
-          caption: share.caption,
-          likes_count: share.likes_count,
-          comments_count: share.comments_count,
-          created_at: share.created_at,
-          is_liked: likedIds.has(share.id),
-          is_mine: share.user_id === user.id,
-          exercises: exercisesByWorkout.get(share.workout_id),
-          author: {
-            username: social?.username ?? null,
-            display_name: social?.display_name ?? auth?.display_name ?? 'Athlète',
-            avatar_url: social?.avatar_url ?? null,
-          },
-          workout: workout
-            ? {
-                session_name: workout.session_name,
-                total_tonnage_kg: workout.total_tonnage_kg,
-                total_sets: workout.total_sets,
-                completed_at: workout.completed_at,
-              }
-            : null,
-        } satisfies FeedPost
-      })
+  // Enrichir les suggestions avec le nb de séances partagées récentes
+  const suggestedIds = (suggestedRaw.data ?? []).map((p: { user_id: string }) => p.user_id)
+  let recentShareCounts: Record<string, number> = {}
+  if (suggestedIds.length > 0) {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString()
+    const { data: recentShares } = await supabase
+      .from('workout_shares')
+      .select('user_id')
+      .in('user_id', suggestedIds)
+      .gte('created_at', thirtyDaysAgo)
+      .eq('is_public', true)
+    for (const s of recentShares ?? []) {
+      recentShareCounts[s.user_id] = (recentShareCounts[s.user_id] ?? 0) + 1
     }
   }
 
+  const suggestedAthletes: SuggestedAthlete[] = (suggestedRaw.data ?? [])
+    .filter((p: { user_id: string }) => (recentShareCounts[p.user_id] ?? 0) > 0 || true) // garder même sans activité récente
+    .slice(0, 8)
+    .map((p: { user_id: string; username: string | null; display_name: string | null; avatar_url: string | null; followers_count: number }) => ({
+      user_id: p.user_id,
+      username: p.username ?? null,
+      display_name: p.display_name ?? 'Athlète',
+      avatar_url: p.avatar_url ?? null,
+      followers_count: p.followers_count ?? 0,
+      recent_shares: recentShareCounts[p.user_id] ?? 0,
+    }))
+
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
-      {/* Prompt push notifications (apparaît 3s après, une seule fois) */}
       <PushPermissionPrompt />
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-black" style={{ color: 'var(--fiq-text)', letterSpacing: '-0.03em' }}>
             Communauté
           </h1>
           <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
-            Progressez ensemble
+            {discoverPosts.length > 0
+              ? `${discoverPosts.length}+ séances partagées`
+              : 'Rejoins la communauté ForgeIQ'
+            }
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -163,14 +176,6 @@ export default async function SocialPage() {
             <Trophy className="w-4 h-4" />
           </Link>
           <Link
-            href="/social/explorer"
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
-            style={{ background: '#B4FF4A15', border: '1px solid #B4FF4A30', color: 'var(--fiq-accent)' }}
-          >
-            <Compass className="w-3.5 h-3.5" />
-            Explorer
-          </Link>
-          <Link
             href="/social/search"
             className="flex items-center justify-center w-9 h-9 rounded-xl"
             style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
@@ -181,49 +186,42 @@ export default async function SocialPage() {
         </div>
       </div>
 
-      {/* Pas encore de profil social — CTA création */}
+      {/* ── Création du profil social ── */}
       {!socialProfile && (
         <SocialProfileSetup />
       )}
 
-      {/* Feed avec scroll infini */}
-      {socialProfile && feed.length > 0 && (
-        <FeedList initialPosts={feed} />
+      {/* ── Feed avec onglets (affiché même sans profil en lecture seule) ── */}
+      {(discoverPosts.length > 0 || followingPosts.length > 0 || suggestedAthletes.length > 0) && (
+        <FeedList
+          initialDiscoverPosts={discoverPosts}
+          initialFollowingPosts={followingPosts}
+          suggestedAthletes={suggestedAthletes}
+          followingCount={followingIds.length}
+        />
       )}
 
-      {/* Feed vide mais profil créé */}
-      {socialProfile && feed.length === 0 && (
-        <div className="fiq-card text-center py-10 space-y-4">
-          <div className="flex justify-center"><FiqDumbbell size={40} style={{ color: 'var(--fiq-muted)' }} /></div>
+      {/* ── État vide total (aucun post dans toute la communauté) ── */}
+      {discoverPosts.length === 0 && followingPosts.length === 0 && suggestedAthletes.length === 0 && (
+        <div className="fiq-card text-center py-12 space-y-4">
+          <div className="text-5xl">🏋️</div>
           <div>
-            <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>
-              Suis des athlètes pour voir leur progression ici
+            <p className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>
+              Sois le premier à partager !
             </p>
-            <p className="text-sm mt-1" style={{ color: 'var(--fiq-muted)' }}>
-              Partage aussi tes séances après l&apos;entraînement
+            <p className="text-sm mt-2 px-4" style={{ color: 'var(--fiq-muted)' }}>
+              Termine une séance et partage-la — la communauté grandit séance après séance.
             </p>
           </div>
-          <div className="flex flex-col gap-2">
-            <Link
-              href="/social/explorer"
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-black text-sm"
-              style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
-            >
-              <Compass className="w-4 h-4" />
-              Explorer la communauté
-            </Link>
-            <Link
-              href="/social/search"
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm"
-              style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)' }}
-            >
-              <Users className="w-4 h-4" />
-              Rechercher des athlètes
-            </Link>
-          </div>
+          <Link
+            href="/workout"
+            className="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-black text-sm"
+            style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+          >
+            Démarrer une séance
+          </Link>
         </div>
       )}
     </div>
   )
 }
-
