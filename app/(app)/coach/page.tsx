@@ -253,7 +253,7 @@ export default function CoachPage() {
           .eq('log_date', today)
           .maybeSingle(),
         supabase.from('profiles')
-          .select('goal, weight_kg, subscription_status, subscription_plan, is_admin')
+          .select('goal, weight_kg, subscription_status, subscription_plan, is_admin, referral_pro_until')
           .eq('id', user.id)
           .single(),
         // Calories consommées aujourd'hui (food_logs)
@@ -308,7 +308,8 @@ export default function CoachPage() {
       const plan = profile?.subscription_plan ?? 'free'
       const admin = profile?.is_admin ?? false
       setIsAdmin(admin)
-      const free = !admin && status !== 'pro' && status !== 'lifetime'
+      const { isProUser } = await import('@/lib/utils/plan')
+      const free = !isProUser(profile)
       setIsFree(free)
 
       if (admin) {

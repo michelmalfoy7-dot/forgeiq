@@ -13,13 +13,12 @@ export default async function GenerateProgramPage() {
   // Vérification plan + contexte salle
   const { data: profile } = await supabase
     .from('profiles')
-    .select('subscription_status, is_admin, gym_id, gym_equipment_profiles(tier, name, logo_emoji, features)')
+    .select('subscription_status, is_admin, referral_pro_until, gym_id, gym_equipment_profiles(tier, name, logo_emoji, features)')
     .eq('id', user.id)
     .single()
 
-  const status  = profile?.subscription_status ?? 'free'
-  const isAdmin = (profile as unknown as { is_admin?: boolean })?.is_admin ?? false
-  const isPro   = isAdmin || status === 'pro' || status === 'lifetime'
+  const { isProUser } = await import('@/lib/utils/plan')
+  const isPro = isProUser(profile as Parameters<typeof isProUser>[0])
 
   type GymRef = { tier: string; name: string; logo_emoji: string; features: string[] } | null
   const gymRef = (profile as unknown as { gym_equipment_profiles?: GymRef })?.gym_equipment_profiles ?? null

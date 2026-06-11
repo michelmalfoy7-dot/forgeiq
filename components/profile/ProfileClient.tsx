@@ -1109,9 +1109,14 @@ export function ProfileClient({
             )}
           </div>
           <div className="p-4 space-y-3" style={{ background: 'var(--fiq-card)' }}>
-            <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>
-              Partage ton lien personnel. Tes amis accèdent à une page de présentation de l&apos;app.
-            </p>
+            <div
+              className="rounded-xl p-3 text-center"
+              style={{ background: '#B4FF4A12', border: '1px solid #B4FF4A33' }}
+            >
+              <p className="text-xs font-black" style={{ color: 'var(--fiq-accent)' }}>🎁 Pour toi</p>
+              <p className="text-sm font-black mt-0.5" style={{ color: 'var(--fiq-text)' }}>+1 mois Pro par ami invité</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Ton ami reçoit 14 jours Pro offerts</p>
+            </div>
             {referralCode ? (
               <div className="space-y-2">
                 <div

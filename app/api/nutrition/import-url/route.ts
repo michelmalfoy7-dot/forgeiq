@@ -35,12 +35,12 @@ export async function POST(req: NextRequest) {
     // Vérification plan — feature Pro uniquement
     const { data: profile } = await supabase
       .from('profiles')
-      .select('subscription_status, is_admin')
+      .select('subscription_status, is_admin, referral_pro_until')
       .eq('id', user.id)
       .single()
 
-    const isAdmin = profile?.is_admin ?? false
-    const isPro = isAdmin || profile?.subscription_status === 'pro' || profile?.subscription_status === 'lifetime'
+    const { isProUser } = await import('@/lib/utils/plan')
+    const isPro = isProUser(profile)
     if (!isPro) {
       return NextResponse.json({
         data: null,

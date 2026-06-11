@@ -34,7 +34,7 @@ export default async function ProgramsPage() {
       .eq('is_public', true)
       .order('sessions_per_week', { ascending: true }),
     supabase.from('profiles')
-      .select('current_program_id, goal, level, equipment, gym_id, subscription_status, is_admin, gym_equipment_profiles(tier, name, logo_emoji, features)')
+      .select('current_program_id, goal, level, equipment, gym_id, subscription_status, is_admin, referral_pro_until, gym_equipment_profiles(tier, name, logo_emoji, features)')
       .eq('id', user.id).single(),
   ])
 
@@ -47,9 +47,8 @@ export default async function ProgramsPage() {
   const gymFeatures = gymRef?.features ?? null
 
   // Plan et quota générateur IA — is_admin bypass total (tests + compte fondateur)
-  const subStatus = (profile as unknown as { subscription_status?: string })?.subscription_status ?? 'free'
-  const isAdmin   = (profile as unknown as { is_admin?: boolean })?.is_admin ?? false
-  const isPro     = isAdmin || subStatus === 'pro' || subStatus === 'lifetime'
+  const { isProUser } = await import('@/lib/utils/plan')
+  const isPro = isProUser(profile as Parameters<typeof isProUser>[0])
 
   const startOfMonth = new Date()
   startOfMonth.setDate(1)

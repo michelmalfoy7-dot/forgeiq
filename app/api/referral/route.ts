@@ -79,13 +79,40 @@ export async function POST(request: Request) {
     const { data: myProfile } = await supabase.from('profiles').select('referred_by').eq('id', user.id).single()
     if (myProfile?.referred_by) return NextResponse.json({ data: { already_applied: true }, error: null })
 
-    // Appliquer : marquer le filleul + incrémenter compteur parrain
+    // Récompenses :
+    // - Filleul : 14 jours Pro offerts
+    // - Parrain : +30 jours Pro (cumulable, extension si déjà une date future)
+    const today = new Date()
+
+    const filleulUntil = new Date(today)
+    filleulUntil.setDate(filleulUntil.getDate() + 14)
+
+    const { data: referrerProfile } = await admin
+      .from('profiles')
+      .select('referral_pro_until')
+      .eq('id', referrer.id)
+      .single()
+
+    const referrerBase = referrerProfile?.referral_pro_until
+      ? new Date(Math.max(today.getTime(), new Date(referrerProfile.referral_pro_until).getTime()))
+      : today
+    const referrerUntil = new Date(referrerBase)
+    referrerUntil.setDate(referrerUntil.getDate() + 30)
+
+    const fmt = (d: Date) => d.toISOString().split('T')[0]
+
     await Promise.all([
-      supabase.from('profiles').update({ referred_by: code.toUpperCase() }).eq('id', user.id),
-      admin.from('profiles').update({ referral_count: (referrer.referral_count ?? 0) + 1 }).eq('id', referrer.id),
+      supabase.from('profiles').update({
+        referred_by: code.toUpperCase(),
+        referral_pro_until: fmt(filleulUntil),
+      }).eq('id', user.id),
+      admin.from('profiles').update({
+        referral_count: (referrer.referral_count ?? 0) + 1,
+        referral_pro_until: fmt(referrerUntil),
+      }).eq('id', referrer.id),
     ])
 
-    return NextResponse.json({ data: { applied: true }, error: null })
+    return NextResponse.json({ data: { applied: true, pro_days: 14 }, error: null })
   } catch {
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
   }

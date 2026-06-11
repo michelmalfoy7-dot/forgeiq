@@ -41,15 +41,32 @@ export default async function InvitePage({ params }: Props) {
           </p>
         </div>
 
-        {/* Invite card */}
+        {/* Invite card — offre mise en avant */}
         <div
-          className="rounded-2xl p-5 text-center"
-          style={{ background: '#B4FF4A12', border: '1px solid #B4FF4A33' }}
+          className="rounded-2xl p-5 text-center space-y-3"
+          style={{ background: '#B4FF4A12', border: '1px solid #B4FF4A44' }}
         >
           <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>Un ami t&apos;a invité à rejoindre</p>
-          <p className="text-lg font-black mt-1" style={{ color: 'var(--fiq-text)' }}>ForgeIQ</p>
-          <p className="text-xs mt-2" style={{ color: 'var(--fiq-accent)', fontVariantNumeric: 'tabular-nums', letterSpacing: '0.1em' }}>
-            CODE : {code}
+          <p className="text-2xl font-black" style={{ color: 'var(--fiq-text)' }}>ForgeIQ</p>
+
+          {/* Offre spéciale */}
+          <div
+            className="rounded-xl p-3"
+            style={{ background: '#B4FF4A22', border: '1px solid #B4FF4A55' }}
+          >
+            <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: 'var(--fiq-accent)' }}>
+              🎁 Offre de bienvenue
+            </p>
+            <p className="text-lg font-black" style={{ color: 'var(--fiq-text)' }}>
+              14 jours Pro offerts
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+              Accès complet à toutes les fonctionnalités
+            </p>
+          </div>
+
+          <p className="text-xs" style={{ color: 'var(--fiq-muted)', letterSpacing: '0.1em' }}>
+            CODE : <span style={{ color: 'var(--fiq-accent)', fontWeight: 900 }}>{code}</span>
           </p>
         </div>
 

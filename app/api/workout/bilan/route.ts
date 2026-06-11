@@ -38,10 +38,11 @@ export async function POST(req: NextRequest) {
     // Vérifier le plan — bilan IA réservé aux abonnés Pro/Lifetime
     const { data: sub } = await supabase
       .from('profiles')
-      .select('subscription_status, is_admin')
+      .select('subscription_status, is_admin, referral_pro_until')
       .eq('id', user.id)
       .single()
-    const isPro = sub?.is_admin || sub?.subscription_status === 'pro' || sub?.subscription_status === 'lifetime'
+    const { isProUser } = await import('@/lib/utils/plan')
+    const isPro = isProUser(sub)
     if (!isPro) return NextResponse.json({ data: null, error: 'Bilan IA réservé au plan Pro', paywall: true }, { status: 403 })
 
     // ── 1. Données de la séance actuelle ────────────────────────────────
