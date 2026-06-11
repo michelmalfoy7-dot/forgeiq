@@ -168,6 +168,34 @@ export async function POST(request: Request) {
       }
     }
 
+    // ── Mise à jour streak d'entraînement (semaines consécutives) ──
+    // Ne compte pas les jours de repos ni le cardio rapide comme "semaine d'entraînement"
+    const isRealWorkout = workout_type !== 'cardio' && sets.length > 0
+    if (isRealWorkout) {
+      const currentWeek = getISOWeek(new Date())
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('training_streak_weeks, last_training_week_iso')
+        .eq('id', user.id)
+        .single()
+
+      if (prof) {
+        const lastWeek = prof.last_training_week_iso
+        let newStreak = 1
+        if (lastWeek === currentWeek) {
+          newStreak = prof.training_streak_weeks ?? 1  // déjà compté cette semaine
+        } else if (lastWeek && isPrevWeek(lastWeek, currentWeek)) {
+          newStreak = (prof.training_streak_weeks ?? 0) + 1
+        }
+        if (lastWeek !== currentWeek) {
+          await supabase
+            .from('profiles')
+            .update({ training_streak_weeks: newStreak, last_training_week_iso: currentWeek })
+            .eq('id', user.id)
+        }
+      }
+    }
+
     return NextResponse.json({
       data: { workout_id, totalTonnage, totalSets, newPRs },
       error: null,
@@ -176,6 +204,22 @@ export async function POST(request: Request) {
     console.error('[workout/complete]', e)
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
   }
+}
+
+function getISOWeek(date: Date): string {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7))
+  const week1 = new Date(d.getFullYear(), 0, 4)
+  const weekNum = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7)
+  return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`
+}
+
+function isPrevWeek(lastWeekIso: string, currentWeekIso: string): boolean {
+  const [ly, lw] = lastWeekIso.split('-W').map(Number)
+  const [cy, cw] = currentWeekIso.split('-W').map(Number)
+  if (cy === ly + 1 && lw === 52 && cw === 1) return true   // passage d'année
+  return cy === ly && cw === lw + 1
 }
 
 function groupByExercise(sets: SetInput[]): Record<string, SetInput[]> {

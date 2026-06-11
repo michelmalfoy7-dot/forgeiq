@@ -44,6 +44,37 @@ export async function POST(request: Request) {
 
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
 
+    // ── Mise à jour streak check-in ──────────────────────────────
+    const { data: prof } = await supabase
+      .from('profiles')
+      .select('checkin_streak, last_checkin_date')
+      .eq('id', user.id)
+      .single()
+
+    if (prof) {
+      const prev = prof.last_checkin_date
+      const prevDate = prev ? new Date(prev + 'T12:00:00') : null
+      const todayDate = new Date(today + 'T12:00:00')
+      const diffDays = prevDate
+        ? Math.round((todayDate.getTime() - prevDate.getTime()) / 86400000)
+        : null
+
+      let newStreak = 1
+      if (diffDays === 0) {
+        newStreak = prof.checkin_streak ?? 1     // même jour, pas de changement
+      } else if (diffDays === 1) {
+        newStreak = (prof.checkin_streak ?? 0) + 1  // jour consécutif
+      }
+      // diffDays > 1 ou null → reset à 1
+
+      if (diffDays !== 0) {
+        await supabase
+          .from('profiles')
+          .update({ checkin_streak: newStreak, last_checkin_date: today })
+          .eq('id', user.id)
+      }
+    }
+
     // Invalider le cache du dashboard pour mise à jour immédiate après check-in
     revalidatePath('/dashboard')
 
