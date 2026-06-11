@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
+import { grantReferralRewardIfEligible } from '@/app/api/referral/route'
 
 export const dynamic = 'force-dynamic'
 
@@ -85,6 +86,9 @@ export async function POST(request: Request) {
 
     // Invalider le cache du dashboard pour mise à jour immédiate après check-in
     revalidatePath('/dashboard')
+
+    // Récompense referral différée (1er check-in = 1ère vraie action)
+    grantReferralRewardIfEligible(user.id).catch(() => null)
 
     return NextResponse.json({ data, milestone, error: null })
   } catch (e) {

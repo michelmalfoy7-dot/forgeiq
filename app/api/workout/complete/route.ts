@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { grantReferralRewardIfEligible } from '@/app/api/referral/route'
 
 export const dynamic = 'force-dynamic'
 
@@ -201,6 +202,9 @@ export async function POST(request: Request) {
         }
       }
     }
+
+    // Récompense referral différée (1ère séance = 1ère vraie action)
+    grantReferralRewardIfEligible(user.id).catch(() => null)
 
     return NextResponse.json({
       data: { workout_id, totalTonnage, totalSets, newPRs, milestone: trainingMilestone },

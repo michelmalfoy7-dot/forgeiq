@@ -187,6 +187,7 @@ export function ProfileClient({
   const [portalLoading, setPortalLoading] = useState(false)
   const [referralCode, setReferralCode] = useState<string | null>(null)
   const [referralCount, setReferralCount] = useState(0)
+  const [referralMax, setReferralMax] = useState(3)
   const [referralLoading, setReferralLoading] = useState(false)
   const [referralCopied, setReferralCopied] = useState(false)
 
@@ -324,7 +325,7 @@ export function ProfileClient({
     try {
       const res = await fetch('/api/referral')
       const { data } = await res.json()
-      if (data) { setReferralCode(data.code); setReferralCount(data.count) }
+      if (data) { setReferralCode(data.code); setReferralCount(data.count); setReferralMax(data.max ?? 3) }
     } finally {
       setReferralLoading(false)
     }
@@ -1102,11 +1103,9 @@ export function ProfileClient({
                 Inviter des amis
               </p>
             </div>
-            {referralCount > 0 && (
-              <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ background: '#B4FF4A22', color: 'var(--fiq-accent)' }}>
-                {referralCount} invité{referralCount > 1 ? 's' : ''}
-              </span>
-            )}
+            <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ background: '#B4FF4A22', color: 'var(--fiq-accent)' }}>
+              {referralCode ? `${referralCount}/${referralMax} mois` : '+1 mois/ami'}
+            </span>
           </div>
           <div className="p-4 space-y-3" style={{ background: 'var(--fiq-card)' }}>
             <div
@@ -1115,7 +1114,7 @@ export function ProfileClient({
             >
               <p className="text-xs font-black" style={{ color: 'var(--fiq-accent)' }}>🎁 Pour toi</p>
               <p className="text-sm font-black mt-0.5" style={{ color: 'var(--fiq-text)' }}>+1 mois Pro par ami invité</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Ton ami reçoit 14 jours Pro offerts</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Ton ami reçoit 14 jours Pro · Max {referralMax} mois pour toi</p>
             </div>
             {referralCode ? (
               <div className="space-y-2">
