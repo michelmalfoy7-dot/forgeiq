@@ -97,7 +97,13 @@ export default async function DashboardPage() {
 
   if (profileError) console.error('[Dashboard] profileError:', profileError.code, profileError.message)
 
-  // Si profil absent → créer et rediriger vers l'onboarding
+  // Erreur DB réelle (pas "ligne introuvable") → déclenche error.tsx avec bouton Réessayer
+  // Évite la boucle dashboard→onboarding→dashboard quand le réseau est lent/coupé
+  if (profileError) {
+    throw new Error(`Erreur réseau — impossible de charger ton profil. (${profileError.code ?? profileError.message})`)
+  }
+
+  // Profil absent pour de vrai → créer et rediriger vers l'onboarding
   if (!profile) {
     await supabase.from('profiles').upsert({
       id: user.id,
