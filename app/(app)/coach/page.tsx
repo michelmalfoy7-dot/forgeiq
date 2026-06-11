@@ -308,24 +308,17 @@ export default function CoachPage() {
       const plan = profile?.subscription_plan ?? 'free'
       const admin = profile?.is_admin ?? false
       setIsAdmin(admin)
-      const { isProUser } = await import('@/lib/utils/plan')
-      const free = !isProUser(profile)
+      const { isRealProUser, isReferralTrial } = await import('@/lib/utils/plan')
+      const realPro = isRealProUser(profile)
+      const referralTrial = isReferralTrial(profile)
+      const free = !realPro && !referralTrial
       setIsFree(free)
 
       if (admin) {
         setCoachLimit(9999)
         setCoachCount(0)
-      } else if (free) {
-        // Free : 5 messages TOTAL à vie
-        setCoachLimit(5)
-        const { count: total } = await supabase
-          .from('coach_messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('role', 'user')
-        setCoachCount(total ?? 0)
-      } else {
-        // Pro — comptage mensuel
+      } else if (realPro) {
+        // Abonné payant — comptage mensuel complet
         const limit = (status === 'lifetime' || plan === 'annual') ? 9999 : 60
         setCoachLimit(limit)
         const { count: monthly } = await supabase
@@ -335,6 +328,15 @@ export default function CoachPage() {
           .eq('role', 'user')
           .gte('created_at', startOfMonth.toISOString())
         setCoachCount(monthly ?? 0)
+      } else {
+        // Free ET referral trial : même limite 5 messages pour préserver le budget API
+        setCoachLimit(5)
+        const { count: total } = await supabase
+          .from('coach_messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('role', 'user')
+        setCoachCount(total ?? 0)
       }
 
       setHistoryLoading(false)

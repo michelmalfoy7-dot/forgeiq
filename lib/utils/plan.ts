@@ -4,16 +4,32 @@ export type ProfileForPlan = {
   referral_pro_until?: string | null
 }
 
-/**
- * Retourne true si l'utilisateur a accès aux fonctionnalités Pro.
- * Sources : abonnement Stripe actif, statut lifetime, admin, ou bonus referral valide.
- */
-export function isProUser(profile: ProfileForPlan | null | undefined): boolean {
+/** Abonnement payant actif (Stripe Pro/Lifetime) ou admin. */
+export function isRealProUser(profile: ProfileForPlan | null | undefined): boolean {
   if (!profile) return false
   if (profile.is_admin) return true
-  if (profile.subscription_status === 'pro' || profile.subscription_status === 'lifetime') return true
-  if (profile.referral_pro_until) {
-    return new Date(profile.referral_pro_until + 'T23:59:59') >= new Date()
-  }
-  return false
+  return profile.subscription_status === 'pro' || profile.subscription_status === 'lifetime'
+}
+
+/** Trial referral en cours (pas encore abonné). */
+export function isReferralTrial(profile: ProfileForPlan | null | undefined): boolean {
+  if (!profile) return false
+  if (isRealProUser(profile)) return false // abonné réel → pas un trial
+  if (!profile.referral_pro_until) return false
+  return new Date(profile.referral_pro_until + 'T23:59:59') >= new Date()
+}
+
+/** Jours restants du trial referral (0 si expiré ou pas de trial). */
+export function referralDaysLeft(profile: ProfileForPlan | null | undefined): number {
+  if (!isReferralTrial(profile)) return 0
+  const until = new Date(profile!.referral_pro_until! + 'T23:59:59')
+  return Math.max(0, Math.ceil((until.getTime() - Date.now()) / 86400000))
+}
+
+/**
+ * Accès Pro complet (features non-coûteuses) :
+ * abonné réel OU trial referral valide.
+ */
+export function isProUser(profile: ProfileForPlan | null | undefined): boolean {
+  return isRealProUser(profile) || isReferralTrial(profile)
 }

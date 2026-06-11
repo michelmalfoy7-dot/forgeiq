@@ -5,6 +5,7 @@ import { OfflineBanner } from '@/components/layout/OfflineBanner'
 import { ToastProvider } from '@/components/ui/Toast'
 import { InstallBanner } from '@/components/pwa/InstallBanner'
 import { PushPermissionPrompt } from '@/components/social/PushPermissionPrompt'
+import { ReferralTrialBanner } from '@/components/ui/ReferralTrialBanner'
 
 export const metadata: Metadata = {
   title: {
@@ -21,6 +22,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen flex justify-center" style={{ background: 'var(--bg)' }}>
       <div className="w-full max-w-[480px] min-h-screen flex flex-col relative">
         <InstallBanner />
+        <ReferralTrialBanner />
         <OfflineBanner />
         <main className="flex-1 pb-nav overflow-x-hidden">
           {children}
