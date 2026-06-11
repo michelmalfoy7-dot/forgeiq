@@ -3,19 +3,21 @@ import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
-// GET — 2 dernières entrées (pour afficher + calculer tendance)
-export async function GET() {
+// GET — historique mensurations (par défaut 24 entrées pour le graphique)
+export async function GET(request: Request) {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
+
+    const limit = Number(new URL(request.url).searchParams.get('limit') ?? 24)
 
     const { data, error } = await supabase
       .from('body_measurements')
       .select('*')
       .eq('user_id', user.id)
       .order('measured_at', { ascending: false })
-      .limit(2)
+      .limit(Math.min(limit, 50))
 
     // Table absente → réponse vide gracieuse
     if (error) return NextResponse.json({ data: [], error: null })

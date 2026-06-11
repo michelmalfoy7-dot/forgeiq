@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Ruler, Plus, X, ChevronDown, ChevronUp, Loader2, Check } from 'lucide-react'
+import { Ruler, Plus, X, ChevronDown, ChevronUp, Loader2, Check, TrendingUp } from 'lucide-react'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -150,6 +151,31 @@ function MeasureRow({
   )
 }
 
+// ── Métriques disponibles pour le graphique ────────────────────────────────────
+
+type MetricKey = 'waist_cm' | 'chest_cm' | 'hips_cm' | 'body_fat_pct' | 'left_arm_cm' | 'left_thigh_cm' | 'shoulders_cm'
+
+const METRICS: { key: MetricKey; label: string; unit: string; color: string }[] = [
+  { key: 'waist_cm',     label: 'Taille',    unit: 'cm', color: 'var(--fiq-accent)' },
+  { key: 'chest_cm',     label: 'Poitrine',  unit: 'cm', color: 'var(--fiq-blue)' },
+  { key: 'hips_cm',      label: 'Hanches',   unit: 'cm', color: 'var(--fiq-orange)' },
+  { key: 'body_fat_pct', label: 'Corps gras', unit: '%',  color: 'var(--fiq-red)' },
+  { key: 'left_arm_cm',  label: 'Bras',      unit: 'cm', color: '#A855F7' },
+  { key: 'left_thigh_cm', label: 'Cuisse',   unit: 'cm', color: '#F59E0B' },
+]
+
+function MeasTooltip({ active, payload, label, unit }: { active?: boolean; payload?: { value: number }[]; label?: string; unit: string }) {
+  if (!active || !payload?.length || payload[0].value == null) return null
+  return (
+    <div style={{ background: '#161A21', border: '1px solid rgba(180,255,74,0.2)', borderRadius: 10, padding: '8px 12px' }}>
+      <p style={{ color: '#6B7280', fontSize: 11, marginBottom: 4 }}>{label}</p>
+      <p style={{ color: '#F0F2F5', fontWeight: 900, fontSize: 14 }}>
+        {payload[0].value} <span style={{ color: '#6B7280', fontSize: 11, fontWeight: 400 }}>{unit}</span>
+      </p>
+    </div>
+  )
+}
+
 // ── Composant principal ────────────────────────────────────────────────────────
 
 export function MeasurementsSection() {
@@ -157,12 +183,14 @@ export function MeasurementsSection() {
   const [loading, setLoading]   = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [showAll, setShowAll]   = useState(false)
+  const [activeTab, setActiveTab] = useState<'current' | 'chart'>('current')
+  const [activeMetric, setActiveMetric] = useState<MetricKey>('waist_cm')
   const [form, setForm]         = useState<FormData>({ ...EMPTY_FORM, measured_at: new Date().toISOString().split('T')[0] })
   const [saving, setSaving]     = useState(false)
   const [saved, setSaved]       = useState(false)
 
   useEffect(() => {
-    fetch('/api/progress/measurements')
+    fetch('/api/progress/measurements?limit=24')
       .then(r => r.json())
       .then((json: { data: Measurement[] | null }) => { if (json.data) setEntries(json.data) })
       .catch(() => {})
@@ -215,6 +243,18 @@ export function MeasurementsSection() {
   const latest   = entries[0]
   const previous = entries[1]
 
+  // Données chart : entrées triées du plus ancien au plus récent, avec seulement les points non nuls
+  const chartData = [...entries]
+    .reverse()
+    .filter(e => e[activeMetric] !== null)
+    .map(e => ({
+      date: new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' })
+        .format(new Date(e.measured_at + 'T12:00:00')),
+      value: e[activeMetric] as number,
+    }))
+
+  const activeMetricDef = METRICS.find(m => m.key === activeMetric)!
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -241,7 +281,113 @@ export function MeasurementsSection() {
           </button>
         </div>
 
-        {/* Contenu */}
+        {/* Onglets Mesure actuelle / Évolution */}
+        {latest && (
+          <div className="flex gap-1 p-2" style={{ borderBottom: '1px solid var(--fiq-border)', background: 'var(--fiq-faint)' }}>
+            <button
+              onClick={() => setActiveTab('current')}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-xs font-black transition-all"
+              style={activeTab === 'current'
+                ? { background: 'var(--fiq-card)', color: 'var(--fiq-text)', border: '1px solid var(--fiq-border)' }
+                : { color: 'var(--fiq-muted)' }}
+            >
+              <Ruler className="w-3 h-3" /> Actuelle
+            </button>
+            <button
+              onClick={() => setActiveTab('chart')}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-xs font-black transition-all"
+              style={activeTab === 'chart'
+                ? { background: 'var(--fiq-accent)', color: 'var(--bg)' }
+                : { color: 'var(--fiq-muted)' }}
+            >
+              <TrendingUp className="w-3 h-3" /> Évolution
+            </button>
+          </div>
+        )}
+
+        {/* Onglet Évolution — chart */}
+        {!loading && latest && activeTab === 'chart' && (
+          <div className="px-4 py-4 space-y-3">
+            {/* Sélecteur métrique */}
+            <div className="flex flex-wrap gap-1.5">
+              {METRICS.filter(m => entries.some(e => e[m.key] !== null)).map(m => (
+                <button
+                  key={m.key}
+                  onClick={() => setActiveMetric(m.key)}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-black transition-all"
+                  style={activeMetric === m.key
+                    ? { background: m.color, color: activeMetric === 'waist_cm' ? 'var(--bg)' : '#fff', opacity: 1 }
+                    : { background: 'var(--fiq-faint)', color: 'var(--fiq-muted)', border: '1px solid var(--fiq-border)' }
+                  }
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+
+            {chartData.length >= 2 ? (
+              <>
+                {/* Stat résumé */}
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-black fiq-data" style={{ color: activeMetricDef.color }}>
+                    {chartData[chartData.length - 1].value}
+                  </span>
+                  <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>{activeMetricDef.unit}</span>
+                  {(() => {
+                    const d = chartData[chartData.length - 1].value - chartData[0].value
+                    if (Math.abs(d) < 0.05) return null
+                    return (
+                      <span className="text-xs font-bold px-1.5 py-0.5 rounded-md"
+                        style={{ background: 'var(--fiq-faint)', color: d < 0 ? 'var(--fiq-accent)' : 'var(--fiq-muted)' }}>
+                        {d > 0 ? '+' : ''}{d.toFixed(1)}{activeMetricDef.unit}
+                      </span>
+                    )
+                  })()}
+                  <span className="text-[10px] ml-auto" style={{ color: 'var(--fiq-muted)' }}>
+                    {chartData[0].date} → {chartData[chartData.length - 1].date}
+                  </span>
+                </div>
+
+                {/* Chart */}
+                <ResponsiveContainer width="100%" height={160}>
+                  <LineChart data={chartData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--fiq-border)" vertical={false} />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fill: '#6B7280', fontSize: 10 }}
+                      tickLine={false}
+                      axisLine={false}
+                      interval="preserveStartEnd"
+                    />
+                    <YAxis
+                      tick={{ fill: '#6B7280', fontSize: 10 }}
+                      tickLine={false}
+                      axisLine={false}
+                      domain={['auto', 'auto']}
+                    />
+                    <Tooltip content={<MeasTooltip unit={activeMetricDef.unit} />} />
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke={activeMetricDef.color}
+                      strokeWidth={2}
+                      dot={{ fill: activeMetricDef.color, r: 3, strokeWidth: 0 }}
+                      activeDot={{ r: 5, strokeWidth: 0 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </>
+            ) : (
+              <div className="text-center py-6">
+                <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>
+                  Il faut au moins 2 mesures pour afficher l'évolution.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Contenu mesure actuelle */}
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--fiq-muted)' }} />
@@ -254,7 +400,7 @@ export function MeasurementsSection() {
               Suis l'évolution de ton corps en détail
             </p>
           </div>
-        ) : (
+        ) : activeTab === 'chart' ? null : (
           <div className="px-4 pb-1">
             {/* Corps gras en avant si disponible */}
             {latest.body_fat_pct !== null && (
