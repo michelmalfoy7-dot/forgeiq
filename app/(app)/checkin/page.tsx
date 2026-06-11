@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { AlertBar } from '@/components/ui/AlertBar'
+import { StreakMilestoneModal } from '@/components/ui/StreakMilestoneModal'
 import { Loader2, Save, TrendingDown, TrendingUp, Minus, CheckCircle2, ChevronDown, ChevronUp, Moon, Footprints, Utensils, Brain, Activity, Scale } from 'lucide-react'
 import { calcTDEESimple } from '@/lib/utils/tdee'
 import { hMinToMinutes, minutesToHMin, formatSleep } from '@/lib/formatSleep'
@@ -65,6 +66,7 @@ export default function CheckinPage() {
   const [ewmaLoading, setEwmaLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [milestone, setMilestone] = useState<{ streak: number; type: 'checkin' | 'training' } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isYesterday, setIsYesterday] = useState(false)
   const [stepsChip, setStepsChip] = useState<number | null>(null)
@@ -181,9 +183,14 @@ export default function CheckinPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      const { error: err } = await res.json()
+      const { error: err, milestone: ms } = await res.json()
       if (err) { setError(err); return }
       setSaved(true)
+      if (ms) {
+        setMilestone(ms)
+        // Laisser le modal ouvert, puis rediriger après fermeture
+        return
+      }
       router.refresh()
       setTimeout(() => router.push('/dashboard'), 1400)
     } finally {
@@ -251,6 +258,13 @@ export default function CheckinPage() {
 
   return (
     <div style={{ background: 'var(--bg)', minHeight: '100vh' }}>
+      {milestone && (
+        <StreakMilestoneModal
+          streak={milestone.streak}
+          type={milestone.type}
+          onClose={() => { setMilestone(null); router.refresh(); router.push('/dashboard') }}
+        />
+      )}
       <div className="p-4 max-w-lg mx-auto pb-32">
         {SavedToast}
 

@@ -170,6 +170,7 @@ export async function POST(request: Request) {
 
     // ── Mise à jour streak d'entraînement (semaines consécutives) ──
     // Ne compte pas les jours de repos ni le cardio rapide comme "semaine d'entraînement"
+    let trainingMilestone: { streak: number; type: 'training' } | null = null
     const isRealWorkout = workout_type !== 'cardio' && sets.length > 0
     if (isRealWorkout) {
       const currentWeek = getISOWeek(new Date())
@@ -192,12 +193,17 @@ export async function POST(request: Request) {
             .from('profiles')
             .update({ training_streak_weeks: newStreak, last_training_week_iso: currentWeek })
             .eq('id', user.id)
+
+          const MILESTONES = [4, 12, 52]
+          if (MILESTONES.includes(newStreak)) {
+            trainingMilestone = { streak: newStreak, type: 'training' }
+          }
         }
       }
     }
 
     return NextResponse.json({
-      data: { workout_id, totalTonnage, totalSets, newPRs },
+      data: { workout_id, totalTonnage, totalSets, newPRs, milestone: trainingMilestone },
       error: null,
     })
   } catch (e) {

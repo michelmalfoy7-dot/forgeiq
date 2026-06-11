@@ -45,6 +45,8 @@ export async function POST(request: Request) {
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
 
     // ── Mise à jour streak check-in ──────────────────────────────
+    let milestone: { streak: number; type: 'checkin' | 'training' } | null = null
+
     const { data: prof } = await supabase
       .from('profiles')
       .select('checkin_streak, last_checkin_date')
@@ -73,12 +75,18 @@ export async function POST(request: Request) {
           .update({ checkin_streak: newStreak, last_checkin_date: today })
           .eq('id', user.id)
       }
+
+      // Milestone si on atteint 7, 30 ou 100 jours consécutifs
+      const MILESTONES = [7, 30, 100]
+      if (diffDays !== 0 && MILESTONES.includes(newStreak)) {
+        milestone = { streak: newStreak, type: 'checkin' as const }
+      }
     }
 
     // Invalider le cache du dashboard pour mise à jour immédiate après check-in
     revalidatePath('/dashboard')
 
-    return NextResponse.json({ data, error: null })
+    return NextResponse.json({ data, milestone, error: null })
   } catch (e) {
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
   }

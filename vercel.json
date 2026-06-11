@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/weekly-recap",
       "schedule": "0 16 * * 0"
+    },
+    {
+      "path": "/api/cron/workout-reminder",
+      "schedule": "0 16 * * *"
     }
   ],
   "headers": [

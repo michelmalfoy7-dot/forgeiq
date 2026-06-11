@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Dumbbell, Zap, MessageCircle, Share2 } from 'lucide-react'
 import { FiqDumbbell, FiqPR, FiqStreak, FiqCircuit, FiqCheck, FiqAlert } from '@/components/ui/FiqIcons'
 import { Confetti } from '@/components/ui/Confetti'
+import { StreakMilestoneModal } from '@/components/ui/StreakMilestoneModal'
 import { PlateCalculatorModal } from '@/components/workout/PlateCalculatorModal'
 import { roundWeight, weightDelta } from '@/lib/utils/numbers'
 
@@ -134,6 +135,7 @@ export default function WorkoutSessionPage() {
   const [completed, setCompleted] = useState(false)
   const [completeError, setCompleteError] = useState<string | null>(null)
   const [summary, setSummary] = useState<{ tonnage: number; sets: number; newPRs: string[] } | null>(null)
+  const [trainingMilestone, setTrainingMilestone] = useState<{ streak: number; type: 'training' } | null>(null)
   const [sessionName, setSessionName] = useState('Séance')
   const [elapsed, setElapsed] = useState(0)
   const [showQuitModal, setShowQuitModal] = useState(false)
@@ -808,6 +810,7 @@ export default function WorkoutSessionPage() {
         }).catch(() => { /* silencieux */ })
         setSummary({ tonnage: data.totalTonnage ?? 0, sets: data.totalSets ?? 0, newPRs: data.newPRs ?? [] })
         setCompleted(true)
+        if (data.milestone) setTrainingMilestone(data.milestone)
         if (timerRef.current) clearInterval(timerRef.current)
         stopRest()
         // Lancer le bilan IA en arrière-plan (non bloquant — Pro uniquement)
@@ -1057,6 +1060,13 @@ export default function WorkoutSessionPage() {
     return (
       <div className="min-h-screen flex items-center justify-center p-6" style={{ background: 'var(--bg)' }}>
         {summary.newPRs.length > 0 && <Confetti active />}
+        {trainingMilestone && (
+          <StreakMilestoneModal
+            streak={trainingMilestone.streak}
+            type="training"
+            onClose={() => setTrainingMilestone(null)}
+          />
+        )}
         <div className="w-full max-w-sm space-y-6 text-center">
           <div className="flex justify-center">
             <FiqPR size={52} style={{ color: 'var(--fiq-accent)' }} />
