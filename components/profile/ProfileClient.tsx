@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, LogOut, Trash2, Dumbbell, Flame, BarChart2, ChevronRight, MessageCircle, Info, Crown, Users, Globe, Lock, Camera, X, Download } from 'lucide-react'
+import { Loader2, LogOut, Trash2, Dumbbell, Flame, BarChart2, ChevronRight, MessageCircle, Info, Crown, Users, Globe, Lock, Camera, X, Download, Share2, Copy, Check } from 'lucide-react'
 import type { TDEEBreakdown } from '@/lib/utils/tdee'
 import type { Big5PR } from '@/lib/utils/big5'
 
@@ -185,6 +185,10 @@ export function ProfileClient({
   const [saved, setSaved] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
   const [portalLoading, setPortalLoading] = useState(false)
+  const [referralCode, setReferralCode] = useState<string | null>(null)
+  const [referralCount, setReferralCount] = useState(0)
+  const [referralLoading, setReferralLoading] = useState(false)
+  const [referralCopied, setReferralCopied] = useState(false)
 
   // État profil social
   type SocialProfile = {
@@ -312,6 +316,30 @@ export function ProfileClient({
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/login')
+  }
+
+  async function loadReferral() {
+    if (referralCode) return
+    setReferralLoading(true)
+    try {
+      const res = await fetch('/api/referral')
+      const { data } = await res.json()
+      if (data) { setReferralCode(data.code); setReferralCount(data.count) }
+    } finally {
+      setReferralLoading(false)
+    }
+  }
+
+  async function copyReferralLink() {
+    if (!referralCode) return
+    const url = `${window.location.origin}/invite/${referralCode}`
+    if (navigator.share) {
+      await navigator.share({ title: 'ForgeIQ', text: 'Rejoins-moi sur ForgeIQ 🏋️', url }).catch(() => null)
+    } else {
+      await navigator.clipboard.writeText(url).catch(() => null)
+      setReferralCopied(true)
+      setTimeout(() => setReferralCopied(false), 2000)
+    }
   }
 
   async function resetData() {
@@ -1064,6 +1092,57 @@ export function ProfileClient({
           Se déconnecter
           <ChevronRight className="w-4 h-4 ml-auto" style={{ color: 'var(--fiq-muted)' }} />
         </button>
+
+        {/* Inviter un ami */}
+        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--fiq-border)' }}>
+          <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'var(--fiq-faint)' }}>
+            <div>
+              <p className="text-xs font-black uppercase tracking-widest" style={{ color: 'var(--fiq-muted)' }}>
+                <Users className="w-3 h-3 inline mr-1.5" />
+                Inviter des amis
+              </p>
+            </div>
+            {referralCount > 0 && (
+              <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ background: '#B4FF4A22', color: 'var(--fiq-accent)' }}>
+                {referralCount} invité{referralCount > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+          <div className="p-4 space-y-3" style={{ background: 'var(--fiq-card)' }}>
+            <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>
+              Partage ton lien personnel. Tes amis accèdent à une page de présentation de l&apos;app.
+            </p>
+            {referralCode ? (
+              <div className="space-y-2">
+                <div
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono"
+                  style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-text)' }}
+                >
+                  <span className="flex-1 truncate">{typeof window !== 'undefined' ? `${window.location.origin}/invite/${referralCode}` : `/invite/${referralCode}`}</span>
+                </div>
+                <button
+                  onClick={copyReferralLink}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black transition-all active:scale-95"
+                  style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+                >
+                  {referralCopied
+                    ? <><Check className="w-4 h-4" />Copié !</>
+                    : <><Share2 className="w-4 h-4" />Partager mon lien</>
+                  }
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={loadReferral}
+                disabled={referralLoading}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black transition-all active:scale-95"
+                style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+              >
+                {referralLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Copy className="w-4 h-4" />Générer mon lien d&apos;invitation</>}
+              </button>
+            )}
+          </div>
+        </div>
 
         {/* Export données (RGPD) */}
         <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--fiq-border)' }}>

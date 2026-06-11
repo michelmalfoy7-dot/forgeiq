@@ -19,6 +19,11 @@ export default function RegisterPage() {
   const [sent, setSent] = useState(false)
   const router = useRouter()
 
+  // Code referral depuis l'URL (?ref=XXXXXXXX)
+  const refCode = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('ref')
+    : null
+
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -56,6 +61,14 @@ export default function RegisterPage() {
 
     // Si Supabase ne demande pas de confirmation (email auto-confirm activé)
     if (data.session) {
+      // Appliquer le code referral si présent (fire-and-forget)
+      if (refCode) {
+        fetch('/api/referral', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: refCode }),
+        }).catch(() => null)
+      }
       router.push('/onboarding')
       return
     }

@@ -6,7 +6,6 @@ import { SocialProfileSetup } from '@/components/social/SocialProfileSetup'
 import { FeedList } from '@/components/social/FeedList'
 import type { SuggestedAthlete } from '@/components/social/FeedList'
 import { NotificationBell } from '@/components/social/NotificationBell'
-import { PushPermissionPrompt } from '@/components/social/PushPermissionPrompt'
 import type { FeedPost } from '@/components/social/WorkoutPost'
 import { buildExercisesMap } from '@/lib/utils/social'
 
@@ -151,8 +150,6 @@ export default async function SocialPage() {
 
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
-      <PushPermissionPrompt />
-
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <div>

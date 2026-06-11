@@ -4,6 +4,7 @@ import { OfflineBanner } from '@/components/layout/OfflineBanner'
 // ServiceWorkerRegister est dans le root layout (app/layout.tsx) pour être détecté par PWABuilder
 import { ToastProvider } from '@/components/ui/Toast'
 import { InstallBanner } from '@/components/pwa/InstallBanner'
+import { PushPermissionPrompt } from '@/components/social/PushPermissionPrompt'
 
 export const metadata: Metadata = {
   title: {
@@ -26,6 +27,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </main>
         <BottomNav />
         <ToastProvider />
+        <PushPermissionPrompt />
       </div>
     </div>
   )
