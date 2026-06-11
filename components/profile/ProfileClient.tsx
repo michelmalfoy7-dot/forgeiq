@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, LogOut, Trash2, Dumbbell, Flame, BarChart2, ChevronRight, MessageCircle, Info, Crown, Users, Globe, Lock, Camera, X } from 'lucide-react'
+import { Loader2, LogOut, Trash2, Dumbbell, Flame, BarChart2, ChevronRight, MessageCircle, Info, Crown, Users, Globe, Lock, Camera, X, Download } from 'lucide-react'
 import type { TDEEBreakdown } from '@/lib/utils/tdee'
 import type { Big5PR } from '@/lib/utils/big5'
 
@@ -1064,6 +1064,37 @@ export function ProfileClient({
           Se déconnecter
           <ChevronRight className="w-4 h-4 ml-auto" style={{ color: 'var(--fiq-muted)' }} />
         </button>
+
+        {/* Export données (RGPD) */}
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--fiq-border)' }}>
+          <div className="px-4 py-3" style={{ background: 'var(--fiq-faint)' }}>
+            <p className="text-xs font-black uppercase tracking-widest" style={{ color: 'var(--fiq-muted)' }}>
+              <Download className="w-3 h-3 inline mr-1.5" />
+              Exporter mes données
+            </p>
+          </div>
+          <div className="divide-y" style={{ borderColor: 'var(--fiq-border)' }}>
+            {([
+              ['workouts',  '🏋️ Séances',      'CSV de tes séances et tonnages'],
+              ['checkins',  '📊 Bilans quotidiens', 'Poids, sommeil, fatigue…'],
+              ['nutrition', '🥗 Nutrition',     'Journal alimentaire complet'],
+            ] as const).map(([type, label, sub]) => (
+              <a
+                key={type}
+                href={`/api/export?type=${type}`}
+                download
+                className="flex items-center gap-3 px-4 py-3 text-sm"
+                style={{ background: 'var(--fiq-card)', color: 'var(--fiq-text)', textDecoration: 'none' }}
+              >
+                <div className="flex-1">
+                  <p className="font-semibold">{label}</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>{sub}</p>
+                </div>
+                <Download className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-muted)' }} />
+              </a>
+            ))}
+          </div>
+        </div>
 
         {/* Reset données */}
         {resetStep === 0 && (

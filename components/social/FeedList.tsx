@@ -1,60 +1,230 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { Loader2, ChevronDown, CheckCircle2 } from 'lucide-react'
+import Image from 'next/image'
+import Link from 'next/link'
+import { Loader2, ChevronDown, CheckCircle2, Compass, Users, UserPlus } from 'lucide-react'
 import { WorkoutPost } from './WorkoutPost'
 import type { FeedPost } from './WorkoutPost'
 
+export type SuggestedAthlete = {
+  user_id: string
+  username: string | null
+  display_name: string
+  avatar_url: string | null
+  followers_count: number
+  recent_shares: number
+}
+
 type Props = {
-  initialPosts: FeedPost[]
+  initialDiscoverPosts: FeedPost[]
+  initialFollowingPosts: FeedPost[]
+  suggestedAthletes: SuggestedAthlete[]
+  followingCount: number
 }
 
 const PAGE_SIZE = 20
 
-export function FeedList({ initialPosts }: Props) {
-  const [posts, setPosts]     = useState<FeedPost[]>(initialPosts)
-  const [page, setPage]       = useState(1)
+export function FeedList({ initialDiscoverPosts, initialFollowingPosts, suggestedAthletes, followingCount }: Props) {
+  const [activeTab, setActiveTab] = useState<'discover' | 'following'>('discover')
+
+  // Discover state
+  const [discoverPosts, setDiscoverPosts] = useState<FeedPost[]>(initialDiscoverPosts)
+  const [discoverPage, setDiscoverPage]   = useState(1)
+  const [discoverMore, setDiscoverMore]   = useState(initialDiscoverPosts.length >= PAGE_SIZE)
+
+  // Following state
+  const [followingPosts, setFollowingPosts] = useState<FeedPost[]>(initialFollowingPosts)
+  const [followingPage, setFollowingPage]   = useState(1)
+  const [followingMore, setFollowingMore]   = useState(initialFollowingPosts.length >= PAGE_SIZE)
+
   const [loading, setLoading] = useState(false)
-  const [hasMore, setHasMore] = useState(initialPosts.length >= PAGE_SIZE)
+
+  // Follow state per suggested athlete
+  const [followedIds, setFollowedIds] = useState<Set<string>>(new Set())
+  const [followLoading, setFollowLoading] = useState<string | null>(null)
+
+  async function handleFollow(userId: string, isFollowed: boolean) {
+    if (followLoading) return
+    setFollowLoading(userId)
+    const prev = new Set(followedIds)
+    if (isFollowed) followedIds.delete(userId); else followedIds.add(userId)
+    setFollowedIds(new Set(followedIds))
+    try {
+      const res = await fetch('/api/social/follow', {
+        method: isFollowed ? 'DELETE' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_user_id: userId }),
+      })
+      if (!res.ok) setFollowedIds(prev)
+    } catch {
+      setFollowedIds(prev)
+    } finally {
+      setFollowLoading(null)
+    }
+  }
 
   const loadMore = useCallback(async () => {
-    if (loading || !hasMore) return
+    if (loading) return
     setLoading(true)
     try {
-      const res  = await fetch(`/api/social/feed?page=${page}`)
-      const json = await res.json() as { data: FeedPost[] | null; error: string | null }
-
-      if (json.data && json.data.length > 0) {
-        setPosts((prev) => [...prev, ...json.data!])
-        setPage((p) => p + 1)
-        setHasMore(json.data.length >= PAGE_SIZE)
+      if (activeTab === 'discover') {
+        const res  = await fetch(`/api/social/feed?mode=discover&page=${discoverPage}`)
+        const json = await res.json() as { data: FeedPost[] | null; error: string | null }
+        if (json.data && json.data.length > 0) {
+          setDiscoverPosts((prev) => [...prev, ...json.data!])
+          setDiscoverPage((p) => p + 1)
+          setDiscoverMore(json.data.length >= PAGE_SIZE)
+        } else {
+          setDiscoverMore(false)
+        }
       } else {
-        setHasMore(false)
+        const res  = await fetch(`/api/social/feed?mode=following&page=${followingPage}`)
+        const json = await res.json() as { data: FeedPost[] | null; error: string | null }
+        if (json.data && json.data.length > 0) {
+          setFollowingPosts((prev) => [...prev, ...json.data!])
+          setFollowingPage((p) => p + 1)
+          setFollowingMore(json.data.length >= PAGE_SIZE)
+        } else {
+          setFollowingMore(false)
+        }
       }
     } catch {
-      // ignore — bouton reste visible pour réessayer
+      // ignore
     } finally {
       setLoading(false)
     }
-  }, [page, loading, hasMore])
+  }, [activeTab, discoverPage, followingPage, loading])
+
+  const posts   = activeTab === 'discover' ? discoverPosts : followingPosts
+  const hasMore = activeTab === 'discover' ? discoverMore  : followingMore
 
   return (
     <div className="space-y-3">
-      {posts.map((post) => (
+
+      {/* ── Onglets Pour toi / Abonnements ── */}
+      <div className="flex gap-1 p-1 rounded-2xl" style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+        <button
+          onClick={() => setActiveTab('discover')}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-sm font-black transition-all"
+          style={activeTab === 'discover'
+            ? { background: 'var(--fiq-accent)', color: 'var(--bg)' }
+            : { color: 'var(--fiq-muted)' }
+          }
+        >
+          <Compass className="w-3.5 h-3.5" />
+          Pour toi
+        </button>
+        <button
+          onClick={() => setActiveTab('following')}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-sm font-black transition-all relative"
+          style={activeTab === 'following'
+            ? { background: 'var(--fiq-card)', color: 'var(--fiq-text)', border: '1px solid var(--fiq-border)' }
+            : { color: 'var(--fiq-muted)' }
+          }
+        >
+          <Users className="w-3.5 h-3.5" />
+          Abonnements
+          {followingCount > 0 && (
+            <span className="absolute top-1 right-3 w-1.5 h-1.5 rounded-full" style={{ background: 'var(--fiq-accent)' }} />
+          )}
+        </button>
+      </div>
+
+      {/* ── Athlètes suggérés (onglet "Pour toi" uniquement) ── */}
+      {activeTab === 'discover' && suggestedAthletes.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[11px] uppercase font-black tracking-widest px-1" style={{ color: 'var(--fiq-muted)' }}>
+            Athlètes à découvrir
+          </p>
+          <div className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-none">
+            {suggestedAthletes.map((athlete) => {
+              const isFollowed = followedIds.has(athlete.user_id)
+              const initial    = (athlete.display_name || athlete.username || '?')[0].toUpperCase()
+              return (
+                <div
+                  key={athlete.user_id}
+                  className="flex-shrink-0 flex flex-col items-center gap-2 p-3 rounded-2xl text-center w-28"
+                  style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}
+                >
+                  <Link href={athlete.username ? `/u/${athlete.username}` : '#'} className="flex flex-col items-center gap-2">
+                    <div className="relative w-12 h-12 rounded-2xl overflow-hidden flex-shrink-0" style={{ background: 'var(--fiq-accent)' }}>
+                      {athlete.avatar_url ? (
+                        <Image src={athlete.avatar_url} alt={athlete.display_name} fill className="object-cover" sizes="48px" />
+                      ) : (
+                        <span className="w-full h-full flex items-center justify-center text-base font-black" style={{ color: 'var(--bg)' }}>
+                          {initial}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs font-black leading-tight truncate w-24" style={{ color: 'var(--fiq-text)' }}>
+                        {athlete.display_name}
+                      </p>
+                      {athlete.username && (
+                        <p className="text-[10px] truncate w-24" style={{ color: 'var(--fiq-muted)' }}>
+                          @{athlete.username}
+                        </p>
+                      )}
+                    </div>
+                  </Link>
+                  <button
+                    onClick={() => handleFollow(athlete.user_id, isFollowed)}
+                    disabled={followLoading === athlete.user_id}
+                    className="w-full py-1.5 rounded-xl text-[11px] font-black transition-all active:scale-95 disabled:opacity-60"
+                    style={isFollowed
+                      ? { background: 'var(--fiq-faint)', color: 'var(--fiq-muted)', border: '1px solid var(--fiq-border)' }
+                      : { background: 'var(--fiq-accent)', color: 'var(--bg)' }
+                    }
+                  >
+                    {followLoading === athlete.user_id ? (
+                      <Loader2 className="w-3 h-3 animate-spin mx-auto" />
+                    ) : isFollowed ? 'Suivi ✓' : (
+                      <span className="flex items-center justify-center gap-1"><UserPlus className="w-3 h-3" />Suivre</span>
+                    )}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Posts ── */}
+      {posts.length > 0 && posts.map((post) => (
         <WorkoutPost key={post.id} post={post} />
       ))}
 
-      {/* Bouton charger plus */}
-      {hasMore && (
+      {/* ── État vide Abonnements ── */}
+      {activeTab === 'following' && posts.length === 0 && (
+        <div className="fiq-card text-center py-10 space-y-4">
+          <div className="flex justify-center text-4xl">🏋️</div>
+          <div>
+            <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>
+              Suis des athlètes
+            </p>
+            <p className="text-sm mt-1" style={{ color: 'var(--fiq-muted)' }}>
+              Leurs séances apparaîtront ici
+            </p>
+          </div>
+          <button
+            onClick={() => setActiveTab('discover')}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-sm"
+            style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+          >
+            <Compass className="w-4 h-4" />
+            Explorer la communauté
+          </button>
+        </div>
+      )}
+
+      {/* ── Bouton charger plus ── */}
+      {hasMore && posts.length > 0 && (
         <button
           onClick={loadMore}
           disabled={loading}
           className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-sm font-bold transition-all active:scale-[0.98] disabled:opacity-60"
-          style={{
-            background: 'var(--fiq-faint)',
-            border: '1px solid var(--fiq-border)',
-            color: 'var(--fiq-muted)',
-          }}
+          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
         >
           {loading
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Chargement…</>
@@ -63,12 +233,12 @@ export function FeedList({ initialPosts }: Props) {
         </button>
       )}
 
-      {/* Fin du feed */}
+      {/* ── Fin du feed ── */}
       {!hasMore && posts.length > 0 && (
         <div className="flex items-center justify-center gap-2 py-4">
           <CheckCircle2 className="w-4 h-4" style={{ color: 'var(--fiq-muted)' }} />
           <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
-            Tu as tout vu — reviens après ta prochaine séance 💪
+            {activeTab === 'discover' ? 'Tu as tout vu — reviens après ta prochaine séance 💪' : 'Fin du feed — explore de nouveaux athlètes'}
           </p>
         </div>
       )}

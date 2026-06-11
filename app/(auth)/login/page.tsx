@@ -20,6 +20,17 @@ export default function LoginPage() {
   const [showMagicLink, setShowMagicLink] = useState(false)
   const router = useRouter()
 
+  // Page cible après login (ex: /workout/xxx si la session a expiré en plein logger)
+  function getRedirectPath(onboardingDone: boolean): string {
+    if (!onboardingDone) return '/onboarding'
+    try {
+      const next = new URLSearchParams(window.location.search).get('next')
+      // Valider chemin interne uniquement (pas d'open redirect)
+      if (next && next.startsWith('/') && !next.startsWith('//')) return next
+    } catch { /* SSR safety */ }
+    return '/dashboard'
+  }
+
   // Connexion par mot de passe (méthode principale)
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -48,11 +59,7 @@ export default function LoginPage() {
       .select('onboarding_done')
       .single()
 
-    if (!profile?.onboarding_done) {
-      router.push('/onboarding')
-    } else {
-      router.push('/dashboard')
-    }
+    router.push(getRedirectPath(profile?.onboarding_done ?? false))
   }
 
   // Connexion par lien magique (méthode alternative)

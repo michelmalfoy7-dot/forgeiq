@@ -23,9 +23,14 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  let user = null
+  try {
+    const { data } = await supabase.auth.getUser()
+    user = data.user
+  } catch {
+    // Erreur réseau lors de la vérification de session — laisser passer,
+    // la page server-side gérera elle-même l'auth avec son propre client
+  }
 
   const { pathname } = request.nextUrl
 
@@ -42,7 +47,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Routes app protégées → /login si non connecté
+  // Routes app protégées → /login?next=<path> si non connecté
   const isAppRoute = pathname.startsWith('/dashboard') ||
     pathname.startsWith('/workout') ||
     pathname.startsWith('/checkin') ||
@@ -59,6 +64,8 @@ export async function updateSession(request: NextRequest) {
   if (!user && isAppRoute && !isPublicRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    // Mémoriser la page cible pour y revenir après login
+    if (pathname !== '/login') url.searchParams.set('next', pathname)
     return NextResponse.redirect(url)
   }
 

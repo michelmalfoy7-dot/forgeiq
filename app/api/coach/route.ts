@@ -43,6 +43,10 @@ function buildSystemPrompt(ctx: {
   displayName: string
   goal: string
   level: string
+  age: number | null
+  heightCm: number | null
+  gender: string | null
+  sessionsPerWeek: number | null
   weightTrend: number | null
   weightKg: number | null
   sleepDeepMin: number | null
@@ -52,7 +56,7 @@ function buildSystemPrompt(ctx: {
   steps: number | null
   sysBp: number | null
   recentWorkouts: { session_name: string; session_date: string; total_tonnage_kg: number | null; total_sets: number | null }[]
-  topPRs: { exercise_name: string; value: number; unit: string }[]
+  topPRs: { exercise_name: string; value: number; unit: string; record_type: string }[]
   weeklyVolume: { muscle: string; sets: number; mev: number; mav: number; status: 'low' | 'optimal' | 'high' }[]
   macroMode: string | null
   customCalories: number | null
@@ -89,8 +93,22 @@ function buildSystemPrompt(ctx: {
       ).join('\n')
     : 'Aucune séance récente'
 
-  const prSummary = ctx.topPRs.length
-    ? ctx.topPRs.slice(0, 8).map(p => `- ${p.exercise_name} : ${p.value}${p.unit}`).join('\n')
+  // Dédupliquer par exercice : priorité 1rm_estimated > top_set > max_weight
+  const prByExercise = new Map<string, typeof ctx.topPRs[0]>()
+  const prPriority: Record<string, number> = { '1rm_estimated': 3, 'top_set': 2, 'max_weight': 1 }
+  for (const p of ctx.topPRs) {
+    const existing = prByExercise.get(p.exercise_name)
+    const prio = prPriority[p.record_type] ?? 0
+    if (!existing || prio > (prPriority[existing.record_type] ?? 0)) {
+      prByExercise.set(p.exercise_name, p)
+    }
+  }
+  const dedupedPRs = Array.from(prByExercise.values()).slice(0, 10)
+  const prSummary = dedupedPRs.length
+    ? dedupedPRs.map(p => {
+        const label = p.record_type === '1rm_estimated' ? '1RM estimé' : p.record_type === 'top_set' ? 'top set' : 'max'
+        return `- ${p.exercise_name} : ${p.value}${p.unit} (${label})`
+      }).join('\n')
     : 'Aucun PR enregistré'
 
   // Volume hebdo : formater les lignes
@@ -123,6 +141,10 @@ function buildSystemPrompt(ctx: {
 - Nom : ${ctx.displayName}
 - Objectif : ${ctx.goal}
 - Niveau : ${ctx.level}
+- Âge : ${ctx.age ?? 'non renseigné'} ans
+- Taille : ${ctx.heightCm ?? 'non renseigné'} cm
+- Genre : ${ctx.gender ?? 'non renseigné'}
+- Fréquence entraînement : ${ctx.sessionsPerWeek ?? 'non renseigné'} séances/semaine
 - Date : ${today}
 
 ## Objectifs nutritionnels (${isCustomMacros ? 'personnalisés par l\'utilisateur' : 'calculés automatiquement'})
@@ -303,9 +325,10 @@ export async function POST(req: NextRequest) {
         .gte('session_date', sevenDaysAgo)
         .order('session_date', { ascending: false }).limit(7),
       supabase.from('personal_records')
-        .select('exercise_name, value, unit')
-        .eq('user_id', user.id).eq('record_type', 'top_set')
-        .order('value', { ascending: false }).limit(10),
+        .select('exercise_name, value, unit, record_type')
+        .eq('user_id', user.id)
+        .in('record_type', ['top_set', '1rm_estimated', 'max_weight'])
+        .order('value', { ascending: false }).limit(30),
       // Macros réelles du jour (food_logs) — pour le bilan calorique coach
       supabase.from('food_logs')
         .select('calories, protein_g, carbs_g, fat_g')
@@ -442,6 +465,10 @@ export async function POST(req: NextRequest) {
       displayName: profile?.display_name ?? 'Athlète',
       goal: profile?.goal ?? 'general',
       level: profile?.level ?? 'non renseigné',
+      age: profile?.age ?? null,
+      heightCm: profile?.height_cm ?? null,
+      gender: profile?.gender ?? null,
+      sessionsPerWeek: profile?.sessions_per_week ?? null,
       weightKg: recentWeightKg,
       weightTrend: recentWeightTrend,
       sleepDeepMin: todayLog?.sleep_deep_min ?? null,

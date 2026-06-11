@@ -47,7 +47,7 @@ export default async function DashboardPage() {
     { data: pausedWorkoutRow },
   ] = await Promise.all([
     supabase.from('profiles')
-      .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, height_cm, age, gender, macro_mode, custom_protein_g, custom_calories, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, avatar_url')
+      .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, height_cm, age, gender, macro_mode, custom_protein_g, custom_calories, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, avatar_url, checkin_streak, training_streak_weeks')
       .eq('id', user.id).maybeSingle(),
 
     supabase.from('daily_logs').select('*')
@@ -97,7 +97,13 @@ export default async function DashboardPage() {
 
   if (profileError) console.error('[Dashboard] profileError:', profileError.code, profileError.message)
 
-  // Si profil absent → créer et rediriger vers l'onboarding
+  // Erreur DB réelle (pas "ligne introuvable") → déclenche error.tsx avec bouton Réessayer
+  // Évite la boucle dashboard→onboarding→dashboard quand le réseau est lent/coupé
+  if (profileError) {
+    throw new Error(`Erreur réseau — impossible de charger ton profil. (${profileError.code ?? profileError.message})`)
+  }
+
+  // Profil absent pour de vrai → créer et rediriger vers l'onboarding
   if (!profile) {
     await supabase.from('profiles').upsert({
       id: user.id,
@@ -306,9 +312,13 @@ export default async function DashboardPage() {
     ? 'En calibration'
     : 'Fiable'
 
-  // Streak check-in
+  // Streak check-in — valeur persistante (profiles) en priorité, fallback calcul 30j
   const checkInDates = (weekLogs ?? []).map(l => l.log_date)
-  const streak = calcStreak(checkInDates)
+  const streakCalc = calcStreak(checkInDates)
+  const streak = (profile?.checkin_streak ?? 0) > streakCalc
+    ? (profile?.checkin_streak ?? 0)
+    : streakCalc
+  const trainingStreakWeeks = profile?.training_streak_weeks ?? 0
 
   const prenom = profile?.display_name?.split(' ')[0] ?? 'Athlete'
   const sessionsThisWeek = weekWorkouts?.length ?? 0
@@ -330,14 +340,24 @@ export default async function DashboardPage() {
           <h1 className="text-2xl fiq-display mt-0.5" style={{ color: 'var(--fiq-text)' }}>
             {prenom}
           </h1>
-          {streak >= 2 && (
-            <div className="flex items-center gap-1.5 mt-1">
-              <FiqStreak size={14} style={{ color: 'var(--fiq-orange)' }} />
-              <span className="text-xs font-bold" style={{ color: 'var(--fiq-orange)' }}>
-                {streak} jours d&apos;affilée
-              </span>
-            </div>
-          )}
+          <div className="flex items-center gap-3 mt-1">
+            {streak >= 2 && (
+              <div className="flex items-center gap-1.5">
+                <FiqStreak size={14} style={{ color: 'var(--fiq-orange)' }} />
+                <span className="text-xs font-bold" style={{ color: 'var(--fiq-orange)' }}>
+                  {streak}j check-in
+                </span>
+              </div>
+            )}
+            {trainingStreakWeeks >= 2 && (
+              <div className="flex items-center gap-1.5">
+                <Dumbbell size={13} style={{ color: 'var(--fiq-blue)' }} />
+                <span className="text-xs font-bold" style={{ color: 'var(--fiq-blue)' }}>
+                  {trainingStreakWeeks} sem. d&apos;affilée
+                </span>
+              </div>
+            )}
+          </div>
         </div>
         <Link href="/profile" className="relative w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-sm font-black flex-shrink-0"
           style={profile?.avatar_url ? {} : { background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
