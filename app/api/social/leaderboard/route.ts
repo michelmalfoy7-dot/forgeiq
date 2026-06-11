@@ -89,8 +89,9 @@ export async function GET(request: NextRequest) {
       .map((row, index) => {
         const social = socialMap.get(row.user_id)
         const auth   = authMap.get(row.user_id)
-        // Exclure les profils privés (pas de social_profile public)
-        if (!social?.is_public) return null
+        // Exclure uniquement les profils explicitement privés (is_public = false)
+        // null ou absent = visible dans le classement
+        if (social?.is_public === false) return null
         return {
           rank: index + 1,
           user_id: row.user_id,
