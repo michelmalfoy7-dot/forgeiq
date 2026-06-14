@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
 
 export default function RegisterPage() {
+  const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -17,17 +18,23 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
+  const [refCode, setRefCode] = useState<string | null>(null)
   const router = useRouter()
 
-  // Code referral depuis l'URL (?ref=XXXXXXXX)
-  const refCode = typeof window !== 'undefined'
-    ? new URLSearchParams(window.location.search).get('ref')
-    : null
+  // Code referral depuis l'URL (?ref=XXXXXXXX) — dans useEffect pour éviter l'hydration mismatch
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get('ref')
+    if (code) setRefCode(code)
+  }, [])
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
 
+    if (!displayName.trim()) {
+      setError('Entre ton prénom ou un pseudo.')
+      return
+    }
     if (password.length < 8) {
       setError('Le mot de passe doit contenir au moins 8 caractères.')
       return
@@ -45,6 +52,7 @@ export default function RegisterPage() {
       password,
       options: {
         emailRedirectTo: `${window.location.origin}/auth/callback`,
+        data: { display_name: displayName.trim() },
       },
     })
 
@@ -61,6 +69,11 @@ export default function RegisterPage() {
 
     // Si Supabase ne demande pas de confirmation (email auto-confirm activé)
     if (data.session) {
+      // Sauvegarder le display_name dans profiles (fire-and-forget — le trigger Supabase crée la row)
+      void supabase.from('profiles')
+        .update({ display_name: displayName.trim() })
+        .eq('id', data.user!.id)
+
       // Appliquer le code referral si présent (fire-and-forget)
       if (refCode) {
         fetch('/api/referral', {
@@ -119,6 +132,20 @@ export default function RegisterPage() {
 
           <form onSubmit={handleRegister} className="space-y-4">
             <div className="space-y-2">
+              <Label htmlFor="displayName" className="fiq-label">Prénom ou pseudo</Label>
+              <Input
+                id="displayName"
+                type="text"
+                placeholder="Ex: Michel, MikeLifts, Coach_M…"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                required
+                maxLength={32}
+                style={{ background: 'var(--surface)', borderColor: 'var(--fiq-border)', color: 'var(--fiq-text)' }}
+              />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="email" className="fiq-label">Adresse email</Label>
               <Input
                 id="email"
@@ -176,7 +203,7 @@ export default function RegisterPage() {
             <Button
               type="submit"
               className="w-full font-black"
-              disabled={loading || !email || !password || !confirm}
+              disabled={loading || !displayName.trim() || !email || !password || !confirm}
               style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Créer mon compte'}
