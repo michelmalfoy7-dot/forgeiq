@@ -3,6 +3,11 @@ import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
+// Strip des caractères spéciaux PostgREST/LIKE avant injection dans .or()
+function sanitizeLike(raw: string): string {
+  return raw.trim().slice(0, 100).replace(/[,()]/g, ' ').trim()
+}
+
 // Recherche d'aliments : cache local (foods_library) d'abord, puis OpenFoodFacts
 export async function GET(req: NextRequest) {
   try {
@@ -10,7 +15,8 @@ export async function GET(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
 
-    const q = req.nextUrl.searchParams.get('q')?.trim()
+    const raw = req.nextUrl.searchParams.get('q') ?? ''
+    const q = sanitizeLike(raw)
     if (!q || q.length < 2) return NextResponse.json({ data: [], error: null })
 
     // ── 1. Recherche locale — deux passes pour couvrir accents et ligatures ──

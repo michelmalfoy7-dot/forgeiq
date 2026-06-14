@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
+// Strip des caractères spéciaux PostgREST/LIKE avant injection dans .or()
+function sanitizeLike(raw: string): string {
+  return raw.trim().slice(0, 100).replace(/[,()]/g, ' ').trim()
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -10,7 +15,7 @@ export async function GET(request: NextRequest) {
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
 
     const { searchParams } = new URL(request.url)
-    const q           = searchParams.get('q')?.trim() ?? ''
+    const q           = sanitizeLike(searchParams.get('q') ?? '')
     const suggestions = searchParams.get('suggestions') === 'true'
 
     // Mode suggestions : top athlètes non suivis (affiché à l'ouverture de la recherche)
@@ -27,7 +32,7 @@ export async function GET(request: NextRequest) {
         .from('social_profiles')
         .select('user_id, username, display_name, bio, avatar_url, followers_count, following_count')
         .eq('is_public', true)
-        .not('user_id', 'in', `(${excludeIds.join(',')})`)
+        .not('user_id', 'in', excludeIds)
         .order('followers_count', { ascending: false })
         .limit(10)
 
