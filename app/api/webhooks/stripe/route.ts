@@ -6,7 +6,7 @@ import Stripe from 'stripe'
 export const dynamic = 'force-dynamic'
 
 const RESEND_API_KEY  = process.env.RESEND_API_KEY
-const ADMIN_EMAIL     = 'michelmalfoy7@gmail.com'
+const ADMIN_EMAIL     = process.env.ADMIN_EMAIL
 const APP_URL         = process.env.NEXT_PUBLIC_APP_URL ?? 'https://getforgeiq.com'
 
 // ── Notification admin ─────────────────────────────────────────────────────
