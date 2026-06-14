@@ -20,6 +20,7 @@ export type BadgeStats = {
   prCount: number
   checkinStreak: number
   trainingStreakWeeks: number
+  challengeWins?: number
 }
 
 export const GRADES: Grade[] = [
@@ -41,7 +42,7 @@ export function getNextGrade(totalSessions: number): Grade | null {
 }
 
 export function computeBadges(stats: BadgeStats): Badge[] {
-  const { totalSessions, totalTonnageKg, prCount, checkinStreak, trainingStreakWeeks } = stats
+  const { totalSessions, totalTonnageKg, prCount, checkinStreak, trainingStreakWeeks, challengeWins = 0 } = stats
 
   return [
     // Séances
@@ -160,6 +161,21 @@ export function computeBadges(stats: BadgeStats): Badge[] {
       label: 'Année complète',
       description: '52 semaines d\'entraînement consécutives',
       unlocked: trainingStreakWeeks >= 52,
+    },
+    // Défis entre amis
+    {
+      id: 'challenge_win_1',
+      emoji: '🏆',
+      label: 'Challenger',
+      description: 'Remporter ton 1er défi entre amis',
+      unlocked: challengeWins >= 1,
+    },
+    {
+      id: 'challenge_win_5',
+      emoji: '👑',
+      label: 'Domination',
+      description: 'Remporter 5 défis entre amis',
+      unlocked: challengeWins >= 5,
     },
   ]
 }
