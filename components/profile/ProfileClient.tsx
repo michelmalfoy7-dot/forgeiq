@@ -9,6 +9,7 @@ import { Loader2, LogOut, Trash2, Dumbbell, Flame, BarChart2, ChevronRight, Mess
 import type { TDEEBreakdown } from '@/lib/utils/tdee'
 import type { Big5PR } from '@/lib/utils/big5'
 import { BadgesSection } from '@/components/profile/BadgesSection'
+import { CoachMemorySection } from '@/components/coach/CoachMemorySection'
 
 type Profile = {
   display_name: string | null
@@ -975,6 +976,9 @@ export function ProfileClient({
           </div>
         )
       })()}
+
+      {/* Mémoire du coach IA */}
+      <CoachMemorySection />
 
       {/* Profil social */}
       <div className="fiq-card space-y-4">

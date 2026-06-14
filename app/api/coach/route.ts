@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { calcDailyTarget } from '@/lib/utils/tdee'
 import { MUSCLE_GROUPS, VOLUME_TARGETS } from '@/lib/utils/volume'
 import { AI_MODELS } from '@/lib/utils/ai-models'
-import { buildSystemPrompt } from '@/lib/ai/coach-prompt'
+import { buildSystemPrompt, type CoachMemoryEntry } from '@/lib/ai/coach-prompt'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // Streaming Sonnet — peut prendre 30-50s sur longues réponses
@@ -24,6 +24,87 @@ const LIMITS = {
 
 // Nombre de messages d'historique injectés dans le contexte
 const HISTORY_LIMIT = 10
+
+// Extraction de mémoire via Haiku — analyse l'échange et détecte les informations persistables
+async function extractMemoriesFromExchange(
+  userMsg: string,
+  assistantMsg: string,
+  userId: string,
+  supabase: Awaited<ReturnType<typeof createClient>>
+) {
+  try {
+    const prompt = `Analyse cet échange entre un athlète et son coach IA fitness.
+Extrais uniquement les informations importantes et persistantes méritant d'être mémorisées pour les prochaines sessions.
+
+Message utilisateur : "${userMsg}"
+Réponse coach : "${assistantMsg}"
+
+Réponds UNIQUEMENT avec un JSON valide (tableau, peut être vide []).
+Format exact attendu :
+[
+  {
+    "category": "injury|goal|preference|milestone|note",
+    "content": "description concise en français (max 200 chars)",
+    "expires_in_days": null
+  }
+]
+
+Règles :
+- injury : blessure, douleur, gêne physique mentionnée → expires_in_days: 90
+- goal : objectif déclaré (événement, performance cible, deadline) → expires_in_days: null
+- preference : préférence d'entraînement, aliment aimé/détesté, horaire → expires_in_days: null
+- milestone : performance accomplie, record battu, étape franchie → expires_in_days: null
+- note : information contextuelle importante non classifiable ailleurs → expires_in_days: 30
+- Si rien de notable : retourne []
+- Maximum 3 éléments par échange
+- Ignore les informations déjà évidentes dans le profil (objectif général, niveau)`
+
+    const resp = await anthropic.messages.create({
+      model: AI_MODELS.alerts, // Haiku — léger et rapide
+      max_tokens: 400,
+      messages: [{ role: 'user', content: prompt }],
+    })
+
+    const raw = resp.content[0]?.type === 'text' ? resp.content[0].text.trim() : '[]'
+    // Extraire le JSON même si Haiku ajoute du texte autour
+    const jsonMatch = raw.match(/\[[\s\S]*\]/)
+    if (!jsonMatch) return
+
+    const entries: { category: string; content: string; expires_in_days: number | null }[] = JSON.parse(jsonMatch[0])
+    if (!Array.isArray(entries) || entries.length === 0) return
+
+    const validCategories = ['injury', 'goal', 'preference', 'milestone', 'note']
+    const now = new Date().toISOString()
+
+    // Vérifier la limite de 100 entrées actives
+    const { count } = await supabase
+      .from('coach_memory')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .or(`expires_at.is.null,expires_at.gt.${now}`)
+    if ((count ?? 0) >= 100) return
+
+    const toInsert = entries
+      .filter(e => validCategories.includes(e.category) && e.content?.length >= 5 && e.content?.length <= 500)
+      .slice(0, 3)
+      .map(e => ({
+        user_id:    userId,
+        category:   e.category,
+        content:    e.content.trim(),
+        source:     'auto',
+        expires_at: e.expires_in_days
+          ? new Date(Date.now() + e.expires_in_days * 86400000).toISOString()
+          : null,
+      }))
+
+    if (toInsert.length > 0) {
+      await supabase.from('coach_memory').insert(toInsert)
+    }
+  } catch (err) {
+    // Non-bloquant : l'extraction de mémoire ne doit jamais faire rater une réponse
+    console.error('[coach/memory] Extraction failed:', err)
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -131,6 +212,7 @@ export async function POST(req: NextRequest) {
       { data: steps30dLogs },
       { data: weekWorkoutsData },
       { data: eightWeekWorkouts },
+      { data: persistentMemoryRaw },
     ] = await Promise.all([
       supabase.from('profiles')
         .select('display_name, goal, level, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g')
@@ -178,6 +260,13 @@ export async function POST(req: NextRequest) {
         .eq('user_id', user.id)
         .gte('session_date', eightWeeksAgo)
         .not('completed_at', 'is', null),
+      // Mémoire persistante coach — 20 entrées actives les plus récentes
+      supabase.from('coach_memory')
+        .select('id, category, content, source, created_at, expires_at')
+        .eq('user_id', user.id)
+        .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+        .order('created_at', { ascending: false })
+        .limit(20),
     ])
 
     // ── Volume hebdomadaire par groupe musculaire ────────────────────────────
@@ -389,6 +478,7 @@ export async function POST(req: NextRequest) {
         todayWorkoutSets:     todayWorkoutInRecent?.total_sets ?? null,
         usedFallback:         coachDailyTarget.usedFallback,
       },
+      persistentMemory: (persistentMemoryRaw ?? []) as CoachMemoryEntry[],
     })
 
     // Construire l'historique pour Claude (ordre chronologique, fenêtre glissante)
@@ -462,6 +552,9 @@ export async function POST(req: NextRequest) {
               content: assistantContent,
             })
             if (insertErr) console.error('[coach] Failed to persist assistant message:', insertErr.message)
+
+            // Extraction mémoire asynchrone — ne bloque pas le stream
+            extractMemoriesFromExchange(userMessage, assistantContent, user.id, supabase)
           }
 
           controller.close()

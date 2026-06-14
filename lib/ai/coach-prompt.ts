@@ -16,6 +16,15 @@ export function calcProteinTarget(goal: string, weightKg: number | null): number
   return Math.round(w * (ratio.min + ratio.max) / 2)
 }
 
+export type CoachMemoryEntry = {
+  id: string
+  category: 'injury' | 'goal' | 'preference' | 'milestone' | 'note'
+  content: string
+  source: string
+  created_at: string
+  expires_at: string | null
+}
+
 export type CoachPromptCtx = {
   displayName: string
   goal: string
@@ -57,6 +66,7 @@ export type CoachPromptCtx = {
     todayWorkoutSets: number | null
     usedFallback: boolean
   }
+  persistentMemory?: CoachMemoryEntry[]
 }
 
 export function buildSystemPrompt(ctx: CoachPromptCtx): string {
@@ -180,6 +190,21 @@ ${ctx.tonnageDelta.length > 0
 
 ## Alertes actives
 ${alerts.length ? alerts.join('\n') : 'Aucune alerte'}
+${ctx.persistentMemory && ctx.persistentMemory.length > 0 ? `
+## Mémoire des sessions précédentes
+${ctx.persistentMemory.map(m => {
+  const categoryLabel: Record<string, string> = {
+    injury:     '🩹 Blessure/Douleur',
+    goal:       '🎯 Objectif déclaré',
+    preference: '⚙️ Préférence',
+    milestone:  '🏆 Milestone',
+    note:       '📝 Note',
+  }
+  const label = categoryLabel[m.category] ?? '📝 Note'
+  const date = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(m.created_at))
+  return `${label} (${date}) : ${m.content}`
+}).join('\n')}
+→ Tiens compte de ces informations pour personnaliser tes conseils. Si une blessure est mentionnée, adapte les exercices suggérés.` : ''}
 
 ## Règles impératives
 - Réponds toujours en français
