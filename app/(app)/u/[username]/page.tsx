@@ -560,8 +560,8 @@ export default async function PublicProfilePage({ params }: PageProps) {
         </div>
       )}
 
-      {/* ── Referral CTA — vecteur d'acquisition (toujours visible) ── */}
-      {referralCode && (
+      {/* ── Referral CTA — masqué pour le lancement ── */}
+      {false && referralCode && (
         <div
           className="fiq-card text-center space-y-3 py-6"
           style={{ background: '#B4FF4A08', border: '1px solid #B4FF4A25' }}

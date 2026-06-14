@@ -1096,7 +1096,8 @@ export function ProfileClient({
           <ChevronRight className="w-4 h-4 ml-auto" style={{ color: 'var(--fiq-muted)' }} />
         </button>
 
-        {/* Inviter un ami */}
+        {/* Inviter un ami — masqué pour le lancement (backend intact) */}
+        {false && (
         <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--fiq-border)' }}>
           <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'var(--fiq-faint)' }}>
             <div>
@@ -1149,6 +1150,7 @@ export function ProfileClient({
             )}
           </div>
         </div>
+        )}
 
         {/* Export données (RGPD) */}
         <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--fiq-border)' }}>
