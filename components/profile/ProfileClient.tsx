@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Loader2, LogOut, Trash2, Dumbbell, Flame, BarChart2, ChevronRight, MessageCircle, Info, Crown, Users, Globe, Lock, Camera, X, Download, Share2, Copy, Check } from 'lucide-react'
 import type { TDEEBreakdown } from '@/lib/utils/tdee'
 import type { Big5PR } from '@/lib/utils/big5'
+import { BadgesSection } from '@/components/profile/BadgesSection'
 
 type Profile = {
   display_name: string | null
@@ -36,6 +37,8 @@ type Stats = {
   totalTonnageKg: number
   prCount: number
   streak: number
+  checkinStreak?: number
+  trainingStreakWeeks?: number
 }
 
 const GOAL_OPTIONS = [
@@ -118,6 +121,21 @@ type GymProfile = {
   name: string
   tier: string
   logo_emoji: string
+}
+
+function BadgesBlock({ stats }: { stats: Stats }) {
+  return (
+    <div>
+      <p className="font-bold mb-3" style={{ color: 'var(--fiq-text)' }}>Grade & Badges</p>
+      <BadgesSection stats={{
+        totalSessions:     stats.totalSessions,
+        totalTonnageKg:    stats.totalTonnageKg,
+        prCount:           stats.prCount,
+        checkinStreak:     stats.checkinStreak ?? stats.streak,
+        trainingStreakWeeks: stats.trainingStreakWeeks ?? 0,
+      }} />
+    </div>
+  )
 }
 
 export function ProfileClient({
@@ -544,6 +562,9 @@ export function ProfileClient({
           )}
         </div>
       )}
+
+      {/* Grades & Badges */}
+      <BadgesBlock stats={stats} />
 
       {/* Abonnement */}
       {isPro ? (

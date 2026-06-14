@@ -391,13 +391,11 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 11. Retour ───────────────────────────────────────────────────────────────
-    const generationsLeft = Math.max(0, AI_GENERATIONS_PER_MONTH - (generationsThisMonth + 1))
-
     return NextResponse.json({
       data: {
-        program:          newProgram,
-        rationale:        haiku.rationale,
-        generationsLeft,
+        program:  newProgram,
+        rationale: haiku.rationale,
+        generationsLeft: unlimitedGenerations ? 999 : AI_GENERATIONS_PER_MONTH - 1,
       },
       error: null,
     })
