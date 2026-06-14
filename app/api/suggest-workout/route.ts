@@ -85,7 +85,7 @@ export async function GET(req: Request) {
           .from('workouts').select('session_name')
           .eq('user_id', user.id).eq('program_id', profile.current_program_id)
           .not('completed_at', 'is', null)
-          .order('session_date', { ascending: false }).limit(1).single()
+          .order('session_date', { ascending: false }).limit(1).maybeSingle()
 
         if (lastWorkout) {
           const lastIdx = dayNames.indexOf(lastWorkout.session_name)

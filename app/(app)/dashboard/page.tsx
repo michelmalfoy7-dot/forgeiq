@@ -155,9 +155,11 @@ export default async function DashboardPage() {
     ? Math.floor((Date.now() - new Date(pausedStartedAt).getTime()) / 60000)
     : null
   const pausedElapsedLabel = pausedElapsedMin === null ? null
-    : pausedElapsedMin < 60
+    : pausedElapsedMin < 1
+      ? 'À l\'instant'
+      : pausedElapsedMin < 60
       ? `il y a ${pausedElapsedMin} min`
-      : `il y a ${Math.floor(pausedElapsedMin / 60)}h${pausedElapsedMin % 60 > 0 ? `${pausedElapsedMin % 60}` : ''}`
+      : `il y a ${Math.floor(pausedElapsedMin / 60)}h${pausedElapsedMin % 60 > 0 ? `${pausedElapsedMin % 60}min` : ''}`
 
   // ── État séance du jour (4 cas) ──────────────────────────────
   const latestTodayWorkout = todayWorkouts?.[0] ?? null
@@ -312,7 +314,91 @@ export default async function DashboardPage() {
     ? 'En calibration'
     : 'Fiable'
 
-  // Streak check-in — valeur persistante (profiles) en priorité, fallback calcul 30j
+  // ── Score de récupération composite 0–10 ────────────────────────────────────
+  // Calcul uniquement si check-in du jour disponible
+  let recoveryScore: number | null = null
+  let recoveryLabel = ''
+  let recoveryLimitingFactor = ''
+
+  if (todayLog) {
+    let pts = 0
+
+    // Sommeil profond (max 1.5 pts)
+    const deepSleepMin = todayLog.sleep_deep_min ?? null
+    if (deepSleepMin !== null) {
+      if (deepSleepMin >= 90) pts += 1.5
+      else if (deepSleepMin >= 60) pts += 1
+      // < 30 → 0
+    }
+
+    // Sommeil total (max 2 pts)
+    const sleepTotal = todayLog.sleep_total_min ?? null
+    if (sleepTotal !== null) {
+      if (sleepTotal >= 420) pts += 2
+      else if (sleepTotal >= 360) pts += 1
+      // < 300 → 0
+    }
+
+    // Fatigue inversée (max 2 pts) — fatigue_score 1-10, 1=plein d'énergie, 10=épuisé
+    const fatigue = todayLog.fatigue_score ?? null
+    if (fatigue !== null) {
+      if (fatigue <= 2) pts += 2
+      else if (fatigue <= 5) pts += 1
+      // > 7 → 0
+    }
+
+    // Pas vs objectif (max 1.5 pts)
+    const steps = todayLog.steps ?? null
+    const stepsGoal = profile?.steps_goal ?? 8000
+    if (steps !== null && stepsGoal > 0) {
+      const ratio = steps / stepsGoal
+      if (ratio >= 1) pts += 1.5
+      else if (ratio >= 0.7) pts += 1
+      // < 50% → 0
+    }
+
+    // Humeur (max 1 pt)
+    const mood = (todayLog as { mood_score?: number | null }).mood_score ?? null
+    if (mood !== null) {
+      if (mood >= 7) pts += 1
+      else if (mood >= 5) pts += 0.5
+    }
+
+    // Poids EWMA stable vs veille (max 1 pt)
+    const todayWeight = todayLog.weight_kg ?? null
+    const todayTrend  = todayLog.weight_trend ?? null
+    if (todayTrend !== null) {
+      const prevTrend = (weekLogs ?? []).find(l => l.log_date !== today)?.weight_kg ?? null
+      if (prevTrend !== null && Math.abs(todayTrend - prevTrend) < 0.5) pts += 1
+    } else if (todayWeight !== null) {
+      pts += 0.5 // Données partielles → bonus partiel
+    }
+
+    recoveryScore = Math.min(10, Math.max(0, Math.round(pts)))
+
+    if (recoveryScore >= 7) {
+      recoveryLabel = 'Optimale'
+    } else if (recoveryScore >= 5) {
+      recoveryLabel = 'Correcte'
+    } else {
+      recoveryLabel = 'Limitée'
+    }
+
+    // Facteur limitant principal
+    if (deepSleepMin !== null && deepSleepMin < 60) {
+      recoveryLimitingFactor = 'Sommeil profond insuffisant'
+    } else if (sleepTotal !== null && sleepTotal < 360) {
+      recoveryLimitingFactor = 'Durée de sommeil insuffisante'
+    } else if (fatigue !== null && fatigue > 7) {
+      recoveryLimitingFactor = 'Fatigue élevée'
+    } else if (steps !== null && steps < (stepsGoal ?? 8000) * 0.5) {
+      recoveryLimitingFactor = 'Activité physique faible'
+    } else if (mood !== null && mood < 5) {
+      recoveryLimitingFactor = 'Humeur basse'
+    }
+  }
+
+  // ── Streak check-in — valeur persistante (profiles) en priorité, fallback calcul 30j
   const checkInDates = (weekLogs ?? []).map(l => l.log_date)
   const streakCalc = calcStreak(checkInDates)
   const streak = (profile?.checkin_streak ?? 0) > streakCalc
@@ -373,6 +459,57 @@ export default async function DashboardPage() {
         <div className="space-y-2">
           {alerts.map((a, i) => <AlertBar key={i} type={a.type} message={a.message} sub={a.sub} />)}
         </div>
+      )}
+
+      {/* Score de récupération composite */}
+      {recoveryScore !== null ? (
+        <div className="fiq-card flex items-center gap-4">
+          {/* Cercle score */}
+          <div
+            className="relative flex-shrink-0 w-16 h-16 rounded-full flex items-center justify-center"
+            style={{
+              background: recoveryScore >= 7 ? '#B4FF4A18' : recoveryScore >= 5 ? '#F59E0B18' : '#EF444418',
+              border: `2px solid ${recoveryScore >= 7 ? '#B4FF4A44' : recoveryScore >= 5 ? '#F59E0B44' : '#EF444444'}`,
+            }}
+          >
+            <span
+              className="text-2xl font-black fiq-data leading-none"
+              style={{ color: recoveryScore >= 7 ? 'var(--fiq-accent)' : recoveryScore >= 5 ? 'var(--fiq-yellow)' : 'var(--fiq-red)' }}
+            >
+              {recoveryScore}
+            </span>
+            <span
+              className="absolute bottom-1 text-[9px] font-bold"
+              style={{ color: 'var(--fiq-muted)' }}
+            >/10</span>
+          </div>
+          {/* Infos */}
+          <div className="flex-1 min-w-0">
+            <p className="fiq-label">Récupération</p>
+            <p
+              className="text-base font-black mt-0.5"
+              style={{ color: recoveryScore >= 7 ? 'var(--fiq-accent)' : recoveryScore >= 5 ? 'var(--fiq-yellow)' : 'var(--fiq-red)' }}
+            >
+              {recoveryLabel}
+            </p>
+            {recoveryLimitingFactor && (
+              <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--fiq-muted)' }}>
+                {recoveryLimitingFactor}
+              </p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <Link href="/checkin" className="fiq-card flex items-center gap-3" style={{ borderStyle: 'dashed' }}>
+          <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
+            <span className="text-lg">🩺</span>
+          </div>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>Score de récupération</p>
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Fais ton check-in pour voir ton score</p>
+          </div>
+        </Link>
       )}
 
       {/* KPIs */}
@@ -559,6 +696,25 @@ export default async function DashboardPage() {
 
       {/* Card séance proposée — 5 cas (pause + 4 originaux) */}
       <div className="fiq-card space-y-4">
+
+        {/* Banner check-in recommandé — visible si pas de check-in ET pas de séance active */}
+        {!todayLog && !latestTodayWorkout && !pausedWorkoutRow && (
+          <Link
+            href="/checkin"
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+            style={{ background: '#3D8BFF12', border: '1px solid #3D8BFF33' }}
+          >
+            <ClipboardList className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-blue)' }} />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold" style={{ color: 'var(--fiq-blue)' }}>Check-in recommandé</p>
+              <p className="text-[11px]" style={{ color: 'var(--fiq-muted)' }}>Pour adapter le volume à ta fatigue du jour</p>
+            </div>
+            <span className="text-xs font-black px-2 py-1 rounded-lg flex-shrink-0"
+              style={{ background: 'var(--fiq-blue)', color: 'var(--bg)' }}>
+              Faire →
+            </span>
+          </Link>
+        )}
 
         {pausedWorkoutRow && !latestTodayWorkout ? (
           /* ── Cas 0 : Séance en pause — non terminée aujourd'hui ── */
@@ -813,7 +969,7 @@ export default async function DashboardPage() {
           value={proteinToday ?? 0}
           max={proteinTarget.max}
           color="var(--fiq-accent)"
-          label={`Protéines : ${proteinToday ?? 0}g / ${proteinTarget.min}g`}
+          label={`Protéines aujourd'hui : ${proteinToday ?? 0}g / ${proteinTarget.min}g`}
         />
         <ProgressBar
           value={todayLog?.steps ?? 0}
@@ -851,7 +1007,7 @@ export default async function DashboardPage() {
           <Dumbbell className="w-5 h-5" style={{ color: 'var(--fiq-orange)' }} />
           <div>
             <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>Exercices</p>
-            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>230+ exercices</p>
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>1000+ exercices</p>
           </div>
         </Link>
         <Link href="/programs" className="fiq-card flex items-center gap-3">

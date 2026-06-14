@@ -256,9 +256,9 @@ export default function CoachPage() {
           .select('goal, weight_kg, subscription_status, subscription_plan, is_admin, referral_pro_until')
           .eq('id', user.id)
           .single(),
-        // Calories consommées aujourd'hui (food_logs)
+        // Calories + protéines consommées aujourd'hui (food_logs — priorité sur check-in manuel)
         supabase.from('food_logs')
-          .select('calories')
+          .select('calories, protein_g')
           .eq('user_id', user.id)
           .eq('log_date', today),
         // Dernière séance terminée
@@ -278,15 +278,20 @@ export default function CoachPage() {
       }
 
       // Construire le contexte enrichi
-      const caloriesConsumed = foodLogs?.length
-        ? Math.round(foodLogs.reduce((s, r) => s + (r.calories ?? 0), 0))
+      const hasFoodLogs = (foodLogs?.length ?? 0) > 0
+      const caloriesConsumed = hasFoodLogs
+        ? Math.round(foodLogs!.reduce((s, r) => s + (r.calories ?? 0), 0))
+        : null
+      // Protéines : food_logs en priorité (plus précis), fallback check-in manuel
+      const proteinFromFoodLogs = hasFoodLogs
+        ? Math.round(foodLogs!.reduce((s, r) => s + (r.protein_g ?? 0), 0))
         : null
 
       if (log || caloriesConsumed !== null || lastWorkout) {
         setDailyCtx({
           weight_trend: log?.weight_trend ?? null,
           sleep_deep_min: log?.sleep_deep_min ?? null,
-          protein_g: log?.protein_g ?? null,
+          protein_g: proteinFromFoodLogs ?? log?.protein_g ?? null,
           fatigue_score: log?.fatigue_score ?? null,
           calories_consumed: caloriesConsumed,
           last_session_name: lastWorkout?.session_name ?? null,
@@ -649,7 +654,7 @@ export default function CoachPage() {
               : limitReached ? 'Limite du mois atteinte — reviens le 1er ou passe en Pro...'
               : 'Pose ta question au coach...'
             }
-            disabled={loading || (isFree && limitReached)}
+            disabled={loading || limitReached}
             className="flex-1 resize-none rounded-xl px-4 py-3 text-sm outline-none transition-all"
             style={{
               background: 'var(--fiq-card)',
@@ -661,7 +666,7 @@ export default function CoachPage() {
           />
           <button
             onClick={() => sendMessage(input)}
-            disabled={loading || !input.trim() || (isFree && limitReached)}
+            disabled={loading || !input.trim() || limitReached}
             className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-all"
             style={{
               background: input.trim() && !loading ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
@@ -708,11 +713,25 @@ export default function CoachPage() {
         )}
 
         {/* Compteur mensuel Pro */}
-        {!isFree && coachLimit < 9999 && coachCount > 0 && (
+        {!isFree && coachLimit < 9999 && !limitReached && coachCount > 0 && (
           <p className="text-xs mt-2 text-right"
             style={{ color: remaining <= 10 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
             {remaining} msg restant{remaining > 1 ? 's' : ''} ce mois
           </p>
+        )}
+
+        {/* Limite mensuelle Pro atteinte */}
+        {!isFree && limitReached && (
+          <div className="mt-2 flex items-center justify-between gap-2 rounded-2xl px-4 py-3"
+            style={{ background: '#FF6B3512', border: '1px solid #FF6B3533' }}>
+            <p className="text-xs font-semibold" style={{ color: 'var(--fiq-orange)' }}>
+              Limite de {coachLimit} messages atteinte ce mois-ci
+            </p>
+            <Link href="/pricing" className="text-xs font-black px-2.5 py-1.5 rounded-xl flex-shrink-0"
+              style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
+              Annuel →
+            </Link>
+          </div>
         )}
       </div>
     </div>

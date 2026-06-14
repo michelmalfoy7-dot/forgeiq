@@ -22,7 +22,7 @@ const LIMITS = {
 }
 
 // Nombre de messages d'historique injectés dans le contexte
-const HISTORY_LIMIT = 6
+const HISTORY_LIMIT = 10
 
 // Ratios protéines selon objectif (g/kg de poids de corps) — sources ISSN/ACSM
 const PROTEIN_RATIO: Record<string, { min: number; max: number }> = {
@@ -66,6 +66,8 @@ function buildSystemPrompt(ctx: {
   caloriesConsumed: number | null
   carbsG: number | null
   fatG: number | null
+  // Progression tonnage 4 sem vs 4 sem précédentes (top 5 groupes musculaires)
+  tonnageDelta: { muscle: string; delta: number }[]
   // TDEE dynamique du jour
   tdeeBreakdown: {
     bmr: number
@@ -191,6 +193,15 @@ ${prSummary}
 ${volLines}
 ${underMEVMuscles.length > 0 ? `→ Groupes sous MEV (à stimuler) : ${underMEVMuscles.join(', ')}` : ''}
 
+## Progression tonnage (4 sem vs 4 sem précédentes)
+${ctx.tonnageDelta.length > 0
+  ? ctx.tonnageDelta.map(d => {
+      const sign = d.delta > 0 ? '+' : ''
+      const label = d.delta === 0 ? 'stable' : `${sign}${d.delta}%`
+      return `${d.muscle} ${label}`
+    }).join(' | ')
+  : 'Données insuffisantes'}
+
 ## Alertes actives
 ${alerts.length ? alerts.join('\n') : 'Aucune alerte'}
 
@@ -288,6 +299,9 @@ export async function POST(req: NextRequest) {
     const yesterday     = new Date(Date.now() - 86400000).toISOString().split('T')[0]
     const sevenDaysAgo  = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]
+    // Fenêtres pour le delta tonnage 4 sem vs 4 sem précédentes
+    const fourWeeksAgo  = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0]
+    const eightWeeksAgo = new Date(Date.now() - 56 * 86400000).toISOString().split('T')[0]
 
     // Semaine ISO courante (lundi → dimanche)
     const nowD = new Date()
@@ -308,6 +322,7 @@ export async function POST(req: NextRequest) {
       { data: todayFoodLogs },
       { data: steps30dLogs },
       { data: weekWorkoutsData },
+      { data: eightWeekWorkouts },
     ] = await Promise.all([
       supabase.from('profiles')
         .select('display_name, goal, level, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g')
@@ -349,6 +364,12 @@ export async function POST(req: NextRequest) {
         .eq('user_id', user.id)
         .gte('session_date', weekStart)
         .not('completed_at', 'is', null),
+      // Workouts 8 semaines — pour le delta tonnage 4 sem vs 4 sem précédentes
+      supabase.from('workouts')
+        .select('id, session_date')
+        .eq('user_id', user.id)
+        .gte('session_date', eightWeeksAgo)
+        .not('completed_at', 'is', null),
     ])
 
     // ── Volume hebdomadaire par groupe musculaire ────────────────────────────
@@ -384,6 +405,64 @@ export async function POST(req: NextRequest) {
         })
         .filter(m => m.sets > 0)
         .sort((a, b) => b.sets - a.sets)
+    }
+
+    // ── Delta tonnage 4 sem vs 4 sem précédentes par groupe musculaire ─────────
+    // Sépare les workouts en deux fenêtres : N-4 sem (récent) vs N-8 à N-4 sem (précédent)
+    const tonnageDelta: { muscle: string; delta: number }[] = []
+    const recentIds = (eightWeekWorkouts ?? [])
+      .filter((w: { id: string; session_date: string }) => w.session_date >= fourWeeksAgo)
+      .map((w: { id: string; session_date: string }) => w.id)
+    const olderIds = (eightWeekWorkouts ?? [])
+      .filter((w: { id: string; session_date: string }) => w.session_date < fourWeeksAgo)
+      .map((w: { id: string; session_date: string }) => w.id)
+
+    if (recentIds.length > 0 && olderIds.length > 0) {
+      const [{ data: recentSets }, { data: olderSets }] = await Promise.all([
+        supabase.from('workout_sets')
+          .select('weight_kg, reps, exercises_library(muscle_primary)')
+          .in('workout_id', recentIds)
+          .eq('is_warmup', false)
+          .gt('reps', 0)
+          .gt('weight_kg', 0),
+        supabase.from('workout_sets')
+          .select('weight_kg, reps, exercises_library(muscle_primary)')
+          .in('workout_id', olderIds)
+          .eq('is_warmup', false)
+          .gt('reps', 0)
+          .gt('weight_kg', 0),
+      ])
+
+      // Calcul tonnage par groupe musculaire (weight_kg × reps)
+      function tonnageByGroup(sets: { weight_kg: number | null; reps: number | null; exercises_library: unknown }[] | null) {
+        const acc: Record<string, number> = {}
+        for (const s of sets ?? []) {
+          type ExLib = { muscle_primary?: string[] } | null
+          const lib = s.exercises_library as ExLib | ExLib[]
+          const muscles: string[] = Array.isArray(lib) ? (lib[0]?.muscle_primary ?? []) : (lib?.muscle_primary ?? [])
+          if (!muscles.length) continue
+          const group = MUSCLE_GROUPS[muscles[0]]
+          if (!group) continue
+          acc[group] = (acc[group] ?? 0) + (s.weight_kg ?? 0) * (s.reps ?? 0)
+        }
+        return acc
+      }
+
+      const recentTonnage = tonnageByGroup(recentSets)
+      const olderTonnage  = tonnageByGroup(olderSets)
+      const allGroups = new Set([...Object.keys(recentTonnage), ...Object.keys(olderTonnage)])
+
+      const deltas: { muscle: string; delta: number; absRecent: number }[] = []
+      for (const muscle of allGroups) {
+        const r = recentTonnage[muscle] ?? 0
+        const o = olderTonnage[muscle] ?? 0
+        if (o === 0 || r === 0) continue // données insuffisantes
+        const pct = Math.round(((r - o) / o) * 100)
+        deltas.push({ muscle, delta: pct, absRecent: r })
+      }
+      // Garder les 5 groupes musculaires avec le tonnage récent le plus élevé
+      deltas.sort((a, b) => b.absRecent - a.absRecent)
+      tonnageDelta.push(...deltas.slice(0, 5).map(d => ({ muscle: d.muscle, delta: d.delta })))
     }
 
     // Poids lissé le plus récent (fallback si pas de check-in aujourd'hui)
@@ -488,6 +567,7 @@ export async function POST(req: NextRequest) {
       caloriesConsumed: hasFoodLogs ? Math.round(foodTotals.calories) : null,
       carbsG: hasFoodLogs ? Math.round(foodTotals.carbs_g) : null,
       fatG: hasFoodLogs ? Math.round(foodTotals.fat_g) : null,
+      tonnageDelta,
       tdeeBreakdown: {
         bmr:                  coachDailyTarget.bmr,
         stepsKcal:            coachDailyTarget.stepsKcal,
