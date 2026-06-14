@@ -110,7 +110,16 @@ export async function POST(req: NextRequest) {
     if (!name) return NextResponse.json({ data: null, error: 'Nom de recette manquant' }, { status: 400 })
     if (ingredients.length === 0) return NextResponse.json({ data: null, error: 'Ajoute au moins 1 ingrédient' }, { status: 400 })
 
-    const macros = calcPerServing(ingredients, total_servings)
+    // calcPerServing retourne aussi 7 colonnes micro (Sprint 6) absentes de la table
+    // recipes — ne prendre que les 5 macros existantes (voir migration_recipes_micro.sql)
+    const allMacros = calcPerServing(ingredients, total_servings)
+    const macroFields = {
+      calories_per_serving: allMacros.calories_per_serving,
+      protein_per_serving:  allMacros.protein_per_serving,
+      carbs_per_serving:    allMacros.carbs_per_serving,
+      fat_per_serving:      allMacros.fat_per_serving,
+      fiber_per_serving:    allMacros.fiber_per_serving,
+    }
 
     // Créer la recette
     const { data: recipe, error: recipeErr } = await supabase
@@ -120,7 +129,7 @@ export async function POST(req: NextRequest) {
         name,
         description,
         total_servings,
-        ...macros,
+        ...macroFields,
         updated_at: new Date().toISOString(),
       })
       .select()
