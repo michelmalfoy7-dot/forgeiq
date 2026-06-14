@@ -1,10 +1,10 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -25,6 +25,12 @@ export async function GET() {
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
+
+    // Pagination — page 1-based, limit max 100
+    const params = new URL(req.url).searchParams
+    const page  = Math.max(1, parseInt(params.get('page')  ?? '1',  10))
+    const limit = Math.min(100, Math.max(1, parseInt(params.get('limit') ?? '50', 10)))
+    const offset = (page - 1) * limit
 
     const now    = new Date()
     const d7ago  = new Date(now.getTime() - 7  * 86400000).toISOString()
@@ -56,11 +62,11 @@ export async function GET() {
       admin.from('profiles').select('*', { count: 'exact', head: true }).gte('created_at', d7ago),
       admin.from('profiles').select('*', { count: 'exact', head: true }).gte('created_at', d30ago),
       admin.from('daily_logs').select('user_id', { count: 'exact', head: true }).gte('log_date', d7ago.split('T')[0]),
-      // Tous les users avec données utiles
+      // Users paginés avec données utiles
       admin.from('profiles')
         .select('id, display_name, subscription_status, subscription_plan, created_at, checkin_streak, training_streak_weeks, referral_count, referred_by, referral_pro_until')
         .order('created_at', { ascending: false })
-        .limit(50),
+        .range(offset, offset + limit - 1),
     ])
 
     const total    = totalResult.count    ?? 0
@@ -72,7 +78,8 @@ export async function GET() {
 
     const mrrEstimate = proCount * 4.99
 
-    // Emails depuis auth.users
+    // Emails depuis auth.users — charge tous les users pour construire l'emailMap
+    // Limité à 1000 (Supabase Admin API) ; acceptable jusqu'à ~1000 users
     const { data: { users: authUsers } } = await admin.auth.admin.listUsers({ perPage: 1000 })
     const emailMap = new Map(authUsers.map(u => [u.id, u.email ?? '']))
 
@@ -119,6 +126,13 @@ export async function GET() {
           new_last_7d:    new7dResult.count   ?? 0,
           new_last_30d:   new30dResult.count  ?? 0,
           active_last_7d: activeResult.count  ?? 0,
+        },
+        pagination: {
+          page,
+          limit,
+          total_users: total,
+          total_pages: Math.ceil(total / limit),
+          has_next: page * limit < total,
         },
         users: (allUsersResult.data ?? []).map(u => ({
           id:               u.id,
