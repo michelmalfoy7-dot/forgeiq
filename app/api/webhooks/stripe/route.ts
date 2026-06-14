@@ -112,6 +112,11 @@ export async function POST(req: NextRequest) {
         const userId = sub.metadata?.supabase_user_id
         if (!userId) break
 
+        // Ne jamais écraser un statut lifetime avec un événement d'abonnement
+        const { data: existing } = await supabase
+          .from('profiles').select('subscription_status').eq('id', userId).single()
+        if (existing?.subscription_status === 'lifetime') break
+
         const isActive = sub.status === 'active' || sub.status === 'trialing'
         const plan = sub.metadata?.plan ?? 'monthly'
 
@@ -159,6 +164,11 @@ export async function POST(req: NextRequest) {
         const sub = event.data.object as Stripe.Subscription
         const userId = sub.metadata?.supabase_user_id
         if (!userId) break
+
+        // Ne jamais rétrograder un lifetime — il n'a pas d'abonnement récurrent
+        const { data: existingDel } = await supabase
+          .from('profiles').select('subscription_status').eq('id', userId).single()
+        if (existingDel?.subscription_status === 'lifetime') break
 
         await supabase.from('profiles').update({
           subscription_status: 'free',

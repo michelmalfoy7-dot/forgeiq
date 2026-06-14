@@ -23,7 +23,7 @@ export default async function ProfilePage() {
     { data: gymProfiles },
   ] = await Promise.all([
     supabase.from('profiles')
-      .select('display_name, username, avatar_url, goal, level, equipment, sessions_per_week, age, height_cm, gender, weight_kg, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, created_at, subscription_status, subscription_plan, stripe_customer_id, include_warmup_in_tonnage, gym_id')
+      .select('display_name, username, avatar_url, goal, level, equipment, sessions_per_week, age, height_cm, gender, weight_kg, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, created_at, subscription_status, subscription_plan, stripe_customer_id, include_warmup_in_tonnage, gym_id, is_admin')
       .eq('id', user.id).single(),
 
     supabase.from('workouts')
@@ -82,7 +82,7 @@ export default async function ProfilePage() {
           <FiqDumbbell size={28} style={{ color: 'var(--fiq-accent)' }} />
           <div>
             <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Exercices</p>
-            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>230+ exercices</p>
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>1000+ exercices</p>
           </div>
         </Link>
         <Link
@@ -130,6 +130,7 @@ export default async function ProfilePage() {
         subscriptionStatus={profile?.subscription_status ?? 'free'}
         subscriptionPlan={profile?.subscription_plan ?? null}
         hasStripeCustomer={!!profile?.stripe_customer_id}
+        isAdmin={!!(profile as unknown as { is_admin?: boolean | null })?.is_admin}
         gymId={(profile as unknown as { gym_id?: string | null })?.gym_id ?? null}
         gymProfiles={gymProfiles ?? []}
       />
