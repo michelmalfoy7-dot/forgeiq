@@ -21,22 +21,32 @@ function createAdminClient() {
   )
 }
 
-// ── Semaine ISO (lundi → dimanche) ────────────────────────────────────────
-function getWeekBounds() {
+// ── Semaine ISO (lundi → dimanche) dans la timezone de l'utilisateur ─────
+// Utilise Intl pour obtenir la date locale réelle, évitant les décalages UTC
+// (ex. lundi 00:30 Paris = dimanche 22:30 UTC → weekStart erroné sans tz)
+function getWeekBounds(tz: string = 'Europe/Paris') {
   const now = new Date()
-  const day = now.getDay() // 0=dim
-  const mondayOffset = day === 0 ? -6 : 1 - day
-  const monday = new Date(now)
-  monday.setDate(now.getDate() + mondayOffset)
-  monday.setHours(0, 0, 0, 0)
+
+  // Date locale dans la timezone cible
+  const localStr = now.toLocaleDateString('en-CA', { timeZone: tz }) // 'YYYY-MM-DD'
+  const [year, month, day] = localStr.split('-').map(Number)
+  const localDate = new Date(year, month - 1, day)
+  const dow = localDate.getDay() // 0=dim
+
+  const mondayOffset = dow === 0 ? -6 : 1 - dow
+  const monday = new Date(localDate)
+  monday.setDate(localDate.getDate() + mondayOffset)
 
   const prevMonday = new Date(monday)
   prevMonday.setDate(monday.getDate() - 7)
 
+  const toDateStr = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
   return {
-    weekStart:     monday.toISOString().split('T')[0],
-    prevWeekStart: prevMonday.toISOString().split('T')[0],
-    prevWeekEnd:   monday.toISOString().split('T')[0],
+    weekStart:     toDateStr(monday),
+    prevWeekStart: toDateStr(prevMonday),
+    prevWeekEnd:   toDateStr(monday),
   }
 }
 
@@ -261,7 +271,8 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = createAdminClient()
-  const { weekStart, prevWeekStart, prevWeekEnd } = getWeekBounds()
+  // Bornes globales (UTC+1/+2) pour le premier filtre d'activité — affinage par user ensuite
+  const { weekStart, prevWeekStart, prevWeekEnd } = getWeekBounds('Europe/Paris')
 
   // 1. Trouver tous les users actifs cette semaine (au moins 1 séance OU 1 check-in)
   const [{ data: activeWorkoutUsers }, { data: activeCheckinUsers }] = await Promise.all([
@@ -288,7 +299,7 @@ export async function GET(req: NextRequest) {
   // 2. Charger les profils de ces users (email via auth.users)
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, display_name, goal, sessions_per_week, custom_protein_g, weight_kg')
+    .select('id, display_name, goal, sessions_per_week, custom_protein_g, weight_kg, timezone')
     .in('id', [...activeIds])
 
   if (!profiles || profiles.length === 0) {
@@ -308,6 +319,11 @@ export async function GET(req: NextRequest) {
     if (!email) continue
 
     try {
+      // Bornes de semaine dans la timezone du user (fallback Europe/Paris)
+      const userTz = profile.timezone ?? 'Europe/Paris'
+      const { weekStart: userWeekStart, prevWeekStart: userPrevWeekStart, prevWeekEnd: userPrevWeekEnd } =
+        getWeekBounds(userTz)
+
       // Stats semaine en cours
       const [
         { data: weekWorkouts },
@@ -319,14 +335,14 @@ export async function GET(req: NextRequest) {
           .from('workouts')
           .select('total_tonnage_kg, session_name')
           .eq('user_id', profile.id)
-          .gte('session_date', weekStart)
+          .gte('session_date', userWeekStart)
           .not('completed_at', 'is', null),
 
         supabase
           .from('personal_records')
           .select('exercise_name, value, unit')
           .eq('user_id', profile.id)
-          .gte('created_at', weekStart + 'T00:00:00')
+          .gte('created_at', userWeekStart + 'T00:00:00')
           .order('value', { ascending: false })
           .limit(1),
 
@@ -334,14 +350,14 @@ export async function GET(req: NextRequest) {
           .from('daily_logs')
           .select('protein_g, weight_trend')
           .eq('user_id', profile.id)
-          .gte('log_date', weekStart),
+          .gte('log_date', userWeekStart),
 
         supabase
           .from('workouts')
           .select('total_tonnage_kg')
           .eq('user_id', profile.id)
-          .gte('session_date', prevWeekStart)
-          .lt('session_date', prevWeekEnd)
+          .gte('session_date', userPrevWeekStart)
+          .lt('session_date', userPrevWeekEnd)
           .not('completed_at', 'is', null),
       ])
 

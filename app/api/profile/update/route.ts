@@ -13,8 +13,14 @@ export async function POST(req: NextRequest) {
     const {
       display_name, goal, level, equipment, sessions_per_week, age, height_cm, gender, weight_kg,
       macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g,
-      steps_goal, target_weight_kg, include_warmup_in_tonnage, gym_id,
+      steps_goal, target_weight_kg, include_warmup_in_tonnage, gym_id, timezone,
     } = body
+
+    // Valider la timezone si fournie (Intl.DateTimeFormat lève une exception si invalide)
+    if (timezone) {
+      try { Intl.DateTimeFormat(undefined, { timeZone: timezone }) }
+      catch { return NextResponse.json({ data: null, error: 'Timezone invalide' }, { status: 400 }) }
+    }
 
     const { error } = await supabase.from('profiles').update({
       display_name,
@@ -35,6 +41,7 @@ export async function POST(req: NextRequest) {
       target_weight_kg: target_weight_kg != null ? Number(target_weight_kg) : undefined,
       include_warmup_in_tonnage: include_warmup_in_tonnage ?? undefined,
       gym_id: gym_id !== undefined ? (gym_id || null) : undefined,
+      timezone: timezone ?? undefined,
       updated_at: new Date().toISOString(),
     }).eq('id', user.id)
 
