@@ -26,19 +26,26 @@ export default async function GenerateProgramPage() {
   const gymName = gymRef?.name ?? null
   const gymFeatures = gymRef?.features ?? null
 
-  // Quota du mois
-  const startOfMonth = new Date()
-  startOfMonth.setDate(1)
-  startOfMonth.setHours(0, 0, 0, 0)
+  const isAdmin = !!(profile as unknown as { is_admin?: boolean | null })?.is_admin
+  const isLifetime = (profile as unknown as { subscription_status?: string })?.subscription_status === 'lifetime'
+  const unlimitedGenerations = isAdmin || isLifetime
 
-  const { count: usedThisMonth } = await supabase
-    .from('programs')
-    .select('id', { count: 'exact', head: true })
-    .eq('created_by', user.id)
-    .eq('is_ai_generated', true)
-    .gte('created_at', startOfMonth.toISOString())
+  // Quota du mois (uniquement pour les non-Lifetime / non-Admin)
+  let generationsLeft = 999
+  if (!unlimitedGenerations) {
+    const startOfMonth = new Date()
+    startOfMonth.setDate(1)
+    startOfMonth.setHours(0, 0, 0, 0)
 
-  const generationsLeft = Math.max(0, 3 - (usedThisMonth ?? 0))
+    const { count: usedThisMonth } = await supabase
+      .from('programs')
+      .select('id', { count: 'exact', head: true })
+      .eq('created_by', user.id)
+      .eq('is_ai_generated', true)
+      .gte('created_at', startOfMonth.toISOString())
+
+    generationsLeft = Math.max(0, 3 - (usedThisMonth ?? 0))
+  }
 
   return (
     <div className="p-4 max-w-lg mx-auto pb-24">

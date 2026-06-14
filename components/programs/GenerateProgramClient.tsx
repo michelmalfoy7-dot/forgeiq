@@ -282,7 +282,7 @@ export function GenerateProgramClient({ gymTier, gymFeatures, gymName, generatio
             </span>
           </div>
           <span className="text-sm font-black" style={{ color: 'var(--fiq-accent)' }}>
-            {3 - generationsLeft}/3
+            {generationsLeft >= 99 ? 'Illimité' : `${3 - generationsLeft}/3`}
           </span>
         </div>
 

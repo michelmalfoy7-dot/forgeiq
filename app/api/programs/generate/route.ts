@@ -193,33 +193,36 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ── 3. Quota mensuel ────────────────────────────────────────────────────────
-    const startOfMonth = new Date()
-    startOfMonth.setDate(1)
-    startOfMonth.setHours(0, 0, 0, 0)
+    // ── 3. Quota mensuel (Lifetime + Admin = illimité) ─────────────────────────
+    const unlimitedGenerations = isAdmin || status === 'lifetime'
 
-    // Ignorer les erreurs quota (colonne is_ai_generated peut ne pas exister)
-    let generationsThisMonth = 0
-    try {
-      const { count } = await supabase
-        .from('programs')
-        .select('id', { count: 'exact', head: true })
-        .eq('created_by', user.id)
-        .eq('is_ai_generated', true)
-        .gte('created_at', startOfMonth.toISOString())
-      generationsThisMonth = count ?? 0
-    } catch { /* colonne manquante — on passe */ }
+    if (!unlimitedGenerations) {
+      const startOfMonth = new Date()
+      startOfMonth.setDate(1)
+      startOfMonth.setHours(0, 0, 0, 0)
 
-    if (generationsThisMonth >= AI_GENERATIONS_PER_MONTH) {
-      const nextMonth = new Date(startOfMonth)
-      nextMonth.setMonth(nextMonth.getMonth() + 1)
-      return NextResponse.json(
-        {
-          data:  null,
-          error: `Quota mensuel atteint (${AI_GENERATIONS_PER_MONTH}/mois). Renouvellement le ${nextMonth.toLocaleDateString('fr-FR')}.`,
-        },
-        { status: 429 }
-      )
+      let generationsThisMonth = 0
+      try {
+        const { count } = await supabase
+          .from('programs')
+          .select('id', { count: 'exact', head: true })
+          .eq('created_by', user.id)
+          .eq('is_ai_generated', true)
+          .gte('created_at', startOfMonth.toISOString())
+        generationsThisMonth = count ?? 0
+      } catch { /* colonne manquante — on passe */ }
+
+      if (generationsThisMonth >= AI_GENERATIONS_PER_MONTH) {
+        const nextMonth = new Date(startOfMonth)
+        nextMonth.setMonth(nextMonth.getMonth() + 1)
+        return NextResponse.json(
+          {
+            data:  null,
+            error: `Quota mensuel atteint (${AI_GENERATIONS_PER_MONTH}/mois). Renouvellement le ${nextMonth.toLocaleDateString('fr-FR')}.`,
+          },
+          { status: 429 }
+        )
+      }
     }
 
     // ── 4. Body ─────────────────────────────────────────────────────────────────
