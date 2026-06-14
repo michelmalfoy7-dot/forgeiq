@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
         .from('profiles')
         .select('onboarding_done')
         .eq('id', data.user.id)
-        .single()
+        .maybeSingle()
 
       const redirectTo = !profile?.onboarding_done
         ? `${baseUrl}/onboarding`

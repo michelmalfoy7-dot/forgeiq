@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
       .from('profiles')
       .select('stripe_customer_id')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
 
     if (!profile?.stripe_customer_id) {
       return NextResponse.json({ data: null, error: 'Aucun abonnement actif' }, { status: 400 })

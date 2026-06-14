@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
 
     // Vérifier que le programme existe
     const { data: program } = await supabase
-      .from('programs').select('id, name').eq('id', program_id).single()
+      .from('programs').select('id, name').eq('id', program_id).maybeSingle()
     if (!program) return NextResponse.json({ data: null, error: 'Programme introuvable' }, { status: 404 })
 
     // Mettre à jour le programme actuel du profil

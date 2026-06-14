@@ -72,7 +72,7 @@ export async function GET(req: Request) {
 
     if (profile?.current_program_id) {
       const { data: program } = await supabase
-        .from('programs').select('name, structure').eq('id', profile.current_program_id).single()
+        .from('programs').select('name, structure').eq('id', profile.current_program_id).maybeSingle()
 
       if (program) {
         programName = program.name

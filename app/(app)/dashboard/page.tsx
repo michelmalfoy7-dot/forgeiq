@@ -181,7 +181,7 @@ export default async function DashboardPage() {
 
   if (profile?.current_program_id) {
     const { data: program } = await supabase
-      .from('programs').select('name, structure').eq('id', profile.current_program_id).single()
+      .from('programs').select('name, structure').eq('id', profile.current_program_id).maybeSingle()
 
     if (program) {
       // Support ancien format (string[]) et nouveau format ({name, exercises}[])
