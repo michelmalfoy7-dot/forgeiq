@@ -32,14 +32,14 @@ export async function POST(req: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    const isAdmin = profile?.is_admin ?? false
-    const status  = profile?.subscription_status ?? 'free'
-    const plan    = profile?.subscription_plan ?? 'free'
-    const isFree  = !isAdmin && status !== 'pro' && status !== 'lifetime'
+    const isAdmin   = profile?.is_admin ?? false
+    const status    = profile?.subscription_status ?? 'free'
+    const plan      = profile?.subscription_plan ?? 'free'
+    const isLifetime = status === 'lifetime' || plan === 'lifetime'
+    const isFree    = !isAdmin && !isLifetime && status !== 'pro'
 
     let photoLimit: number
-    if (isAdmin) photoLimit = PHOTO_LIMITS.lifetime
-    else if (status === 'lifetime') photoLimit = PHOTO_LIMITS.lifetime
+    if (isAdmin || isLifetime) photoLimit = PHOTO_LIMITS.lifetime
     else if (status === 'pro' && plan === 'annual') photoLimit = PHOTO_LIMITS.annual
     else if (status === 'pro') photoLimit = PHOTO_LIMITS.monthly
     else photoLimit = PHOTO_LIMITS.free

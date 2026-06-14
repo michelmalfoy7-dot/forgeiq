@@ -1,5 +1,6 @@
 export type ProfileForPlan = {
   subscription_status?: string | null
+  subscription_plan?: string | null
   is_admin?: boolean | null
   referral_pro_until?: string | null
 }
@@ -8,7 +9,11 @@ export type ProfileForPlan = {
 export function isRealProUser(profile: ProfileForPlan | null | undefined): boolean {
   if (!profile) return false
   if (profile.is_admin) return true
-  return profile.subscription_status === 'pro' || profile.subscription_status === 'lifetime'
+  return (
+    profile.subscription_status === 'pro' ||
+    profile.subscription_status === 'lifetime' ||
+    profile.subscription_plan === 'lifetime'
+  )
 }
 
 /** Trial referral en cours (pas encore abonné). */
