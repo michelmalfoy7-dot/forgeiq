@@ -63,6 +63,24 @@ export async function POST(request: Request) {
       updateSocialCounter(supabase, body.target_user_id, 'followers_count', 1),
     ])
 
+    // Récupérer le nom du follower pour la notif push
+    let followerName = 'Quelqu\'un'
+    const { data: followerSocial } = await supabase
+      .from('social_profiles')
+      .select('display_name, username')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (followerSocial?.display_name || followerSocial?.username) {
+      followerName = (followerSocial.display_name || followerSocial.username)!
+    } else {
+      const { data: followerBase } = await supabase
+        .from('profiles')
+        .select('display_name')
+        .eq('id', user.id)
+        .maybeSingle()
+      if (followerBase?.display_name) followerName = followerBase.display_name
+    }
+
     // Notification + push au suivi (fire-and-forget)
     void supabase.from('notifications').insert({
       user_id:  body.target_user_id,
@@ -70,8 +88,8 @@ export async function POST(request: Request) {
       type:     'follow',
     })
     void sendPushToUser(body.target_user_id, {
-      title: '👤 ForgeIQ',
-      body:  'Quelqu\'un te suit maintenant !',
+      title: '👤 Nouveau follower',
+      body:  `${followerName} te suit maintenant !`,
       url:   '/social/notifications',
       tag:   'follow',
     })

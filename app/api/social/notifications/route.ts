@@ -37,6 +37,18 @@ export async function GET() {
       user_id: string; username: string | null; display_name: string | null; avatar_url: string | null
     }) => [p.user_id, p]))
 
+    // Fallback sur profiles pour les acteurs sans social_profiles
+    const missingActorIds = actorIds.filter(id => !actorMap.has(id))
+    if (missingActorIds.length > 0) {
+      const { data: baseProfiles } = await supabase
+        .from('profiles')
+        .select('id, display_name')
+        .in('id', missingActorIds)
+      for (const p of (baseProfiles ?? []) as { id: string; display_name: string | null }[]) {
+        actorMap.set(p.id, { user_id: p.id, username: null, display_name: p.display_name, avatar_url: null })
+      }
+    }
+
     const enriched = (notifications ?? []).map((n: {
       id: string; type: string; actor_id: string; reference_id: string | null; is_read: boolean; created_at: string
     }) => ({

@@ -125,6 +125,7 @@ export function ProfileClient({
   subscriptionStatus = 'free',
   subscriptionPlan = null,
   hasStripeCustomer = false,
+  isAdmin = false,
   gymId = null,
   gymProfiles = [],
 }: {
@@ -135,6 +136,7 @@ export function ProfileClient({
   subscriptionStatus?: string
   subscriptionPlan?: string | null
   hasStripeCustomer?: boolean
+  isAdmin?: boolean
   gymId?: string | null
   gymProfiles?: GymProfile[]
 }) {
@@ -225,7 +227,7 @@ export function ProfileClient({
       .finally(() => setSocialLoading(false))
   }, [])
 
-  const isPro = subscriptionStatus === 'pro' || subscriptionStatus === 'lifetime'
+  const isPro = isAdmin || subscriptionStatus === 'pro' || subscriptionStatus === 'lifetime'
   const isLifetime = subscriptionStatus === 'lifetime'
 
   async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
