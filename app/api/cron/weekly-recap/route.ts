@@ -336,7 +336,8 @@ export async function GET(req: NextRequest) {
           .select('total_tonnage_kg, session_name')
           .eq('user_id', profile.id)
           .gte('session_date', userWeekStart)
-          .not('completed_at', 'is', null),
+          .not('completed_at', 'is', null)
+          .not('session_name', 'in', '("Jour de repos","Repos actif","Repos complet")'),
 
         supabase
           .from('personal_records')
