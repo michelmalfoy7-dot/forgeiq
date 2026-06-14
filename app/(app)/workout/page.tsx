@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { AlertBar } from '@/components/ui/AlertBar'
-import { Loader2, Plus, Dumbbell, ChevronRight, History, Moon, Bike, Play, Minus, Check, X } from 'lucide-react'
+import { Loader2, Plus, Dumbbell, ChevronRight, History, Moon, Bike, Play, Minus, Check, X, RotateCcw } from 'lucide-react'
 import Link from 'next/link'
 
 const ACTIVITIES = [
@@ -89,7 +89,25 @@ export default function WorkoutPage() {
   const [recentWorkouts, setRecentWorkouts] = useState<{id: string; session_name: string; session_date: string; total_tonnage_kg: number; duration_min?: number; distance_km?: number; workout_type?: string}[]>([])
   const [activeWorkoutId, setActiveWorkoutId] = useState<string | null>(null)
   const [abandoningWorkout, setAbandoningWorkout] = useState(false)
+  // Draft "Refaire" : exercices pré-chargés depuis l'historique
+  const [draftSessionName, setDraftSessionName] = useState<string | null>(null)
   const router = useRouter()
+
+  // Lire le draft "Refaire" depuis localStorage (stocké par WorkoutHistoryClient)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('forgeiq_draft_exercises')
+      if (raw) {
+        const draft = JSON.parse(raw) as { session_name?: string; savedAt?: number }
+        // Ignorer les drafts de plus d'1h (périmés)
+        if (draft.session_name && (!draft.savedAt || Date.now() - draft.savedAt < 3600000)) {
+          setDraftSessionName(draft.session_name)
+        } else {
+          localStorage.removeItem('forgeiq_draft_exercises')
+        }
+      }
+    } catch { /* ignore */ }
+  }, [])
 
   // Vérification de cohérence : localStorage vs état en DB
   useEffect(() => {
@@ -173,6 +191,43 @@ export default function WorkoutPage() {
     } finally {
       setStarting(false)
     }
+  }
+
+  // Démarrer une séance "Refaire" à partir du draft localStorage
+  async function startDraftWorkout() {
+    if (starting) return
+    setStarting(true)
+    try {
+      const raw = localStorage.getItem('forgeiq_draft_exercises')
+      if (!raw) return
+      const draft = JSON.parse(raw) as {
+        session_name: string
+        exercises: { exerciseId: string; exerciseName: string; sets: { weight_kg: number; reps: number; set_type: string }[] }[]
+      }
+
+      const res = await fetch('/api/workout/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_name: draft.session_name, program_id: null }),
+      })
+      const { data } = await res.json()
+      if (data?.id) {
+        // Convertir le format draft → format exercices suggérés attendu par le logger
+        const suggestedExercises = draft.exercises.map(ex => ({
+          name: ex.exerciseName,
+          sets: ex.sets.length,
+          reps: String(ex.sets[0]?.reps ?? 8),
+          weight_kg: ex.sets[0]?.weight_kg ?? null,
+          note: '',
+        }))
+        sessionStorage.setItem(`workout-exercises-${data.id}`, JSON.stringify(suggestedExercises))
+        // Nettoyer le draft après utilisation
+        localStorage.removeItem('forgeiq_draft_exercises')
+        setDraftSessionName(null)
+        router.push(`/workout/${data.id}`)
+      }
+    } catch { /* ignore */ }
+    finally { setStarting(false) }
   }
 
   // Enregistrer un jour de repos (workout complété immédiatement, 0 tonnage)
@@ -345,6 +400,38 @@ export default function WorkoutPage() {
             </div>
           )}
 
+          {/* Bannière "Refaire" : exercices pré-chargés depuis l'historique */}
+          {draftSessionName && !activeWorkoutId && (
+            <div
+              className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl"
+              style={{ background: '#3D8BFF15', border: '1px solid #3D8BFF44' }}
+            >
+              <RotateCcw className="w-5 h-5 flex-shrink-0" style={{ color: '#3D8BFF' }} />
+              <div className="flex-1 min-w-0">
+                <p className="font-black text-sm" style={{ color: '#3D8BFF' }}>Refaire : {draftSessionName}</p>
+                <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>Exercices prêts — lance la séance</p>
+              </div>
+              <button
+                onClick={startDraftWorkout}
+                disabled={starting}
+                className="flex-shrink-0 px-3 py-1.5 rounded-xl font-black text-xs"
+                style={{ background: '#3D8BFF', color: 'white' }}
+              >
+                {starting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Lancer →'}
+              </button>
+              <button
+                onClick={() => {
+                  localStorage.removeItem('forgeiq_draft_exercises')
+                  setDraftSessionName(null)
+                }}
+                className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg"
+                style={{ color: 'var(--fiq-muted)' }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* Bannière "Séance du jour terminée" */}
           {todayWorkout && !activeWorkoutId && (
             <div
@@ -422,7 +509,7 @@ export default function WorkoutPage() {
               <Button
                 className="w-full py-5 font-black text-base"
                 onClick={() => startWorkout(suggestion.session_name, suggestion.exercises as { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[], suggestion.program_id)}
-                disabled={starting}
+                disabled={starting || !!activeWorkoutId}
                 style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
               >
                 {starting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Dumbbell className="w-5 h-5 mr-2" />Démarrer cette séance</>}
@@ -433,7 +520,7 @@ export default function WorkoutPage() {
           {/* Séance libre */}
           <button
             onClick={() => startWorkout('Séance libre')}
-            disabled={starting}
+            disabled={starting || !!activeWorkoutId}
             className="w-full fiq-card flex items-center gap-3 text-left transition-all hover:border-[var(--fiq-accent)]/40"
           >
             <Plus className="w-5 h-5" style={{ color: 'var(--fiq-accent)' }} />

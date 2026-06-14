@@ -131,6 +131,12 @@ export default function WorkoutSessionPage() {
   const [muscleFilter, setMuscleFilter] = useState<string>('all')
   const [restTimer, setRestTimer] = useState<number | null>(null)
   const [restDuration, setRestDuration] = useState(90)
+  // Timer repos par exercice : Map exerciseId → durée en secondes
+  const [exerciseRestDurations, setExerciseRestDurations] = useState<Record<string, number>>({})
+  // Exercice dont le timer est en cours (pour afficher la durée spécifique)
+  const [activeRestExerciseId, setActiveRestExerciseId] = useState<string | null>(null)
+  // Afficher le picker de durée de repos pour un exercice
+  const [restPickerExerciseId, setRestPickerExerciseId] = useState<string | null>(null)
   const [completing, setCompleting] = useState(false)
   const [completed, setCompleted] = useState(false)
   const [completeError, setCompleteError] = useState<string | null>(null)
@@ -141,6 +147,9 @@ export default function WorkoutSessionPage() {
   const [showQuitModal, setShowQuitModal] = useState(false)
   const [restoredFromStorage, setRestoredFromStorage] = useState(false)
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
+  // Premier set complété — nécessaire pour afficher le bouton d'activation des notifs (iOS 16.4+)
+  const [firstSetDone, setFirstSetDone] = useState(false)
+  const [notifPromptDismissed, setNotifPromptDismissed] = useState(false)
   // Superset : index du groupe qui attend un exercice partenaire (-1 = mode normal)
   const [supersetTargetIdx, setSupersetTargetIdx] = useState<number | null>(null)
   // Édition nom de séance en ligne
@@ -152,6 +161,8 @@ export default function WorkoutSessionPage() {
   const [shareDismissed, setShareDismissed] = useState(false)
   const [shareId, setShareId] = useState<string | null>(null)
   const [sharingCard, setSharingCard] = useState(false)
+  // Suivi premier partage (viral loop) — true = c'est la première séance jamais terminée
+  const [isFirstWorkout, setIsFirstWorkout] = useState(false)
   // Format carte : 'square' (1080×1080) | 'story' (1080×1920)
   const [cardFormat, setCardFormat] = useState<'square' | 'story'>('square')
   // Programme lié à la séance (pour "sauvegarder la routine")
@@ -177,11 +188,9 @@ export default function WorkoutSessionPage() {
   // Track if initial load is done before trying to restore
   const loadedRef = useRef(false)
 
-  // ── Demande permission notifications au montage ───────────
+  // ── Lire l'état de permission notifications (sans demander — iOS 16.4+ interdit hors geste) ──
   useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().then(p => setNotifPermission(p))
-    } else if ('Notification' in window) {
+    if ('Notification' in window) {
       setNotifPermission(Notification.permission)
     }
   }, [])
@@ -224,6 +233,23 @@ export default function WorkoutSessionPage() {
     }, 800)
     return () => clearTimeout(timer)
   }, [groups, sessionName, STORAGE_KEY])
+
+  // ── Charger les timers par exercice depuis localStorage ───
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('forgeiq_rest_timers')
+      if (raw) setExerciseRestDurations(JSON.parse(raw) as Record<string, number>)
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Persister les timers par exercice à chaque modification ─
+  useEffect(() => {
+    if (Object.keys(exerciseRestDurations).length === 0) return
+    try {
+      localStorage.setItem('forgeiq_rest_timers', JSON.stringify(exerciseRestDurations))
+    } catch { /* quota exceeded */ }
+  }, [exerciseRestDurations])
 
   // ── beforeunload : avertissement si séance en cours ───────
   useEffect(() => {
@@ -491,13 +517,18 @@ export default function WorkoutSessionPage() {
     } catch { /* AudioContext indisponible */ }
   }
 
-  function startRest(seconds = restDuration) {
+  function startRest(seconds?: number, exerciseId?: string) {
+    // Résoudre la durée : priorité à l'argument explicite, puis timer spécifique à l'exercice, puis global
+    const resolvedSeconds = seconds
+      ?? (exerciseId ? (exerciseRestDurations[exerciseId] ?? restDuration) : restDuration)
+
     // Nettoyer le timer précédent
     if (restRef.current) clearInterval(restRef.current)
     if (restVisibilityRef.current) document.removeEventListener('visibilitychange', restVisibilityRef.current)
 
-    setRestDuration(seconds)
-    restEndRef.current = Date.now() + seconds * 1000
+    setRestDuration(resolvedSeconds)
+    setActiveRestExerciseId(exerciseId ?? null)
+    restEndRef.current = Date.now() + resolvedSeconds * 1000
 
     const tick = () => {
       if (restEndRef.current === null) return
@@ -636,8 +667,10 @@ export default function WorkoutSessionPage() {
 
   // ── Ajouter un drop set (copie du dernier set, type = dropset) ──
   function addDropSet(groupIdx: number) {
+    let exId = ''
     setGroups((prev) => {
       const g = prev[groupIdx]
+      exId = g.exercise_id
       const lastWork = [...g.sets].reverse().find(s => !s.is_warmup)
       const newSet: SetRow = {
         id: uid(), exercise_id: g.exercise_id, exercise_name: g.exercise_name,
@@ -649,7 +682,7 @@ export default function WorkoutSessionPage() {
       updated[groupIdx] = { ...g, sets: [...g.sets, newSet] }
       return updated
     })
-    startRest()
+    startRest(undefined, exId)
   }
 
   // ── Délier un exercice de son superset ─────────────────────
@@ -681,15 +714,32 @@ export default function WorkoutSessionPage() {
   }
 
   function addSet(groupIdx: number) {
+    let exId = ''
     setGroups((prev) => {
       const g = prev[groupIdx]
-      const lastSet = g.sets[g.sets.length - 1]
-      const newSet: SetRow = { id: uid(), exercise_id: g.exercise_id, exercise_name: g.exercise_name, set_number: g.sets.length + 1, weight_kg: lastSet?.weight_kg ?? '', reps: lastSet?.reps ?? '', rpe: '', is_warmup: false }
+      exId = g.exercise_id
+      // Pré-remplir depuis le dernier set de travail du même exercice, puis lastSession
+      const workSets = g.sets.filter(s => !s.is_warmup)
+      const lastWorkSet = workSets[workSets.length - 1]
+      // Si le champ poids/reps du dernier set est vide, tenter la lastSession
+      const prevWeight = lastWorkSet?.weight_kg !== '' && lastWorkSet?.weight_kg !== undefined
+        ? lastWorkSet.weight_kg
+        : (g.lastSession?.[workSets.length > 0 ? workSets.length - 1 : 0]?.weight_kg ?? '')
+      const prevReps = lastWorkSet?.reps !== '' && lastWorkSet?.reps !== undefined
+        ? lastWorkSet.reps
+        : (g.lastSession?.[workSets.length > 0 ? workSets.length - 1 : 0]?.reps ?? '')
+      const newSet: SetRow = {
+        id: uid(), exercise_id: g.exercise_id, exercise_name: g.exercise_name,
+        set_number: g.sets.length + 1, weight_kg: prevWeight, reps: prevReps,
+        rpe: '', is_warmup: false,
+      }
       const updated = [...prev]
       updated[groupIdx] = { ...g, sets: [...g.sets, newSet] }
       return updated
     })
-    startRest()
+    // Marquer que le premier set a été effectué (pour l'invite notifs)
+    setFirstSetDone(true)
+    startRest(undefined, exId)
   }
 
   function updateSet(groupIdx: number, setId: string, key: keyof SetRow, value: string | boolean | number) {
@@ -738,6 +788,15 @@ export default function WorkoutSessionPage() {
       updated[groupIdx] = { ...g, unilateral_both_sides: !(g.unilateral_both_sides ?? true) }
       return updated
     })
+  }
+
+  // ── Définir le timer de repos pour un exercice spécifique ────
+  function setExerciseRestDuration(exerciseId: string, seconds: number) {
+    setExerciseRestDurations(prev => ({ ...prev, [exerciseId]: seconds }))
+    // Appliquer immédiatement si c'est l'exercice en cours de repos
+    if (activeRestExerciseId === exerciseId) {
+      startRest(seconds, exerciseId)
+    }
   }
 
   // ── Déplacer un exercice vers le haut ou le bas ─────────────
@@ -812,6 +871,11 @@ export default function WorkoutSessionPage() {
         setCompleted(true)
         if (data.milestone) setTrainingMilestone(data.milestone)
         if (timerRef.current) clearInterval(timerRef.current)
+        // Vérifier si c'est la première séance terminée (viral loop — premier partage guidé)
+        try {
+          const firstShareDone = localStorage.getItem('forgeiq_first_share_done')
+          if (!firstShareDone) setIsFirstWorkout(true)
+        } catch { /* ignore */ }
         stopRest()
         // Lancer le bilan IA en arrière-plan (non bloquant — Pro uniquement)
         setAiInsightsLoading(true)
@@ -837,7 +901,7 @@ export default function WorkoutSessionPage() {
     } finally {
       setCompleting(false)
     }
-  }, [groups, workoutId, STORAGE_KEY])
+  }, [groups, workoutId, STORAGE_KEY, sessionName])
 
   // Tonnage total séance (travail + échauffement)
   const totalTonnage = groups.reduce((acc, g) => acc + calcTonnageGroup(g), 0)
@@ -941,6 +1005,8 @@ export default function WorkoutSessionPage() {
       if (!json.error && json.data?.id) {
         setShareId(json.data.id)
         setSharePosted(true)
+        // Marquer que le premier partage a été fait (viral loop)
+        try { localStorage.setItem('forgeiq_first_share_done', '1') } catch { /* ignore */ }
       }
     } catch { /* Erreur réseau silencieuse */ }
     finally { setSharing(false) }
@@ -1193,15 +1259,26 @@ export default function WorkoutSessionPage() {
           {!shareDismissed && !sharePosted && (
             <div
               className="space-y-3 rounded-2xl p-4 text-left"
-              style={{ background: '#B4FF4A08', border: '1px solid #B4FF4A30' }}
+              style={{
+                background: isFirstWorkout ? '#B4FF4A12' : '#B4FF4A08',
+                border: isFirstWorkout ? '1px solid #B4FF4A50' : '1px solid #B4FF4A30',
+              }}
             >
-              {/* Header */}
+              {/* Header — premier partage guidé : message plus engageant */}
               <div className="flex items-center justify-between">
                 <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>
                   <FiqStreak size={14} style={{ color: 'var(--fiq-orange)', display: 'inline', marginRight: 4 }} />
-                  Fais voir ta séance !
+                  {isFirstWorkout ? '🎉 Première séance — partage-la !' : 'Fais voir ta séance !'}
                 </p>
-                <button onClick={() => setShareDismissed(true)} className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+                <button
+                  onClick={() => {
+                    setShareDismissed(true)
+                    // Marquer le premier partage comme vu (même si l'user passe)
+                    try { localStorage.setItem('forgeiq_first_share_done', '1') } catch { /* ignore */ }
+                  }}
+                  className="text-xs"
+                  style={{ color: 'var(--fiq-muted)' }}
+                >
                   Passer
                 </button>
               </div>
@@ -1524,7 +1601,7 @@ export default function WorkoutSessionPage() {
               <span className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>✎</span>
             </button>
           )}
-          <div className="flex items-center gap-2 mt-0.5">
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
             <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>{formatTime(elapsed)}</p>
             {restTimer !== null && (
               <span
@@ -1533,6 +1610,22 @@ export default function WorkoutSessionPage() {
               >
                 <Timer className="w-3 h-3" />{formatTime(restTimer)}
               </span>
+            )}
+            {/* Bouton activation notifs — affiché seulement après le 1er set (iOS 16.4+ PWA) */}
+            {firstSetDone && !notifPromptDismissed && notifPermission === 'default' && (
+              <button
+                className="text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1"
+                style={{ background: '#F59E0B18', color: '#F59E0B', border: '1px solid #F59E0B44' }}
+                onClick={async () => {
+                  if ('Notification' in window) {
+                    const perm = await Notification.requestPermission()
+                    setNotifPermission(perm)
+                  }
+                  setNotifPromptDismissed(true)
+                }}
+              >
+                🔔 Activer
+              </button>
             )}
           </div>
         </div>
@@ -1660,6 +1753,12 @@ export default function WorkoutSessionPage() {
                 onMoveDown={gIdx < groups.length - 1 ? () => moveGroup(gIdx, 'down') : undefined}
                 circuitBadge={circuitBadge}
                 isInCircuit={isCircuit}
+                restDurationForExercise={exerciseRestDurations[group.exercise_id] ?? restDuration}
+                onSetRestDuration={(seconds) => setExerciseRestDuration(group.exercise_id, seconds)}
+                showRestPicker={restPickerExerciseId === group.exercise_id}
+                onToggleRestPicker={() => setRestPickerExerciseId(
+                  restPickerExerciseId === group.exercise_id ? null : group.exercise_id
+                )}
               />
 
               {/* Connecteur entre exercices du même groupe */}
@@ -1999,6 +2098,7 @@ function ExerciseCard({
   group, onAddSet, onAddWarmup, onAddDropSet, onUpdateSet, onRemoveSet, onToggleUnilateral,
   onCycleSetType, onAddToSuperset, onRemoveSuperset, onMoveUp, onMoveDown,
   circuitBadge, isInCircuit,
+  restDurationForExercise, onSetRestDuration, showRestPicker, onToggleRestPicker,
 }: {
   group: ExerciseGroup
   onAddSet: () => void
@@ -2016,6 +2116,14 @@ function ExerciseCard({
   circuitBadge?: string
   /** true si l'exercice fait partie d'un circuit (3+ liés) */
   isInCircuit?: boolean
+  /** Durée de repos configurée pour cet exercice (en secondes) */
+  restDurationForExercise: number
+  /** Callback pour changer la durée de repos de cet exercice */
+  onSetRestDuration: (seconds: number) => void
+  /** true si le picker de repos est ouvert pour cet exercice */
+  showRestPicker: boolean
+  /** Toggle l'ouverture du picker de repos */
+  onToggleRestPicker: () => void
 }) {
   const [showHistory, setShowHistory] = useState(true)
   const [showPlateCalc, setShowPlateCalc] = useState(false)
@@ -2287,7 +2395,46 @@ function ExerciseCard({
         <Button size="sm" variant="ghost" onClick={onAddWarmup} className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
           + Chauffe
         </Button>
+        {/* Bouton timer repos — affiche la durée spécifique à l'exercice */}
+        <button
+          onClick={onToggleRestPicker}
+          className="text-xs px-2 py-1 rounded-lg flex items-center gap-1"
+          style={{
+            background: showRestPicker ? '#3D8BFF22' : 'var(--fiq-faint)',
+            color: showRestPicker ? 'var(--fiq-blue)' : 'var(--fiq-muted)',
+            border: `1px solid ${showRestPicker ? '#3D8BFF44' : 'var(--fiq-border)'}`,
+          }}
+        >
+          <Timer className="w-3 h-3" />
+          {restDurationForExercise}s
+        </button>
       </div>
+
+      {/* Picker durée de repos par exercice */}
+      {showRestPicker && (
+        <div
+          className="flex items-center gap-1.5 pt-1 pb-0.5 flex-wrap"
+          style={{ borderTop: '1px solid var(--fiq-border)' }}
+        >
+          <span className="text-[10px] uppercase tracking-wider font-semibold mr-1" style={{ color: 'var(--fiq-muted)' }}>
+            Repos :
+          </span>
+          {[30, 60, 90, 120, 150, 180, 240].map((s) => (
+            <button
+              key={s}
+              onClick={() => { onSetRestDuration(s); onToggleRestPicker() }}
+              className="text-xs px-2 py-0.5 rounded-lg font-semibold"
+              style={{
+                background: restDurationForExercise === s ? 'var(--fiq-blue)' : 'var(--fiq-faint)',
+                color: restDurationForExercise === s ? 'white' : 'var(--fiq-muted)',
+                border: '1px solid var(--fiq-border)',
+              }}
+            >
+              {s >= 60 ? `${Math.floor(s / 60)}${s % 60 > 0 ? `m${s % 60}` : 'min'}` : `${s}s`}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Superset / Circuit — bouton discret dans le footer */}
       <div className="flex items-center justify-between pt-0.5">

@@ -2,7 +2,9 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
-import { ChevronDown, ChevronUp, Dumbbell, Trophy, Calendar, ArrowLeft, ChevronDown as LoadMore, List, ChevronLeft, ChevronRight, Share2, Loader2, CheckCircle2, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ChevronDown, ChevronUp, Dumbbell, Trophy, Calendar, ArrowLeft, ChevronDown as LoadMore, List, ChevronLeft, ChevronRight, Share2, Loader2, CheckCircle2, X, RotateCcw } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 const PAGE_SIZE = 20
 const DAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
@@ -10,11 +12,13 @@ const DAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 type WorkoutSet = {
   id: string
   exercise_name: string
+  exercise_id: string | null
   set_number: number
   weight_kg: number
   reps: number
   rpe: number | null
   is_warmup: boolean
+  set_type?: string | null
 }
 
 type Workout = {
@@ -24,6 +28,7 @@ type Workout = {
   total_tonnage_kg: number | null
   total_sets: number | null
   completed_at: string | null
+  started_at: string | null
   notes: string | null
   program_id: string | null
   workout_sets: WorkoutSet[]
@@ -41,21 +46,24 @@ function groupByExercise(sets: WorkoutSet[]): { name: string; sets: WorkoutSet[]
   return Array.from(map.entries()).map(([name, sets]) => ({ name, sets }))
 }
 
-// Calcule la durée approximative depuis completed_at et session_date
-function calcDuration(completedAt: string | null, sessionDate: string): string | null {
+// Calcule la durée depuis started_at → completed_at (fallback : session_date midnight → completed_at)
+function calcDuration(completedAt: string | null, sessionDate: string, startedAt?: string | null): string | null {
   if (!completedAt) return null
   const end = new Date(completedAt).getTime()
-  const start = new Date(sessionDate + 'T00:00:00').getTime()
+  // Utiliser started_at si disponible — bien plus précis que minuit
+  const start = startedAt
+    ? new Date(startedAt).getTime()
+    : new Date(sessionDate + 'T00:00:00').getTime()
   const diffMin = Math.round((end - start) / 60000)
-  if (diffMin < 5 || diffMin > 300) return null
+  if (diffMin < 1 || diffMin > 300) return null
   return diffMin < 60 ? `${diffMin}min` : `${Math.floor(diffMin / 60)}h${diffMin % 60 > 0 ? (diffMin % 60) + 'min' : ''}`
 }
 
-// Formate la date en français
+// Formate la date en français — force midi local pour éviter le décalage UTC sur date seule
 function formatDate(dateStr: string): string {
   return new Intl.DateTimeFormat('fr-FR', {
     weekday: 'long', day: 'numeric', month: 'long'
-  }).format(new Date(dateStr))
+  }).format(new Date(dateStr + 'T12:00:00'))
 }
 
 // Groupe les séances par mois
@@ -76,22 +84,83 @@ function groupByMonth(workouts: Workout[]): { label: string; workouts: Workout[]
 type ShareState = 'idle' | 'inputting' | 'loading' | 'done'
 
 function WorkoutCard({ workout }: { workout: Workout }) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const groups = useMemo(() => groupByExercise(
     workout.workout_sets.filter(s => !s.is_warmup).sort((a, b) => a.set_number - b.set_number)
   ), [workout.workout_sets])
 
-  const duration = calcDuration(workout.completed_at, workout.session_date)
+  const duration = calcDuration(workout.completed_at, workout.session_date, workout.started_at)
   const totalSets = workout.workout_sets.filter(s => !s.is_warmup).length
   const dateFormatted = formatDate(workout.session_date)
+
+  // État "Refaire cette séance"
+  const [reloading, setReloading] = useState(false)
+  const [reloaded, setReloaded]   = useState(false)
 
   // État partage
   const [shareState, setShareState] = useState<ShareState>('idle')
   const [caption, setCaption]       = useState('')
   const [shareId, setShareId]       = useState<string | null>(null)
+  const [shareError, setShareError] = useState<string | null>(null)
+
+  // Recharger les sets complets depuis Supabase pour la séance, puis stocker en localStorage draft
+  async function handleReload() {
+    if (reloading) return
+    setReloading(true)
+    try {
+      const supabase = createClient()
+      const { data: sets, error } = await supabase
+        .from('workout_sets')
+        .select('exercise_id, exercise_name, set_number, weight_kg, reps, is_warmup, set_type')
+        .eq('workout_id', workout.id)
+        .not('is_warmup', 'eq', true)
+        .order('set_number', { ascending: true })
+
+      if (error || !sets) throw new Error('fetch failed')
+
+      // Grouper les sets par exercice dans l'ordre d'apparition
+      const exMap = new Map<string, {
+        exerciseId: string
+        exerciseName: string
+        sets: { weight_kg: number; reps: number; set_type: string }[]
+      }>()
+      for (const s of sets) {
+        const key = s.exercise_id ?? s.exercise_name
+        if (!exMap.has(key)) {
+          exMap.set(key, {
+            exerciseId: s.exercise_id ?? '',
+            exerciseName: s.exercise_name,
+            sets: [],
+          })
+        }
+        exMap.get(key)!.sets.push({
+          weight_kg: s.weight_kg,
+          reps: s.reps,
+          set_type: s.set_type ?? 'work',
+        })
+      }
+
+      // Format attendu par le logger (forgeiq_draft_exercises)
+      const draft = {
+        session_name: workout.session_name,
+        exercises: Array.from(exMap.values()),
+        savedAt: Date.now(),
+      }
+
+      localStorage.setItem('forgeiq_draft_exercises', JSON.stringify(draft))
+      setReloaded(true)
+      // Rediriger vers /workout — l'utilisateur lancera manuellement
+      setTimeout(() => router.push('/workout'), 800)
+    } catch {
+      // Fallback silencieux — ne bloque pas l'utilisateur
+      setReloading(false)
+    }
+  }
 
   async function handleShare() {
     setShareState('loading')
+    setShareError(null)
     try {
       const res = await fetch('/api/social/share', {
         method: 'POST',
@@ -103,11 +172,12 @@ function WorkoutCard({ workout }: { workout: Workout }) {
         setShareId(json.data.id)
         setShareState('done')
       } else {
-        // Erreur — retour à inputting pour laisser retenter
+        // Erreur inline — pas d'alert() qui bloque le thread UI
+        setShareError(json.error ?? 'Erreur lors du partage')
         setShareState('inputting')
-        alert(json.error ?? 'Erreur lors du partage')
       }
     } catch {
+      setShareError('Erreur réseau — réessaie')
       setShareState('inputting')
     }
   }
@@ -224,6 +294,30 @@ function WorkoutCard({ workout }: { workout: Workout }) {
             </div>
           )}
 
+          {/* ── Bloc Refaire ─────────────────────────────────────────────── */}
+          <div className="px-4 pb-3 pt-2" style={{ borderTop: '1px solid var(--fiq-border)' }}>
+            {reloaded ? (
+              <div className="flex items-center gap-2 py-1.5 text-xs font-bold"
+                style={{ color: 'var(--fiq-accent)' }}>
+                <CheckCircle2 className="w-4 h-4" />
+                Séance rechargée — démarre quand tu veux !
+              </div>
+            ) : (
+              <button
+                onClick={handleReload}
+                disabled={reloading}
+                className="flex items-center gap-2 text-xs font-black px-3 py-2 rounded-xl transition-opacity active:opacity-70 disabled:opacity-50"
+                style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-text)', border: '1px solid var(--fiq-border)' }}
+              >
+                {reloading
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <RotateCcw className="w-3.5 h-3.5" style={{ color: 'var(--fiq-accent)' }} />
+                }
+                Refaire cette séance
+              </button>
+            )}
+          </div>
+
           {/* ── Bloc partage ─────────────────────────────────────────────── */}
           <div className="px-4 pb-4 pt-2" style={{ borderTop: '1px solid var(--fiq-border)' }}>
 
@@ -250,6 +344,11 @@ function WorkoutCard({ workout }: { workout: Workout }) {
             {/* État : saisie caption */}
             {shareState === 'inputting' && (
               <div className="space-y-2">
+                {shareError && (
+                  <p className="text-xs px-3 py-1.5 rounded-lg" style={{ background: '#EF444418', color: '#EF4444', border: '1px solid #EF444433' }}>
+                    {shareError}
+                  </p>
+                )}
                 <textarea
                   value={caption}
                   onChange={e => setCaption(e.target.value)}

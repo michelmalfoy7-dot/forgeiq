@@ -172,7 +172,8 @@ export async function POST(request: Request) {
     // ── Mise à jour streak d'entraînement (semaines consécutives) ──
     // Ne compte pas les jours de repos ni le cardio rapide comme "semaine d'entraînement"
     let trainingMilestone: { streak: number; type: 'training' } | null = null
-    const isRealWorkout = workout_type !== 'cardio' && sets.length > 0
+    // Compte uniquement les séances avec au moins 1 série de travail (pas juste échauffement)
+    const isRealWorkout = workout_type !== 'cardio' && workingSets.length > 0
     if (isRealWorkout) {
       const currentWeek = getISOWeek(new Date())
       const { data: prof } = await supabase
@@ -228,8 +229,19 @@ function getISOWeek(date: Date): string {
 function isPrevWeek(lastWeekIso: string, currentWeekIso: string): boolean {
   const [ly, lw] = lastWeekIso.split('-W').map(Number)
   const [cy, cw] = currentWeekIso.split('-W').map(Number)
-  if (cy === ly + 1 && lw === 52 && cw === 1) return true   // passage d'année
+  // Passage d'année : certaines années ont 53 semaines ISO (ex: 2020), pas seulement 52
+  if (cy === ly + 1 && cw === 1) {
+    const lastWeekOfLastYear = getISOWeeksInYear(ly)
+    return lw === lastWeekOfLastYear
+  }
   return cy === ly && cw === lw + 1
+}
+
+/** Retourne le nombre de semaines ISO dans une année (52 ou 53) */
+function getISOWeeksInYear(year: number): number {
+  // La dernière semaine de l'année ISO est celle qui contient le 28 décembre
+  return getISOWeek(new Date(year, 11, 28))
+    .split('-W').map(Number)[1]
 }
 
 function groupByExercise(sets: SetInput[]): Record<string, SetInput[]> {
