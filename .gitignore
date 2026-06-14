@@ -43,3 +43,16 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+# Play Store build artifacts
+*.aab
+*.apk
+*.keystore
+signing-key-info.txt
+_aab_extract/
+Readme.html
+assetlinks.json
+public/icon-preview.html
+
+# IDE / Claude Code
+.claude/launch.json
