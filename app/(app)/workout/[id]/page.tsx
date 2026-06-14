@@ -306,6 +306,15 @@ export default function WorkoutSessionPage() {
   // ── Charger les exercices + infos séance ──────────────────
   useEffect(() => {
     async function load() {
+      // Next.js App Router peut réutiliser la même instance de composant lors d'une navigation
+      // soft entre /workout/A et /workout/B (soft navigation). Sans ce reset synchrone,
+      // l'effet auto-save (0.8s timer) peut écrire les groupes de la séance A sous la clé
+      // forgeiq_workout_B, que la priorité 1 ci-dessous lirait immédiatement.
+      // En mettant loadedRef.current = false AVANT le premier await, on coupe le timer
+      // auto-save avant qu'il ne tire, empêchant toute pollution cross-session.
+      loadedRef.current = false
+      setGroups([])
+
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
 
