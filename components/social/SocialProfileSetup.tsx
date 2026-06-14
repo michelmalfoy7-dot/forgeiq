@@ -4,9 +4,25 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, Users } from 'lucide-react'
 
-export function SocialProfileSetup() {
+// Dérive un username valide depuis un display_name
+function toUsername(name: string): string {
+  const base = name.trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9_]/g, '_')
+    .replace(/__+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 20)
+  if (base.length === 0) return 'user'
+  if (base.length === 1) return base + '00'
+  if (base.length === 2) return base + '0'
+  return base
+}
+
+export function SocialProfileSetup({ displayName }: { displayName?: string | null }) {
   const router = useRouter()
-  const [username, setUsername] = useState('')
+  const [username, setUsername] = useState(() =>
+    displayName ? toUsername(displayName) : ''
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

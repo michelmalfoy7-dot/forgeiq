@@ -11,6 +11,7 @@ import { buildExercisesMap } from '@/lib/utils/social'
 import { categorizeBig5 } from '@/lib/utils/big5'
 import { ShareWrappedButton } from '@/components/social/ShareWrappedButton'
 import { FiqDumbbell, FiqStreak } from '@/components/ui/FiqIcons'
+import { WeeklyVolumeChart } from '@/components/social/WeeklyVolumeChart'
 
 export const dynamic = 'force-dynamic'
 
@@ -98,18 +99,27 @@ export default async function PublicProfilePage({ params }: PageProps) {
   }
 
   // Dates pour les calculs
-  const now           = new Date()
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0]
-  const sixtyDaysAgo  = new Date(now.getTime() - 60 * 86400000).toISOString().split('T')[0]
-  const sevenDaysAgo  = new Date(now.getTime() - 7  * 86400000).toISOString().split('T')[0]
+  const now            = new Date()
+  const thirtyDaysAgo  = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0]
+  const sixtyDaysAgo   = new Date(now.getTime() - 60 * 86400000).toISOString().split('T')[0]
+  const sevenDaysAgo   = new Date(now.getTime() - 7  * 86400000).toISOString().split('T')[0]
+  const fiftySixDaysAgo = new Date(now.getTime() - 56 * 86400000).toISOString().split('T')[0]
 
-  // Récupérer les stats de la cible (avec dates pour progression + streak)
-  const { data: workoutStats } = await supabase
-    .from('workouts')
-    .select('total_tonnage_kg, total_sets, session_date, completed_at')
-    .eq('user_id', targetProfile.user_id)
-    .not('completed_at', 'is', null)
-    .order('session_date', { ascending: false })
+  // Récupérer les stats de la cible (avec dates pour progression + streak + 8 semaines)
+  const [{ data: workoutStats }, { data: profileStats }] = await Promise.all([
+    supabase
+      .from('workouts')
+      .select('total_tonnage_kg, total_sets, session_date, completed_at')
+      .eq('user_id', targetProfile.user_id)
+      .not('completed_at', 'is', null)
+      .order('session_date', { ascending: false }),
+    // Récupérer streak check-in et code referral depuis profiles
+    supabase
+      .from('profiles')
+      .select('checkin_streak, referral_code')
+      .eq('id', targetProfile.user_id)
+      .maybeSingle(),
+  ])
 
   const totalSessions = (workoutStats ?? []).length
   const totalTonnage  = (workoutStats ?? []).reduce(
@@ -148,7 +158,40 @@ export default async function PublicProfilePage({ params }: PageProps) {
     } else break
   }
 
-  // Récupérer TOUS les PRs top_set pour le Big 5
+  // ── Volume hebdomadaire (8 dernières semaines) — pour le mini graphique ──
+  // On groupe les séances des 56 derniers jours par semaine ISO
+  const weeklyVolume: { week: string; tonnage: number }[] = []
+  const last56Stats = (workoutStats ?? []).filter(
+    (w: { session_date: string | null }) => w.session_date && w.session_date >= fiftySixDaysAgo
+  )
+  const weekTonnageMap: Record<string, number> = {}
+  for (const w of last56Stats) {
+    if (!w.session_date) continue
+    const d = new Date(w.session_date + 'T12:00:00')
+    // Calcul numéro de semaine ISO simple
+    const dayOfWeek = (d.getDay() + 6) % 7   // lundi = 0
+    const mondayOfWeek = new Date(d)
+    mondayOfWeek.setDate(d.getDate() - dayOfWeek)
+    const weekKey = mondayOfWeek.toISOString().split('T')[0]
+    weekTonnageMap[weekKey] = (weekTonnageMap[weekKey] ?? 0) + (w.total_tonnage_kg ?? 0)
+  }
+  // Générer les 8 dernières semaines (même si tonnage = 0)
+  for (let i = 7; i >= 0; i--) {
+    const monday = new Date(now)
+    const dayOfWeek = (monday.getDay() + 6) % 7
+    monday.setDate(monday.getDate() - dayOfWeek - i * 7)
+    const weekKey = monday.toISOString().split('T')[0]
+    const label = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(monday)
+    weeklyVolume.push({ week: label, tonnage: Math.round(weekTonnageMap[weekKey] ?? 0) })
+  }
+  const bestWeekTonnage = Math.max(...weeklyVolume.map(w => w.tonnage), 0)
+
+  // ── Achievement badges — visibles sans login (SEO + viral) ──
+  const checkinStreak = profileStats?.checkin_streak ?? 0
+  const referralCode  = profileStats?.referral_code ?? null
+
+  // PRs count = nombre d'exercices distincts avec record top_set
+  // Récupérer TOUS les PRs top_set pour le Big 5 + badges
   const { data: allPRs } = await supabase
     .from('personal_records')
     .select('value, exercise_name, exercises_library(name_fr, name)')
@@ -164,6 +207,33 @@ export default async function PublicProfilePage({ params }: PageProps) {
     }))
   )
   const big5Filled = big5.filter(b => b.value !== null)
+  const totalPRs = (allPRs ?? []).length
+
+  // ── Calcul badges achievement ──
+  type Badge = { emoji: string; label: string; value: number | string; color: string }
+  const achievementBadges: Badge[] = []
+
+  // 🔥 Streak check-in
+  if (checkinStreak >= 5) {
+    const tier = checkinStreak >= 100 ? '100j' : checkinStreak >= 30 ? '30j' : checkinStreak >= 10 ? '10j' : '5j'
+    achievementBadges.push({ emoji: '🔥', label: `Streak ${tier}`, value: `${checkinStreak}j`, color: '#FF6B35' })
+  }
+  // 💪 PRs
+  if (totalPRs >= 5) {
+    const tier = totalPRs >= 50 ? '50 records' : totalPRs >= 20 ? '20 records' : '5 records'
+    achievementBadges.push({ emoji: '💪', label: tier, value: totalPRs, color: '#B4FF4A' })
+  }
+  // 🏆 Séances
+  if (totalSessions >= 10) {
+    const tier = totalSessions >= 500 ? '500 séances' : totalSessions >= 100 ? '100 séances' : totalSessions >= 50 ? '50 séances' : '10 séances'
+    achievementBadges.push({ emoji: '🏆', label: tier, value: totalSessions, color: '#F59E0B' })
+  }
+  // ⚡ Tonnage lifetime
+  if (totalTonnage >= 1000) {
+    const t = totalTonnage / 1000
+    const tier = t >= 100 ? '100T' : t >= 50 ? '50T' : t >= 10 ? '10T' : '1T'
+    achievementBadges.push({ emoji: '⚡', label: `${tier} soulevées`, value: `${t.toFixed(0)}T`, color: '#3D8BFF' })
+  }
 
   // Récupérer les séances partagées de cet utilisateur
   const { data: shares } = await supabase
@@ -411,6 +481,39 @@ export default async function PublicProfilePage({ params }: PageProps) {
         </div>
       )}
 
+      {/* ── Achievement badges — visibles sans login (SEO + viral) ── */}
+      {achievementBadges.length > 0 && (
+        <div className="fiq-card space-y-3">
+          <p className="text-[11px] uppercase font-black tracking-widest" style={{ color: 'var(--fiq-muted)' }}>
+            Achievements
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {achievementBadges.map((badge, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-2 px-3 py-2 rounded-2xl text-sm font-black"
+                style={{
+                  background: `${badge.color}14`,
+                  border: `1px solid ${badge.color}30`,
+                  color: badge.color,
+                }}
+              >
+                <span className="text-base">{badge.emoji}</span>
+                <div>
+                  <span className="font-black">{badge.value}</span>
+                  <span className="text-[10px] ml-1 font-normal opacity-70">{badge.label}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Volume hebdomadaire (8 semaines) — mini graphique public ── */}
+      {totalSessions >= 3 && (
+        <WeeklyVolumeChart data={weeklyVolume} bestWeek={bestWeekTonnage} />
+      )}
+
       {/* Bilan annuel Wrapped — visible uniquement sur son propre profil */}
       {isOwnProfile && totalSessions >= 3 && (
         <ShareWrappedButton userId={targetProfile.user_id} />
@@ -453,6 +556,34 @@ export default async function PublicProfilePage({ params }: PageProps) {
           </div>
           <p className="text-sm font-semibold" style={{ color: 'var(--fiq-text)' }}>
             Aucune séance partagée pour l&apos;instant
+          </p>
+        </div>
+      )}
+
+      {/* ── Referral CTA — vecteur d'acquisition (toujours visible) ── */}
+      {referralCode && (
+        <div
+          className="fiq-card text-center space-y-3 py-6"
+          style={{ background: '#B4FF4A08', border: '1px solid #B4FF4A25' }}
+        >
+          <div className="text-3xl">💪</div>
+          <div>
+            <p className="font-black text-base" style={{ color: 'var(--fiq-text)' }}>
+              Rejoins ForgeIQ gratuitement
+            </p>
+            <p className="text-xs mt-1" style={{ color: 'var(--fiq-muted)' }}>
+              Track tes séances, bats tes records, coache ton IA — comme {targetProfile.display_name ?? targetProfile.username}.
+            </p>
+          </div>
+          <Link
+            href={`/register?ref=${referralCode}`}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-black text-sm"
+            style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+          >
+            Commencer — 14j Pro offerts →
+          </Link>
+          <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+            Sans carte bancaire · getforgeiq.com
           </p>
         </div>
       )}

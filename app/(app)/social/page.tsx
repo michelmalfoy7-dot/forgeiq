@@ -91,11 +91,10 @@ export default async function SocialPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: socialProfile } = await supabase
-    .from('social_profiles')
-    .select('*')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const [{ data: socialProfile }, { data: authProfile }] = await Promise.all([
+    supabase.from('social_profiles').select('*').eq('user_id', user.id).maybeSingle(),
+    supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
+  ])
 
   // IDs suivis (base commune aux deux feeds)
   const { data: followsData } = await supabase
@@ -185,7 +184,33 @@ export default async function SocialPage() {
 
       {/* ── Création du profil social ── */}
       {!socialProfile && (
-        <SocialProfileSetup />
+        <SocialProfileSetup displayName={authProfile?.display_name ?? null} />
+      )}
+
+      {/* ── CTA première séance (visible même s'il y a des athlètes suggérés) ── */}
+      {discoverPosts.length === 0 && followingPosts.length === 0 && suggestedAthletes.length > 0 && (
+        <div className="fiq-card flex items-center gap-4 py-4"
+          style={{ background: '#B4FF4A08', borderColor: '#B4FF4A30' }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-xl"
+            style={{ background: '#B4FF4A20' }}>
+            🏋️
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-black text-sm" style={{ color: 'var(--fiq-text)' }}>
+              Partage ta première séance !
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+              Termine une séance et partage-la pour apparaître dans le feed.
+            </p>
+          </div>
+          <Link
+            href="/workout"
+            className="flex-shrink-0 px-4 py-2 rounded-xl font-black text-xs"
+            style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+          >
+            Démarrer
+          </Link>
+        </div>
       )}
 
       {/* ── Feed avec onglets (affiché même sans profil en lecture seule) ── */}

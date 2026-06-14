@@ -490,7 +490,7 @@ export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id
           </span>
         </button>
 
-        {/* Commentaires */}
+        {/* Commentaires — toujours afficher le count (même si 0) */}
         <button
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all active:scale-95"
           style={{ color: showComments ? 'var(--fiq-blue)' : 'var(--fiq-muted)' }}
@@ -501,7 +501,7 @@ export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id
             style={{ fill: showComments ? 'var(--fiq-blue)' : 'none', stroke: showComments ? 'var(--fiq-blue)' : 'var(--fiq-muted)' }}
           />
           <span className="text-xs font-bold">
-            {commentsCount > 0 ? commentsCount : 'Commenter'}
+            {commentsCount}
           </span>
         </button>
 

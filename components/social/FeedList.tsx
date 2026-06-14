@@ -195,25 +195,84 @@ export function FeedList({ initialDiscoverPosts, initialFollowingPosts, suggeste
         <WorkoutPost key={post.id} post={post} />
       ))}
 
-      {/* ── État vide Abonnements ── */}
+      {/* ── État vide Abonnements — injecter les athlètes suggérés ── */}
       {activeTab === 'following' && posts.length === 0 && (
-        <div className="fiq-card text-center py-10 space-y-4">
-          <div className="flex justify-center text-4xl">🏋️</div>
-          <div>
-            <p className="font-bold" style={{ color: 'var(--fiq-text)' }}>
-              Suis des athlètes
+        <div className="space-y-4">
+          {/* CTA explicatif */}
+          <div className="fiq-card text-center py-6 space-y-2">
+            <div className="flex justify-center text-4xl">🏋️</div>
+            <p className="font-black text-base" style={{ color: 'var(--fiq-text)' }}>
+              Suis tes premiers athlètes
             </p>
-            <p className="text-sm mt-1" style={{ color: 'var(--fiq-muted)' }}>
-              Leurs séances apparaîtront ici
+            <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>
+              Leurs séances apparaîtront ici une fois abonné
             </p>
           </div>
+
+          {/* Athlètes suggérés directement dans l'onglet Abonnements */}
+          {suggestedAthletes.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[11px] uppercase font-black tracking-widest px-1" style={{ color: 'var(--fiq-muted)' }}>
+                Athlètes à suivre
+              </p>
+              {suggestedAthletes.slice(0, 5).map((athlete) => {
+                const isFollowed = followedIds.has(athlete.user_id)
+                const initial    = (athlete.display_name || athlete.username || '?')[0].toUpperCase()
+                return (
+                  <div
+                    key={athlete.user_id}
+                    className="flex items-center gap-3 p-3 rounded-2xl"
+                    style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}
+                  >
+                    <Link href={athlete.username ? `/u/${athlete.username}` : '#'} className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="relative w-11 h-11 rounded-xl overflow-hidden flex-shrink-0" style={{ background: 'var(--fiq-accent)' }}>
+                        {athlete.avatar_url ? (
+                          <Image src={athlete.avatar_url} alt={athlete.display_name} fill className="object-cover" sizes="44px" />
+                        ) : (
+                          <span className="w-full h-full flex items-center justify-center text-base font-black" style={{ color: 'var(--bg)' }}>
+                            {initial}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-black truncate" style={{ color: 'var(--fiq-text)' }}>
+                          {athlete.display_name}
+                        </p>
+                        <p className="text-xs truncate" style={{ color: 'var(--fiq-muted)' }}>
+                          {athlete.followers_count > 0 ? `${athlete.followers_count} abonné${athlete.followers_count > 1 ? 's' : ''}` : '@' + (athlete.username ?? '')}
+                          {athlete.recent_shares > 0 && ` · ${athlete.recent_shares} séance${athlete.recent_shares > 1 ? 's' : ''} ce mois`}
+                        </p>
+                      </div>
+                    </Link>
+                    <button
+                      onClick={() => handleFollow(athlete.user_id, isFollowed)}
+                      disabled={followLoading === athlete.user_id}
+                      className="flex-shrink-0 flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-black transition-all active:scale-95 disabled:opacity-60"
+                      style={isFollowed
+                        ? { background: 'var(--fiq-faint)', color: 'var(--fiq-muted)', border: '1px solid var(--fiq-border)' }
+                        : { background: 'var(--fiq-accent)', color: 'var(--bg)' }
+                      }
+                    >
+                      {followLoading === athlete.user_id ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : isFollowed ? 'Suivi ✓' : (
+                        <span className="flex items-center gap-1"><UserPlus className="w-3 h-3" />Suivre</span>
+                      )}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Ou explorer */}
           <button
             onClick={() => setActiveTab('discover')}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-sm"
-            style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-sm"
+            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
           >
             <Compass className="w-4 h-4" />
-            Explorer la communauté
+            Explorer toute la communauté
           </button>
         </div>
       )}
