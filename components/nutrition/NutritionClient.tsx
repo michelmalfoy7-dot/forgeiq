@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Plus, Camera, ScanLine, Search, Trash2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, X, Check, Keyboard, Star, ChefHat, Minus, ArrowLeft, Link2, Sparkles, Calendar } from 'lucide-react'
+import { Plus, Camera, ScanLine, Search, Trash2, Pencil, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, X, Check, Keyboard, Star, ChefHat, Minus, ArrowLeft, Link2, Sparkles, Calendar, Copy } from 'lucide-react'
 import { WaterWidget } from '@/components/nutrition/WaterWidget'
 import { FastingWidget } from '@/components/nutrition/FastingWidget'
 import { MicroNutrientWidget, MicroTotals } from '@/components/nutrition/MicroNutrientWidget'
@@ -197,14 +197,116 @@ function MacroRing({ value, target, color, label }: { value: number; target: num
   )
 }
 
-function FoodCard({ log, onDelete }: { log: FoodLog; onDelete: (id: string) => void }) {
+function FoodCard({
+  log,
+  onDelete,
+  onUpdate,
+}: {
+  log: FoodLog
+  onDelete: (id: string) => void
+  onUpdate: (updated: FoodLog) => void
+}) {
   const [deleting, setDeleting] = useState(false)
+  // État d'édition inline
+  const [editing, setEditing] = useState(false)
+  const [editQty, setEditQty] = useState(String(log.quantity_g))
+  const [editMeal, setEditMeal] = useState(log.meal_type)
+  const [saving, setSaving] = useState(false)
 
   async function handleDelete() {
     setDeleting(true)
-    await fetch(`/api/nutrition/log?id=${log.id}`, { method: 'DELETE' })
-    onDelete(log.id)
-    setDeleting(false)
+    try {
+      const res = await fetch(`/api/nutrition/log?id=${log.id}`, { method: 'DELETE' })
+      const { error } = await res.json()
+      if (!error) onDelete(log.id)
+    } catch {
+      // Erreur réseau — l'entrée reste visible
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  async function handleSaveEdit() {
+    const qty = parseFloat(editQty)
+    if (!qty || qty <= 0) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/nutrition/log', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: log.id, quantity_g: qty, meal_type: editMeal }),
+      })
+      const { data, error } = await res.json()
+      if (data && !error) {
+        onUpdate(data)
+        setEditing(false)
+      }
+    } catch {
+      // Erreur réseau — log reste inchangé
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <div
+        className="py-3 space-y-2"
+        style={{ borderTop: '1px solid var(--fiq-border)' }}
+      >
+        <p className="text-sm font-semibold truncate" style={{ color: 'var(--fiq-text)' }}>
+          ✏️ {log.food_name}
+        </p>
+        {/* Quantité */}
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            inputMode="numeric"
+            value={editQty}
+            onChange={e => setEditQty(e.target.value)}
+            className="w-24 px-3 py-2 rounded-xl text-sm outline-none text-center font-black"
+            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+            min="1" max="5000"
+            autoFocus
+          />
+          <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>g</span>
+          {/* Sélecteur repas compact */}
+          <div className="flex gap-1 flex-1 overflow-x-auto">
+            {MEAL_ORDER.map(m => (
+              <button
+                key={m}
+                onClick={() => setEditMeal(m)}
+                className="shrink-0 px-2 py-1.5 rounded-lg text-[10px] font-black transition-all"
+                style={{
+                  background: editMeal === m ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
+                  color: editMeal === m ? 'var(--bg)' : 'var(--fiq-muted)',
+                  border: `1px solid ${editMeal === m ? 'var(--fiq-accent)' : 'var(--fiq-border)'}`,
+                }}
+              >
+                {m === 'breakfast' ? '🌅' : m === 'lunch' ? '☀️' : m === 'dinner' ? '🌙' : '🍎'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setEditing(false)}
+            className="flex-1 py-2 rounded-xl text-xs font-semibold"
+            style={{ background: 'transparent', color: 'var(--fiq-muted)', border: '1px solid var(--fiq-border)' }}
+          >
+            Annuler
+          </button>
+          <button
+            onClick={handleSaveEdit}
+            disabled={saving || !editQty || parseFloat(editQty) <= 0}
+            className="flex-1 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1"
+            style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+          >
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Check className="w-3 h-3" />Valider</>}
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -243,11 +345,21 @@ function FoodCard({ log, onDelete }: { log: FoodLog; onDelete: (id: string) => v
           <p className="text-[10px] mt-0.5 italic" style={{ color: 'var(--fiq-muted)' }}>{log.ai_note}</p>
         )}
       </div>
+      {/* Bouton édition */}
+      <button
+        onClick={() => { setEditQty(String(log.quantity_g)); setEditMeal(log.meal_type); setEditing(true) }}
+        className="p-1.5 rounded-lg flex-shrink-0 transition-all"
+        style={{ color: 'var(--fiq-muted)' }}
+        title="Modifier"
+      >
+        <Pencil className="w-3.5 h-3.5" />
+      </button>
       <button
         onClick={handleDelete}
         disabled={deleting}
         className="p-1.5 rounded-lg flex-shrink-0 transition-all"
         style={{ color: 'var(--fiq-muted)' }}
+        title="Supprimer"
       >
         {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
       </button>
@@ -332,6 +444,7 @@ function BarcodeScannerView({
                   stopRef.current = true
                   setDetected(true)
                   controlsRef.current?.stop()
+                  navigator.vibrate?.(100) // Vibration courte : code détecté ✓
                   onDetected(codes[0].rawValue)
                   return
                 }
@@ -353,6 +466,7 @@ function BarcodeScannerView({
                 stopRef.current = true
                 setDetected(true)
                 ctrl.stop()
+                navigator.vibrate?.(100) // Vibration courte : code détecté ✓
                 onDetected(result.getText())
               }
             }
@@ -641,7 +755,12 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
   }, [selectedFood, favorites])
 
   // Charger les favoris dès l'ouverture du modal (pour les afficher dans l'écran 'choose')
+  // Aussi recharger si la liste a été vidée (cache invalidé après saveFavorite)
   useEffect(() => { loadFavorites() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (favorites.length === 0 && !favLoading) loadFavorites()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
 
   // Cycling des messages de chargement analyse photo
   useEffect(() => {
@@ -679,6 +798,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
       const res = await fetch(`/api/nutrition/scan?barcode=${barcode}`)
       const { data, error } = await res.json()
       if (error || !data) {
+        navigator.vibrate?.([100, 50, 100]) // Double vibration : produit non trouvé
         setBarcodeError('Produit non trouvé. Essaie la recherche manuelle.')
         return
       }
@@ -1020,7 +1140,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
         carbs_per_100g: selectedRecipe.carbs_per_serving ?? null,
         fat_per_100g: selectedRecipe.fat_per_serving ?? null,
         fiber_per_100g: selectedRecipe.fiber_per_serving ?? null,
-        source: 'search',
+        source: 'recipe',
         ai_note: `🍽️ Recette · ${portionLabel}`,
         // Micros directs (déjà en valeur absolue par portion × nb portions)
         iron_mg_direct:       selectedRecipe.iron_mg_per_serving       != null ? selectedRecipe.iron_mg_per_serving       * recipePortions : null,
@@ -1929,6 +2049,12 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
               </div>
             )}
 
+            {searchQuery && !searchLoading && searchResults.length === 0 && (
+              <p className="text-sm text-center py-4" style={{ color: 'var(--fiq-muted)' }}>
+                Aucun résultat pour « {searchQuery} »
+              </p>
+            )}
+
             {searchQuery && (
               <div className="space-y-1 max-h-[42vh] overflow-y-auto pb-2">
                 {searchResults.map((f, i) => (
@@ -2338,7 +2464,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
                         value={photoNames[idx] ?? aliment.nom}
                         onChange={e => setPhotoNames(prev => ({ ...prev, [idx]: e.target.value }))}
                         className="flex-1 px-2 py-1 rounded-lg text-sm font-semibold outline-none min-w-0"
-                        style={{ background: 'var(--fiq-surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+                        style={{ background: 'var(--surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
                         placeholder="Nom de l'aliment"
                       />
                       <button
@@ -2363,7 +2489,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
                           value={qtyRaw}
                           onChange={e => setPhotoQuantities(prev => ({ ...prev, [idx]: e.target.value }))}
                           className="w-16 px-2 py-1 rounded-lg text-xs text-center outline-none"
-                          style={{ background: 'var(--fiq-surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+                          style={{ background: 'var(--surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
                           min="1" max="2000"
                         />
                         <span className="text-xs" style={{ color: 'var(--fiq-muted)' }}>g</span>
@@ -2609,6 +2735,10 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
     setLogs(prev => prev.filter(l => l.id !== id))
   }
 
+  function handleUpdate(updated: FoodLog) {
+    setLogs(prev => prev.map(l => l.id === updated.id ? updated : l))
+  }
+
   function handleAdded(log: FoodLog) {
     setLogs(prev => [...prev, log])
   }
@@ -2688,6 +2818,38 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
       setSuggestError('Erreur réseau. Réessaie.')
     } finally {
       setSuggestLoading(false)
+    }
+  }
+
+  // ── Copier repas de la veille ────────────────────────────────
+
+  const [copying, setCopying] = useState(false)
+  const [copyToast, setCopyToast] = useState<string | null>(null)
+
+  async function copyYesterdayMeals() {
+    if (copying) return
+    setCopying(true)
+    try {
+      const res = await fetch('/api/nutrition/log/copy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_date: viewDate }),
+      })
+      const { data, error } = await res.json()
+      if (error || !data) {
+        setCopyToast('Erreur lors de la copie. Réessaie.')
+      } else if (data.count === 0) {
+        setCopyToast('Aucun repas à copier (journal de la veille vide).')
+      } else {
+        setLogs(prev => [...prev, ...data.created])
+        setCopyToast(`${data.count} aliment${data.count > 1 ? 's' : ''} copié${data.count > 1 ? 's' : ''} depuis hier !`)
+      }
+      setTimeout(() => setCopyToast(null), 3500)
+    } catch {
+      setCopyToast('Erreur réseau. Réessaie.')
+      setTimeout(() => setCopyToast(null), 3500)
+    } finally {
+      setCopying(false)
     }
   }
 
@@ -2858,6 +3020,31 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
         </button>
       </div>
 
+      {/* Toast copie repas */}
+      {copyToast && (
+        <div
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] px-4 py-2.5 rounded-xl text-sm font-semibold shadow-lg max-w-[360px] text-center"
+          style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+        >
+          {copyToast}
+        </div>
+      )}
+
+      {/* Bouton "Copier d'hier" — visible si le journal est vide OU si on est sur un jour passé */}
+      {(!isToday || logs.length === 0) && (
+        <button
+          onClick={copyYesterdayMeals}
+          disabled={copying}
+          className="w-full mb-3 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all"
+          style={{ background: 'var(--fiq-faint)', border: '1px dashed var(--fiq-border)', color: 'var(--fiq-muted)' }}
+        >
+          {copying
+            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            : <Copy className="w-3.5 h-3.5" />}
+          Copier les repas de la veille
+        </button>
+      )}
+
       {/* Résumé calories */}
       <div className="fiq-card mb-4 space-y-3">
         <div className="flex items-center justify-between">
@@ -2927,6 +3114,32 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
           <MacroRing value={totals.fat_g} target={targets.fat_g} color="var(--fiq-orange)" label="Lipides" />
           <MacroRing value={totals.fiber_g} target={25} color="#A855F7" label="Fibres" />
         </div>
+
+        {/* Ligne macros restantes */}
+        {(() => {
+          const restProt = Math.round(targets.protein_g - totals.protein_g)
+          const restCarbs = Math.round(targets.carbs_g - totals.carbs_g)
+          const restFat = Math.round(targets.fat_g - totals.fat_g)
+          return (
+            <p
+              className="text-xs text-center tabular-nums"
+              style={{ color: 'var(--fiq-muted)', fontVariantNumeric: 'tabular-nums' }}
+            >
+              Reste · {' '}
+              <span style={{ color: restProt < 0 ? 'var(--fiq-red)' : undefined }}>
+                Prot: {restProt}g
+              </span>
+              {' · '}
+              <span style={{ color: restCarbs < 0 ? 'var(--fiq-red)' : undefined }}>
+                Gluc: {restCarbs}g
+              </span>
+              {' · '}
+              <span style={{ color: restFat < 0 ? 'var(--fiq-red)' : undefined }}>
+                Lip: {restFat}g
+              </span>
+            </p>
+          )
+        })()}
       </div>
 
       {/* Widget hydratation */}
@@ -3053,7 +3266,7 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
                   ) : (
                     <>
                       {entries.map(l => (
-                        <FoodCard key={l.id} log={l} onDelete={handleDelete} />
+                        <FoodCard key={l.id} log={l} onDelete={handleDelete} onUpdate={handleUpdate} />
                       ))}
                       <button
                         onClick={() => setModalMeal(meal)}

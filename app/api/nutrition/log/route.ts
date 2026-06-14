@@ -71,7 +71,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Micros directs (recettes) — priorité sur foods_library
-    if (iron_mg_direct != null || magnesium_mg_direct != null || zinc_mg_direct != null) {
+    if (iron_mg_direct != null || magnesium_mg_direct != null || zinc_mg_direct != null
+      || calcium_mg_direct != null || potassium_mg_direct != null
+      || vitamin_c_mg_direct != null || vitamin_d_mcg_direct != null) {
       entry.iron_mg       = iron_mg_direct       != null ? Math.round(iron_mg_direct       * 1000) / 1000 : null
       entry.magnesium_mg  = magnesium_mg_direct  != null ? Math.round(magnesium_mg_direct  * 10)   / 10   : null
       entry.zinc_mg       = zinc_mg_direct       != null ? Math.round(zinc_mg_direct       * 1000) / 1000 : null
@@ -107,6 +109,74 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ data, error: null })
   } catch (err) {
     console.error('Nutrition log error:', err)
+    return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
+  }
+}
+
+// PATCH : modifier un log existant (quantité et/ou repas)
+export async function PATCH(req: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
+
+    const { id, quantity_g, meal_type } = await req.json()
+    if (!id) return NextResponse.json({ data: null, error: 'ID manquant' }, { status: 400 })
+
+    const qty = Number(quantity_g)
+    if (!qty || qty <= 0 || qty > 100000) {
+      return NextResponse.json({ data: null, error: 'Quantité invalide' }, { status: 400 })
+    }
+
+    // Récupérer le log existant pour recalculer les macros proportionnellement
+    const { data: existing, error: fetchErr } = await supabase
+      .from('food_logs')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (fetchErr || !existing) {
+      return NextResponse.json({ data: null, error: 'Log introuvable' }, { status: 404 })
+    }
+
+    // Recalcul proportionnel depuis la quantité précédente → nouvelle quantité
+    const prevQty = Number(existing.quantity_g) || 100
+    const ratio = qty / prevQty
+
+    const updates: Record<string, unknown> = { quantity_g: qty }
+
+    // Macros principales — recalcul proportionnel
+    if (existing.calories  != null) updates.calories  = Math.round(existing.calories  * ratio * 10) / 10
+    if (existing.protein_g != null) updates.protein_g = Math.round(existing.protein_g * ratio * 10) / 10
+    if (existing.carbs_g   != null) updates.carbs_g   = Math.round(existing.carbs_g   * ratio * 10) / 10
+    if (existing.fat_g     != null) updates.fat_g     = Math.round(existing.fat_g     * ratio * 10) / 10
+    if (existing.fiber_g   != null) updates.fiber_g   = Math.round(existing.fiber_g   * ratio * 10) / 10
+
+    // Micronutriments — recalcul proportionnel
+    if (existing.iron_mg       != null) updates.iron_mg       = Math.round(existing.iron_mg       * ratio * 1000) / 1000
+    if (existing.magnesium_mg  != null) updates.magnesium_mg  = Math.round(existing.magnesium_mg  * ratio * 10)   / 10
+    if (existing.zinc_mg       != null) updates.zinc_mg       = Math.round(existing.zinc_mg       * ratio * 1000) / 1000
+    if (existing.calcium_mg    != null) updates.calcium_mg    = Math.round(existing.calcium_mg    * ratio * 10)   / 10
+    if (existing.potassium_mg  != null) updates.potassium_mg  = Math.round(existing.potassium_mg  * ratio * 10)   / 10
+    if (existing.vitamin_c_mg  != null) updates.vitamin_c_mg  = Math.round(existing.vitamin_c_mg  * ratio * 100)  / 100
+    if (existing.vitamin_d_mcg != null) updates.vitamin_d_mcg = Math.round(existing.vitamin_d_mcg * ratio * 100)  / 100
+
+    // Mise à jour du meal_type si fourni
+    if (meal_type) updates.meal_type = meal_type
+
+    const { data, error } = await supabase
+      .from('food_logs')
+      .update(updates)
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .select()
+      .single()
+
+    if (error) throw error
+    return NextResponse.json({ data, error: null })
+  } catch (err) {
+    console.error('Nutrition log PATCH error:', err)
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
   }
 }
