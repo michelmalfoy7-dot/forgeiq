@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { rateLimit } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +15,11 @@ export async function GET(req: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
+
+    // 100 recherches max par user par minute (anti-scraping base aliments)
+    if (!rateLimit(`nutrition-search:${user.id}`, 100, 60 * 1000)) {
+      return NextResponse.json({ data: [], error: null }) // silencieux côté UI
+    }
 
     const raw = req.nextUrl.searchParams.get('q') ?? ''
     const q = sanitizeLike(raw)

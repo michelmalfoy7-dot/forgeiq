@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { rateLimit } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +14,11 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
+
+    // 60 recherches max par user par minute (anti-énumération)
+    if (!rateLimit(`social-search:${user.id}`, 60, 60 * 1000)) {
+      return NextResponse.json({ data: null, error: 'Trop de requêtes, réessaie dans une minute' }, { status: 429 })
+    }
 
     const { searchParams } = new URL(request.url)
     const q           = sanitizeLike(searchParams.get('q') ?? '')
