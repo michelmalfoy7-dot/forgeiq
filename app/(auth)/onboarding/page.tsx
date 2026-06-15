@@ -304,7 +304,7 @@ function StepIdentite({
           placeholder="Ex: Michel, MikeLifts, Coach_M…"
           value={displayName}
           onChange={(e) => onDisplayName(e.target.value)}
-          maxLength={32}
+          maxLength={50}
           autoFocus
           className="w-full px-4 py-3 rounded-xl text-base outline-none"
           style={{

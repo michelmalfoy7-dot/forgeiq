@@ -3117,18 +3117,22 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
         </div>
       )}
 
-      {/* Bouton "Copier d'hier" — visible si le journal est vide OU si on est sur un jour passé */}
-      {(!isToday || logs.length === 0) && (
+      {/* Bouton "Copier d'hier" — visible uniquement si le journal du jour est vide */}
+      {isToday && logs.length === 0 && (
         <button
           onClick={copyYesterdayMeals}
           disabled={copying}
-          className="w-full mb-3 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all"
-          style={{ background: 'var(--fiq-faint)', border: '1px dashed var(--fiq-border)', color: 'var(--fiq-muted)' }}
+          className="w-full mb-3 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold transition-all active:scale-[0.98]"
+          style={{
+            background: 'var(--fiq-faint)',
+            border: '1px solid var(--fiq-border)',
+            color: 'var(--fiq-muted)',
+          }}
         >
           {copying
             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            : <Copy className="w-3.5 h-3.5" />}
-          Copier les repas de la veille
+            : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--fiq-accent)' }} />}
+          <span>← Copier les repas d&apos;hier</span>
         </button>
       )}
 

@@ -194,14 +194,16 @@ export function ProfileClient({
   const [tdee, setTdee] = useState<TDEEBreakdown | null>(null)
   const [tdeeLoading, setTdeeLoading] = useState(false)
   const [tdeeLoaded, setTdeeLoaded] = useState(false)
+  const [tdeeError, setTdeeError] = useState<string | null>(null)
   // 4a. Lazy-load TDEE : déclenché seulement quand l'onglet Paramètres est actif
   useEffect(() => {
     if (activeTab !== 'parametres' || tdeeLoaded) return
     setTdeeLoading(true)
+    setTdeeError(null)
     fetch('/api/profile/tdee')
       .then(r => r.json())
       .then(({ data }) => { if (data) setTdee(data) })
-      .catch(() => {/* silencieux */})
+      .catch(() => { setTdeeError('Calcul TDEE indisponible — valeurs par défaut affichées') })
       .finally(() => { setTdeeLoading(false); setTdeeLoaded(true) })
   }, [activeTab, tdeeLoaded])
   const [customCalories, setCustomCalories] = useState(String(profile?.custom_calories ?? ''))
@@ -903,6 +905,12 @@ export function ProfileClient({
                 ) : (
                   <p className="text-xs px-1" style={{ color: 'var(--fiq-muted)' }}>
                     Impossible de calculer le TDEE. Vérifie que ton profil (poids, taille, âge) est renseigné.
+                  </p>
+                )}
+
+                {tdeeError && (
+                  <p style={{ fontSize: '11px', color: 'var(--fiq-muted)' }}>
+                    {tdeeError}
                   </p>
                 )}
 

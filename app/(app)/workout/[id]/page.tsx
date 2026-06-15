@@ -166,6 +166,8 @@ export default function WorkoutSessionPage() {
   const [sharingCard, setSharingCard] = useState(false)
   // Suivi premier partage (viral loop) — true = c'est la première séance jamais terminée
   const [isFirstWorkout, setIsFirstWorkout] = useState(false)
+  // Auto-start timer : ensemble des set IDs pour lesquels le timer a déjà été déclenché auto
+  const autoStartedSetsRef = useRef<Set<string>>(new Set())
   // Format carte : 'square' (1080×1080) | 'story' (1080×1920)
   const [cardFormat, setCardFormat] = useState<'square' | 'story'>('square')
   // Note de séance globale (affichée en bas du logger, avant "Terminer")
@@ -791,32 +793,56 @@ export default function WorkoutSessionPage() {
   }
 
   function updateSet(groupIdx: number, setId: string, key: keyof SetRow, value: string | boolean | number) {
+    let updatedSet: SetRow | null = null
+    let exerciseId = ''
     setGroups((prev) => {
       const updated = [...prev]
+      exerciseId = updated[groupIdx]?.exercise_id ?? ''
       updated[groupIdx] = {
         ...updated[groupIdx],
         sets: updated[groupIdx].sets.map((s) => {
           if (s.id !== setId) return s
+          let next: SetRow
           if (key === 'weight_kg') {
             // Stocker en string normalisée (virgule → point) pendant la saisie
             // Ça permet "6." comme état intermédiaire sans perdre le point décimal
-            if (value === '') return { ...s, weight_kg: '' }
-            const norm = String(value).replace(',', '.')
-            return { ...s, weight_kg: norm }
+            if (value === '') { next = { ...s, weight_kg: '' } }
+            else {
+              const norm = String(value).replace(',', '.')
+              next = { ...s, weight_kg: norm }
+            }
+          } else if (key === 'rpe') {
+            if (value === '') { next = { ...s, rpe: '' } }
+            else {
+              const norm = String(value).replace(',', '.')
+              next = { ...s, rpe: norm }
+            }
+          } else if (key === 'reps') {
+            next = { ...s, reps: value === '' ? '' : parseInt(String(value), 10) }
+          } else {
+            next = { ...s, [key]: value }
           }
-          if (key === 'rpe') {
-            if (value === '') return { ...s, rpe: '' }
-            const norm = String(value).replace(',', '.')
-            return { ...s, rpe: norm }
-          }
-          if (key === 'reps') {
-            return { ...s, reps: value === '' ? '' : parseInt(String(value), 10) }
-          }
-          return { ...s, [key]: value }
+          updatedSet = next
+          return next
         }),
       }
       return updated
     })
+
+    // ── Auto-start timer de repos quand un set devient "complet" ─────────
+    // Déclenché une seule fois par set (flag dans autoStartedSetsRef)
+    if (updatedSet) {
+      const s = updatedSet as SetRow
+      const parseW = (v: string | number) => parseFloat(String(v).replace(',', '.')) || 0
+      const isComplete = !s.is_warmup &&
+        s.weight_kg !== '' && parseW(s.weight_kg) > 0 &&
+        s.reps !== '' && Number(s.reps) > 0
+      if (isComplete && !autoStartedSetsRef.current.has(setId) && restEndRef.current === null) {
+        autoStartedSetsRef.current.add(setId)
+        startRest(undefined, exerciseId)
+        if ('vibrate' in navigator) navigator.vibrate(50)
+      }
+    }
   }
 
   function removeSet(groupIdx: number, setId: string) {
@@ -2392,8 +2418,8 @@ function ExerciseCard({
       {/* En-tête colonnes — 7 colonnes : # | poids | reps | RPE | RIR | validé | suppr */}
       <div className="grid grid-cols-[40px_1fr_1fr_48px_36px_20px_32px] gap-1.5">
         <span className="fiq-label text-center">#</span>
-        <span className="fiq-label text-center">Poids (kg)</span>
-        <span className="fiq-label text-center">Reps</span>
+        <span className="fiq-label text-center">kg</span>
+        <span className="fiq-label text-center">reps</span>
         <span className="fiq-label text-center">RPE</span>
         <span className="fiq-label text-center">RIR</span>
         <span />
@@ -2428,6 +2454,40 @@ function ExerciseCard({
 
         const noteOpen = openNoteSetId === s.id
 
+        // Données de la dernière séance pour ce set (même index)
+        const setIdx = group.sets.indexOf(s)
+        const lastSetData = group.lastSession && group.lastSession[setIdx]
+        const currentW = s.weight_kg !== '' ? parseFloat(String(s.weight_kg).replace(',', '.')) : null
+        const currentR = s.reps !== '' ? Number(s.reps) : null
+        const lastW = lastSetData?.weight_kg ?? null
+        const lastR = lastSetData?.reps ?? null
+        // Couleur comparaison : vert si >= dernier, muted sinon
+        const compareColor = (currentW !== null && lastW !== null && currentR !== null && lastR !== null)
+          ? (currentW > lastW || (currentW === lastW && currentR >= lastR)
+              ? 'var(--fiq-accent)'
+              : 'var(--fiq-muted)')
+          : 'var(--fiq-muted)'
+
+        // Style commun des boutons stepper
+        const stepperBtnStyle: React.CSSProperties = {
+          width: 28,
+          height: 36,
+          minWidth: 28,
+          borderRadius: 8,
+          background: 'var(--fiq-faint)',
+          border: '1px solid var(--fiq-border)',
+          color: 'var(--fiq-text)',
+          fontSize: 14,
+          fontWeight: 700,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          cursor: 'pointer',
+          // Agrandir la zone de tap sans modifier la taille visuelle
+          padding: '0 2px',
+        }
+
         return (
           <div key={s.id}>
             <div className="grid grid-cols-[40px_1fr_1fr_48px_36px_20px_32px] gap-1.5 items-center">
@@ -2449,28 +2509,70 @@ function ExerciseCard({
                         : <span className="text-xs" style={{ color: 'var(--fiq-text)' }}>{s.set_number}</span>
                 }
               </button>
-              <Input
-                type="text"
-                inputMode="decimal"
-                placeholder="—"
-                value={s.weight_kg}
-                onChange={(e) => onUpdateSet(s.id, 'weight_kg', e.target.value)}
-                className="text-center text-sm h-9"
-                style={{
-                  background: 'var(--surface)',
-                  borderColor: isPR ? 'var(--fiq-accent)' : setType === 'top_set' ? '#F59E0B44' : setType === 'backoff' ? '#3D8BFF44' : setType === 'dropset' ? '#FF6B3544' : setType === 'failure' ? '#EF444444' : 'var(--fiq-border)',
-                  color: 'var(--fiq-text)',
-                }}
-              />
-              <Input
-                type="text"
-                inputMode="numeric"
-                placeholder="—"
-                value={s.reps}
-                onChange={(e) => onUpdateSet(s.id, 'reps', e.target.value)}
-                className="text-center text-sm h-9"
-                style={{ background: 'var(--surface)', borderColor: 'var(--fiq-border)', color: 'var(--fiq-text)' }}
-              />
+              {/* Poids avec steppers -2.5 / +2.5 */}
+              <div className="flex items-center gap-0.5">
+                <button
+                  style={stepperBtnStyle}
+                  onClick={() => {
+                    const cur = parseFloat(String(s.weight_kg).replace(',', '.')) || 0
+                    const next = Math.max(0, Math.round((cur - 2.5) * 100) / 100)
+                    onUpdateSet(s.id, 'weight_kg', String(next))
+                  }}
+                  aria-label="-2.5 kg"
+                >−</button>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="—"
+                  value={s.weight_kg}
+                  onChange={(e) => onUpdateSet(s.id, 'weight_kg', e.target.value)}
+                  className="text-center text-sm h-9 flex-1 min-w-0"
+                  style={{
+                    background: 'var(--surface)',
+                    borderColor: isPR ? 'var(--fiq-accent)' : setType === 'top_set' ? '#F59E0B44' : setType === 'backoff' ? '#3D8BFF44' : setType === 'dropset' ? '#FF6B3544' : setType === 'failure' ? '#EF444444' : 'var(--fiq-border)',
+                    color: 'var(--fiq-text)',
+                    padding: '0 2px',
+                  }}
+                />
+                <button
+                  style={stepperBtnStyle}
+                  onClick={() => {
+                    const cur = parseFloat(String(s.weight_kg).replace(',', '.')) || 0
+                    const next = Math.round((cur + 2.5) * 100) / 100
+                    onUpdateSet(s.id, 'weight_kg', String(next))
+                  }}
+                  aria-label="+2.5 kg"
+                >+</button>
+              </div>
+              {/* Reps avec steppers -1 / +1 */}
+              <div className="flex items-center gap-0.5">
+                <button
+                  style={stepperBtnStyle}
+                  onClick={() => {
+                    const cur = Number(s.reps) || 0
+                    const next = Math.max(0, cur - 1)
+                    onUpdateSet(s.id, 'reps', String(next))
+                  }}
+                  aria-label="-1 rep"
+                >−</button>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="—"
+                  value={s.reps}
+                  onChange={(e) => onUpdateSet(s.id, 'reps', e.target.value)}
+                  className="text-center text-sm h-9 flex-1 min-w-0"
+                  style={{ background: 'var(--surface)', borderColor: 'var(--fiq-border)', color: 'var(--fiq-text)', padding: '0 2px' }}
+                />
+                <button
+                  style={stepperBtnStyle}
+                  onClick={() => {
+                    const cur = Number(s.reps) || 0
+                    onUpdateSet(s.id, 'reps', String(cur + 1))
+                  }}
+                  aria-label="+1 rep"
+                >+</button>
+              </div>
               <Input
                 type="text"
                 inputMode="decimal"
@@ -2520,8 +2622,8 @@ function ExerciseCard({
               </button>
             </div>
 
-            {/* Bouton note 💬 — discret, à droite hors grille */}
-            <div className="flex items-center gap-1.5 mt-0.5 pl-[52px]">
+            {/* Bouton note 💬 + comparaison dernière séance — discrets, sous la row */}
+            <div className="flex items-center justify-between mt-0.5 pl-[52px] pr-1">
               <button
                 onClick={() => setOpenNoteSetId(noteOpen ? null : s.id)}
                 className="flex items-center gap-1 text-[10px] py-0.5"
@@ -2531,6 +2633,15 @@ function ExerciseCard({
                 <MessageSquare className="w-3 h-3" />
                 {s.note ? s.note.slice(0, 30) + (s.note.length > 30 ? '…' : '') : ''}
               </button>
+              {/* Comparaison inline : valeur de la dernière séance pour ce set */}
+              {lastSetData && !s.is_warmup && (
+                <span
+                  className="text-[10px] font-semibold tabular-nums flex-shrink-0"
+                  style={{ color: compareColor }}
+                >
+                  {lastW}kg × {lastR}
+                </span>
+              )}
             </div>
 
             {/* Input note inline — s'ouvre sous la row */}

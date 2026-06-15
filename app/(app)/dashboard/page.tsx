@@ -365,7 +365,7 @@ export default async function DashboardPage() {
     pts += stepsPts
 
     // Humeur (max 1 pt)
-    const mood = (todayLog as { mood_score?: number | null }).mood_score ?? null
+    const mood = (todayLog as { motivation_score?: number | null }).motivation_score ?? null
     let moodPts = 0
     if (mood !== null) {
       if (mood >= 7) moodPts = 1
@@ -377,7 +377,8 @@ export default async function DashboardPage() {
     const todayTrend = todayLog.weight_trend ?? null
     let ewmaPts = 0
     if (todayTrend !== null) {
-      const prevDayLog = (weekLogs ?? []).find(l => l.log_date !== today)
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+      const prevDayLog = (weekLogs ?? []).find(l => l.log_date === yesterday)
       // Utilise weight_trend (EWMA) du log précédent, pas le poids brut
       const prevDayTrend = (prevDayLog as { weight_trend?: number | null } | undefined)?.weight_trend ?? null
       if (prevDayTrend !== null && Math.abs(todayTrend - prevDayTrend) < 0.5) ewmaPts = 1

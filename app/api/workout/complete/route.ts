@@ -128,6 +128,10 @@ export async function POST(request: Request) {
           ? s
           : best
       )
+
+      // Guard : skip si le set candidat n'a pas de poids/reps valides (évite NaN ou Infinity dans Epley)
+      if (!heaviestSet || heaviestSet.reps < 1 || heaviestSet.weight_kg <= 0) continue
+
       const prWeight = heaviestSet.weight_kg
       const prReps = heaviestSet.reps
 

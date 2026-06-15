@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
   // Récupérer le dernier check-in de chaque user (pour filtrer les inactifs et calculer le score)
   const { data: recentLogs } = await supabase
     .from('daily_logs')
-    .select('user_id, log_date, weight_trend, sleep_deep_min, sleep_total_min, fatigue_score, steps, mood_score')
+    .select('user_id, log_date, weight_trend, sleep_deep_min, sleep_total_min, fatigue_score, steps, motivation_score')
     .in('user_id', allUserIds)
     .gte('log_date', inactivityThreshold)
     .order('log_date', { ascending: false })
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
     sleep_total_min: number | null
     fatigue_score: number | null
     steps: number | null
-    mood_score: number | null
+    motivation_score: number | null
   }>()
   for (const log of recentLogs ?? []) {
     if (!logByUser.has(log.user_id)) {
@@ -122,9 +122,9 @@ export async function GET(req: NextRequest) {
             if (ratio >= 1) pts += 1.5
             else if (ratio >= 0.7) pts += 1
           }
-          if (log.mood_score !== null) {
-            if (log.mood_score >= 7) pts += 1
-            else if (log.mood_score >= 5) pts += 0.5
+          if (log.motivation_score !== null) {
+            if (log.motivation_score >= 7) pts += 1
+            else if (log.motivation_score >= 5) pts += 0.5
           }
           const recoveryScore = Math.min(10, Math.max(0, Math.round(pts)))
 
