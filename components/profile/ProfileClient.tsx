@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, LogOut, Trash2, Dumbbell, Flame, BarChart2, ChevronRight, MessageCircle, Info, Crown, Users, Globe, Lock, Camera, X, Download, Share2, Copy, Check } from 'lucide-react'
+import { Loader2, LogOut, Trash2, Dumbbell, Flame, BarChart2, ChevronRight, MessageCircle, Info, Crown, Users, Globe, Lock, Camera, X, Download, Check } from 'lucide-react'
 import type { TDEEBreakdown } from '@/lib/utils/tdee'
 import type { Big5PR } from '@/lib/utils/big5'
 import { BadgesSection } from '@/components/profile/BadgesSection'
@@ -192,14 +192,18 @@ export function ProfileClient({
   const [macroMode, setMacroMode] = useState<'auto' | 'custom'>(profile?.macro_mode === 'custom' ? 'custom' : 'auto')
 
   const [tdee, setTdee] = useState<TDEEBreakdown | null>(null)
-  const [tdeeLoading, setTdeeLoading] = useState(true)
+  const [tdeeLoading, setTdeeLoading] = useState(false)
+  const [tdeeLoaded, setTdeeLoaded] = useState(false)
+  // 4a. Lazy-load TDEE : déclenché seulement quand l'onglet Paramètres est actif
   useEffect(() => {
+    if (activeTab !== 'parametres' || tdeeLoaded) return
+    setTdeeLoading(true)
     fetch('/api/profile/tdee')
       .then(r => r.json())
       .then(({ data }) => { if (data) setTdee(data) })
       .catch(() => {/* silencieux */})
-      .finally(() => setTdeeLoading(false))
-  }, [])
+      .finally(() => { setTdeeLoading(false); setTdeeLoaded(true) })
+  }, [activeTab, tdeeLoaded])
   const [customCalories, setCustomCalories] = useState(String(profile?.custom_calories ?? ''))
   const [customProtein, setCustomProtein] = useState(String(profile?.custom_protein_g ?? ''))
   const [customCarbs, setCustomCarbs] = useState(String(profile?.custom_carbs_g ?? ''))
@@ -209,11 +213,6 @@ export function ProfileClient({
   const [saved, setSaved] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
   const [portalLoading, setPortalLoading] = useState(false)
-  const [referralCode, setReferralCode] = useState<string | null>(null)
-  const [referralCount, setReferralCount] = useState(0)
-  const [referralMax, setReferralMax] = useState(3)
-  const [referralLoading, setReferralLoading] = useState(false)
-  const [referralCopied, setReferralCopied] = useState(false)
 
   type SocialProfile = {
     username: string | null
@@ -224,7 +223,8 @@ export function ProfileClient({
     following_count: number
   }
   const [socialProfile, setSocialProfile] = useState<SocialProfile | null>(null)
-  const [socialLoading, setSocialLoading] = useState(true)
+  const [socialLoading, setSocialLoading] = useState(false)
+  const [socialLoaded, setSocialLoaded] = useState(false)
   const [socialUsername, setSocialUsername] = useState('')
   const [socialBio, setSocialBio] = useState('')
   const [socialPublic, setSocialPublic] = useState(false)
@@ -232,7 +232,10 @@ export function ProfileClient({
   const [socialSaved, setSocialSaved] = useState(false)
   const [socialError, setSocialError] = useState<string | null>(null)
 
+  // 4b. Lazy-load profil social : déclenché seulement quand l'onglet Compte est actif
   useEffect(() => {
+    if (activeTab !== 'compte' || socialLoaded) return
+    setSocialLoading(true)
     fetch('/api/social/profile')
       .then(r => r.json())
       .then(({ data }) => {
@@ -244,8 +247,8 @@ export function ProfileClient({
         }
       })
       .catch(() => {/* silencieux */})
-      .finally(() => setSocialLoading(false))
-  }, [])
+      .finally(() => { setSocialLoading(false); setSocialLoaded(true) })
+  }, [activeTab, socialLoaded])
 
   const isPro = isAdmin || subscriptionStatus === 'pro' || subscriptionStatus === 'lifetime'
   const isLifetime = subscriptionStatus === 'lifetime'
@@ -340,30 +343,6 @@ export function ProfileClient({
     router.push('/login')
   }
 
-  async function loadReferral() {
-    if (referralCode) return
-    setReferralLoading(true)
-    try {
-      const res = await fetch('/api/referral')
-      const { data } = await res.json()
-      if (data) { setReferralCode(data.code); setReferralCount(data.count); setReferralMax(data.max ?? 3) }
-    } finally {
-      setReferralLoading(false)
-    }
-  }
-
-  async function copyReferralLink() {
-    if (!referralCode) return
-    const url = `${window.location.origin}/invite/${referralCode}`
-    if (navigator.share) {
-      await navigator.share({ title: 'ForgeIQ', text: 'Rejoins-moi sur ForgeIQ 🏋️', url }).catch(() => null)
-    } else {
-      await navigator.clipboard.writeText(url).catch(() => null)
-      setReferralCopied(true)
-      setTimeout(() => setReferralCopied(false), 2000)
-    }
-  }
-
   async function resetData() {
     setResetting(true)
     try {
@@ -406,8 +385,11 @@ export function ProfileClient({
     }
   }
 
+  // 6. Fix timezone : garantir que la date ISO est traitée en UTC (fallback si 'Z' absent)
   const memberSince = profile?.created_at
-    ? new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' }).format(new Date(profile.created_at))
+    ? new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' }).format(
+        new Date(profile.created_at.endsWith('Z') ? profile.created_at : profile.created_at + 'Z')
+      )
     : '—'
 
   const GOAL_LABEL = GOAL_OPTIONS.find(o => o.value === goal)?.label ?? goal
@@ -538,8 +520,8 @@ export function ProfileClient({
               />
               <StatCard
                 icon={<Flame className="w-5 h-5" style={{ color: 'var(--fiq-orange)' }} />}
-                label="Streak"
-                value={stats.streak}
+                label="Streak check-in"
+                value={stats.checkinStreak ?? stats.streak}
                 unit="j"
               />
             </div>
@@ -1110,62 +1092,6 @@ export function ProfileClient({
 
           {/* Mémoire du coach IA */}
           <CoachMemorySection />
-
-          {/* Inviter un ami — masqué pour le lancement */}
-          {false && (
-          <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--fiq-border)' }}>
-            <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'var(--fiq-faint)' }}>
-              <div>
-                <p className="text-xs font-black uppercase tracking-widest" style={{ color: 'var(--fiq-muted)' }}>
-                  <Users className="w-3 h-3 inline mr-1.5" />
-                  Inviter des amis
-                </p>
-              </div>
-              <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ background: '#B4FF4A22', color: 'var(--fiq-accent)' }}>
-                {referralCode ? `${referralCount}/${referralMax} mois` : '+1 mois/ami'}
-              </span>
-            </div>
-            <div className="p-4 space-y-3" style={{ background: 'var(--fiq-card)' }}>
-              <div
-                className="rounded-xl p-3 text-center"
-                style={{ background: '#B4FF4A12', border: '1px solid #B4FF4A33' }}
-              >
-                <p className="text-xs font-black" style={{ color: 'var(--fiq-accent)' }}>🎁 Pour toi</p>
-                <p className="text-sm font-black mt-0.5" style={{ color: 'var(--fiq-text)' }}>+1 mois Pro par ami invité</p>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Ton ami reçoit 14 jours Pro · Max {referralMax} mois pour toi</p>
-              </div>
-              {referralCode ? (
-                <div className="space-y-2">
-                  <div
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono"
-                    style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-text)' }}
-                  >
-                    <span className="flex-1 truncate">{typeof window !== 'undefined' ? `${window.location.origin}/invite/${referralCode}` : `/invite/${referralCode}`}</span>
-                  </div>
-                  <button
-                    onClick={copyReferralLink}
-                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black transition-all active:scale-95"
-                    style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
-                  >
-                    {referralCopied
-                      ? <><Check className="w-4 h-4" />Copié !</>
-                      : <><Share2 className="w-4 h-4" />Partager mon lien</>
-                    }
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={loadReferral}
-                  disabled={referralLoading}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black transition-all active:scale-95"
-                  style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
-                >
-                  {referralLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Copy className="w-4 h-4" />Générer mon lien d&apos;invitation</>}
-                </button>
-              )}
-            </div>
-          </div>
-          )}
 
           {/* Export RGPD + Déconnexion + Reset */}
           <div className="fiq-card space-y-3">

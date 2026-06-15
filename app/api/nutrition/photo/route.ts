@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { AI_MODELS } from '@/lib/utils/ai-models'
+import { isRealProUser } from '@/lib/utils/plan'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30 // Vercel — analyse vision peut prendre jusqu'à 30s
@@ -32,20 +33,27 @@ export async function POST(req: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    const isAdmin   = profile?.is_admin ?? false
-    const status    = profile?.subscription_status ?? 'free'
-    const plan      = profile?.subscription_plan ?? 'free'
-    const isLifetime = status === 'lifetime' || plan === 'lifetime'
-    const isFree    = !isAdmin && !isLifetime && status !== 'pro'
+    const isAdmin = profile?.is_admin ?? false
+    const status  = profile?.subscription_status ?? 'free'
+    const plan    = profile?.subscription_plan ?? 'free'
+
+    // Utilise isRealProUser pour centraliser la logique Pro (admin + abonnés Stripe)
+    const proUser = isRealProUser(profile)
+    const isFree  = !proUser
 
     let photoLimit: number
-    if (isAdmin || isLifetime) photoLimit = PHOTO_LIMITS.lifetime
-    else if (status === 'pro' && plan === 'annual') photoLimit = PHOTO_LIMITS.annual
-    else if (status === 'pro') photoLimit = PHOTO_LIMITS.monthly
-    else photoLimit = PHOTO_LIMITS.free
+    if (isAdmin || status === 'lifetime' || plan === 'lifetime') {
+      photoLimit = PHOTO_LIMITS.lifetime
+    } else if (status === 'pro' && plan === 'annual') {
+      photoLimit = PHOTO_LIMITS.annual
+    } else if (status === 'pro') {
+      photoLimit = PHOTO_LIMITS.monthly
+    } else {
+      photoLimit = PHOTO_LIMITS.free
+    }
 
     // Free = bloqué immédiatement (photoLimit = 0)
-    if (!isAdmin && isFree) {
+    if (isFree) {
       return NextResponse.json({
         data: null,
         error: 'L\'analyse photo est réservée aux abonnés Pro. Passe en Pro pour scanner tes repas en photo.',
@@ -56,28 +64,21 @@ export async function POST(req: NextRequest) {
 
     if (!isAdmin && photoLimit !== Infinity) {
       // Pro mensuel → compter ce mois-ci
-      let photoCount: number
-      if (false) {
-        photoCount = 0
-      } else {
-        const startOfMonth = new Date()
-        startOfMonth.setDate(1)
-        startOfMonth.setHours(0, 0, 0, 0)
-        const { count } = await supabase
-          .from('food_logs')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('source', 'photo')
-          .gte('created_at', startOfMonth.toISOString())
-        photoCount = count ?? 0
-      }
+      const startOfMonth = new Date()
+      startOfMonth.setDate(1)
+      startOfMonth.setHours(0, 0, 0, 0)
+      const { count } = await supabase
+        .from('food_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('source', 'photo')
+        .gte('created_at', startOfMonth.toISOString())
+      const photoCount = count ?? 0
 
       if (photoCount >= photoLimit) {
         return NextResponse.json({
           data: null,
-          error: isFree
-            ? `Tes ${PHOTO_LIMITS.free} analyses photo gratuites sont épuisées. Passe en Pro pour continuer.`
-            : `Limite de ${photoLimit} analyses photo atteinte ce mois-ci.`,
+          error: `Limite de ${photoLimit} analyses photo atteinte ce mois-ci.`,
           limitReached: true,
           count: photoCount,
           limit: photoLimit,

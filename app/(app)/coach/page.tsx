@@ -703,7 +703,7 @@ export default function CoachPage() {
               </button>
             ) : (
               <p className="text-xs text-center" style={{ color: 'var(--fiq-muted)' }}>
-                <span className="font-black" style={{ color: 'var(--fiq-accent)' }}>{5 - coachCount}</span> message{5 - coachCount > 1 ? 's' : ''} offert{5 - coachCount > 1 ? 's' : ''} restant{5 - coachCount > 1 ? 's' : ''} ·{' '}
+                <span className="font-black" style={{ color: 'var(--fiq-accent)' }}>{coachLimit - coachCount}</span> message{coachLimit - coachCount > 1 ? 's' : ''} offert{coachLimit - coachCount > 1 ? 's' : ''} restant{coachLimit - coachCount > 1 ? 's' : ''} ·{' '}
                 <button onClick={() => setShowPaywall(true)} style={{ color: 'var(--fiq-accent)', fontWeight: 700 }}>
                   Passer en Pro
                 </button>

@@ -13,6 +13,7 @@ import { Dumbbell, TrendingUp, ClipboardList, MessageCircle, Utensils, Users, Ba
 import { FiqBreakfast, FiqLunch, FiqDinner, FiqSnack, FiqStreak, FiqAlert, FiqCheck } from '@/components/ui/FiqIcons'
 import { calcDailyTarget } from '@/lib/utils/tdee'
 import { VolumeHebdoWidget } from '@/components/dashboard/VolumeHebdoWidget'
+import { RecoveryScoreCard } from '@/components/dashboard/RecoveryScoreCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,7 +66,7 @@ export default async function DashboardPage() {
       .order('session_date', { ascending: false }),
 
     supabase.from('daily_logs')
-      .select('log_date, sleep_deep_min, protein_g, fatigue_score, steps, weight_kg')
+      .select('log_date, sleep_deep_min, protein_g, fatigue_score, steps, weight_kg, weight_trend')
       .eq('user_id', user.id)
       .gte('log_date', thirtyDaysAgo)
       .order('log_date', { ascending: false }),
@@ -319,61 +320,73 @@ export default async function DashboardPage() {
   let recoveryScore: number | null = null
   let recoveryLabel = ''
   let recoveryLimitingFactor = ''
+  // Points de détail pour la modale breakdown
+  let recoveryBreakdown = { deepSleepPts: 0, totalSleepPts: 0, fatiguePts: 0, stepsPts: 0, moodPts: 0, ewmaPts: 0 }
 
   if (todayLog) {
     let pts = 0
 
     // Sommeil profond (max 1.5 pts)
     const deepSleepMin = todayLog.sleep_deep_min ?? null
+    let deepSleepPts = 0
     if (deepSleepMin !== null) {
-      if (deepSleepMin >= 90) pts += 1.5
-      else if (deepSleepMin >= 60) pts += 1
-      // < 30 → 0
+      if (deepSleepMin >= 90) deepSleepPts = 1.5
+      else if (deepSleepMin >= 60) deepSleepPts = 1
     }
+    pts += deepSleepPts
 
     // Sommeil total (max 2 pts)
     const sleepTotal = todayLog.sleep_total_min ?? null
+    let totalSleepPts = 0
     if (sleepTotal !== null) {
-      if (sleepTotal >= 420) pts += 2
-      else if (sleepTotal >= 360) pts += 1
-      // < 300 → 0
+      if (sleepTotal >= 420) totalSleepPts = 2
+      else if (sleepTotal >= 360) totalSleepPts = 1
     }
+    pts += totalSleepPts
 
     // Fatigue inversée (max 2 pts) — fatigue_score 1-10, 1=plein d'énergie, 10=épuisé
     const fatigue = todayLog.fatigue_score ?? null
+    let fatiguePts = 0
     if (fatigue !== null) {
-      if (fatigue <= 2) pts += 2
-      else if (fatigue <= 5) pts += 1
-      // > 7 → 0
+      if (fatigue <= 2) fatiguePts = 2
+      else if (fatigue <= 5) fatiguePts = 1
     }
+    pts += fatiguePts
 
     // Pas vs objectif (max 1.5 pts)
     const steps = todayLog.steps ?? null
     const stepsGoal = profile?.steps_goal ?? 8000
+    let stepsPts = 0
     if (steps !== null && stepsGoal > 0) {
       const ratio = steps / stepsGoal
-      if (ratio >= 1) pts += 1.5
-      else if (ratio >= 0.7) pts += 1
-      // < 50% → 0
+      if (ratio >= 1) stepsPts = 1.5
+      else if (ratio >= 0.7) stepsPts = 1
     }
+    pts += stepsPts
 
     // Humeur (max 1 pt)
     const mood = (todayLog as { mood_score?: number | null }).mood_score ?? null
+    let moodPts = 0
     if (mood !== null) {
-      if (mood >= 7) pts += 1
-      else if (mood >= 5) pts += 0.5
+      if (mood >= 7) moodPts = 1
+      else if (mood >= 5) moodPts = 0.5
     }
+    pts += moodPts
 
-    // Poids EWMA stable vs veille (max 1 pt)
-    const todayWeight = todayLog.weight_kg ?? null
-    const todayTrend  = todayLog.weight_trend ?? null
+    // Poids EWMA stable vs veille (max 1 pt) — compare EWMA J vs EWMA J-1
+    const todayTrend = todayLog.weight_trend ?? null
+    let ewmaPts = 0
     if (todayTrend !== null) {
-      const prevTrend = (weekLogs ?? []).find(l => l.log_date !== today)?.weight_kg ?? null
-      if (prevTrend !== null && Math.abs(todayTrend - prevTrend) < 0.5) pts += 1
-    } else if (todayWeight !== null) {
-      pts += 0.5 // Données partielles → bonus partiel
+      const prevDayLog = (weekLogs ?? []).find(l => l.log_date !== today)
+      // Utilise weight_trend (EWMA) du log précédent, pas le poids brut
+      const prevDayTrend = (prevDayLog as { weight_trend?: number | null } | undefined)?.weight_trend ?? null
+      if (prevDayTrend !== null && Math.abs(todayTrend - prevDayTrend) < 0.5) ewmaPts = 1
+    } else if ((todayLog.weight_kg ?? null) !== null) {
+      ewmaPts = 0.5 // Données partielles → bonus partiel
     }
+    pts += ewmaPts
 
+    recoveryBreakdown = { deepSleepPts, totalSleepPts, fatiguePts, stepsPts, moodPts, ewmaPts }
     recoveryScore = Math.min(10, Math.max(0, Math.round(pts)))
 
     if (recoveryScore >= 7) {
@@ -463,42 +476,12 @@ export default async function DashboardPage() {
 
       {/* Score de récupération composite */}
       {recoveryScore !== null ? (
-        <div className="fiq-card flex items-center gap-4">
-          {/* Cercle score */}
-          <div
-            className="relative flex-shrink-0 w-16 h-16 rounded-full flex items-center justify-center"
-            style={{
-              background: recoveryScore >= 7 ? '#B4FF4A18' : recoveryScore >= 5 ? '#F59E0B18' : '#EF444418',
-              border: `2px solid ${recoveryScore >= 7 ? '#B4FF4A44' : recoveryScore >= 5 ? '#F59E0B44' : '#EF444444'}`,
-            }}
-          >
-            <span
-              className="text-2xl font-black fiq-data leading-none"
-              style={{ color: recoveryScore >= 7 ? 'var(--fiq-accent)' : recoveryScore >= 5 ? 'var(--fiq-yellow)' : 'var(--fiq-red)' }}
-            >
-              {recoveryScore}
-            </span>
-            <span
-              className="absolute bottom-1 text-[9px] font-bold"
-              style={{ color: 'var(--fiq-muted)' }}
-            >/10</span>
-          </div>
-          {/* Infos */}
-          <div className="flex-1 min-w-0">
-            <p className="fiq-label">Récupération</p>
-            <p
-              className="text-base font-black mt-0.5"
-              style={{ color: recoveryScore >= 7 ? 'var(--fiq-accent)' : recoveryScore >= 5 ? 'var(--fiq-yellow)' : 'var(--fiq-red)' }}
-            >
-              {recoveryLabel}
-            </p>
-            {recoveryLimitingFactor && (
-              <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--fiq-muted)' }}>
-                {recoveryLimitingFactor}
-              </p>
-            )}
-          </div>
-        </div>
+        <RecoveryScoreCard
+          score={recoveryScore}
+          label={recoveryLabel}
+          limitingFactor={recoveryLimitingFactor}
+          breakdown={recoveryBreakdown}
+        />
       ) : (
         <Link href="/checkin" className="fiq-card flex items-center gap-3" style={{ borderStyle: 'dashed' }}>
           <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"

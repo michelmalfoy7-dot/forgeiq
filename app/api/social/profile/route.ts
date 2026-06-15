@@ -75,6 +75,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ data: null, error: error.message }, { status: 400 })
     }
 
+    // 5. Sync display_name vers profiles si fourni (cohérence entre les deux tables)
+    if (body.display_name !== undefined) {
+      const sanitized = body.display_name ? body.display_name.trim().slice(0, 50) || null : null
+      await supabase
+        .from('profiles')
+        .update({ display_name: sanitized, updated_at: new Date().toISOString() })
+        .eq('id', user.id)
+      // On ignore l'erreur ici (fire-and-forget) — la mise à jour sociale a déjà réussi
+    }
+
     return NextResponse.json({ data, error: null })
   } catch {
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })

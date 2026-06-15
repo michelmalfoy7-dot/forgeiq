@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Dumbbell, Zap, MessageCircle, Share2 } from 'lucide-react'
+import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Dumbbell, Zap, MessageCircle, Share2, MessageSquare } from 'lucide-react'
 import { FiqDumbbell, FiqPR, FiqStreak, FiqCircuit, FiqCheck, FiqAlert } from '@/components/ui/FiqIcons'
 import { Confetti } from '@/components/ui/Confetti'
 import { StreakMilestoneModal } from '@/components/ui/StreakMilestoneModal'
@@ -25,6 +25,7 @@ type SetRow = {
   rpe: string | number         // string pendant la saisie
   is_warmup: boolean
   set_type?: SetType           // type de série : travail / drop set / échec
+  note?: string | null         // note libre par série
 }
 
 /** Normalise virgule → point et parse un poids flottant sans NaN */
@@ -60,6 +61,8 @@ type ExerciseGroup = {
   unilateral_both_sides?: boolean
   sets: SetRow[]
   lastSession?: { weight_kg: number; reps: number }[]
+  // Historique des 3 dernières séances distinctes (groupées par workout_id)
+  sessionHistory?: { date: string; topSets: string }[]
   pr?: number
   // Superset : exercices avec le même superset_id sont visuellement liés
   superset_id?: string | null
@@ -165,6 +168,10 @@ export default function WorkoutSessionPage() {
   const [isFirstWorkout, setIsFirstWorkout] = useState(false)
   // Format carte : 'square' (1080×1080) | 'story' (1080×1920)
   const [cardFormat, setCardFormat] = useState<'square' | 'story'>('square')
+  // Note de séance globale (affichée en bas du logger, avant "Terminer")
+  const [sessionNote, setSessionNote] = useState('')
+  const [showSessionNote, setShowSessionNote] = useState(false)
+
   // Programme lié à la séance (pour "sauvegarder la routine")
   const [programId, setProgramId]             = useState<string | null>(null)
   const [programName, setProgramName]         = useState<string>('')
@@ -589,26 +596,58 @@ export default function WorkoutSessionPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Fetch lastSession + PR pour un exercice ──────────────────
+  // ── Fetch lastSession + PR + historique 3 séances pour un exercice ─────────
   async function fetchExerciseData(exId: string): Promise<{
     lastSession: { weight_kg: number; reps: number }[]
+    sessionHistory: { date: string; topSets: string }[]
     pr: number | undefined
   }> {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { lastSession: [], pr: undefined }
+    if (!user) return { lastSession: [], sessionHistory: [], pr: undefined }
+
+    // Charger les 20 derniers sets (couvre 3+ séances différentes)
     const { data: lastSets } = await supabase.from('workout_sets')
       .select('weight_kg, reps, workout_id, workouts!inner(user_id, session_date)')
       .eq('exercise_id', exId).eq('workouts.user_id', user.id)
-      .not('is_warmup', 'eq', true).order('created_at', { ascending: false }).limit(6)
-    const lastSession = (lastSets ?? []).slice(0, 4).map((s: {weight_kg: number; reps: number}) => ({ weight_kg: s.weight_kg, reps: s.reps }))
+      .not('is_warmup', 'eq', true).order('created_at', { ascending: false }).limit(20)
+
+    // Sets de la dernière séance = les 4 premiers du workout_id le plus récent
+    const firstWorkoutId = lastSets?.[0]?.workout_id ?? null
+    const lastSession = (lastSets ?? [])
+      .filter(s => s.workout_id === firstWorkoutId)
+      .slice(0, 4)
+      .map((s: { weight_kg: number; reps: number }) => ({ weight_kg: s.weight_kg, reps: s.reps }))
+
+    // Grouper par workout_id pour construire l'historique compactifié (3 séances)
+    const workoutMap = new Map<string, { date: string; sets: { weight_kg: number; reps: number }[] }>()
+    for (const s of lastSets ?? []) {
+      const wId = s.workout_id
+      const dateRaw = (s.workouts as unknown as { session_date: string })?.session_date ?? ''
+      if (!workoutMap.has(wId)) workoutMap.set(wId, { date: dateRaw, sets: [] })
+      workoutMap.get(wId)!.sets.push({ weight_kg: s.weight_kg, reps: s.reps })
+    }
+    // Prendre jusqu'à 3 séances distinctes, formater en texte compact
+    const sessionHistory = Array.from(workoutMap.values())
+      .slice(0, 3)
+      .map(({ date, sets }) => {
+        // Top set = plus lourd
+        const top = sets.reduce((best, s) => s.weight_kg > best.weight_kg ? s : best, sets[0])
+        const dateLabel = date
+          ? new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(date + 'T12:00:00'))
+          : ''
+        const topSetsStr = top ? `${sets.length}×${top.reps} @ ${top.weight_kg}kg` : ''
+        return { date: dateLabel, topSets: topSetsStr }
+      })
+      .filter(h => h.topSets)
+
     const { data: prData } = await supabase.from('personal_records').select('value')
       .eq('exercise_id', exId).eq('user_id', user.id).eq('record_type', 'top_set').maybeSingle()
-    return { lastSession, pr: prData?.value }
+    return { lastSession, sessionHistory, pr: prData?.value }
   }
 
   async function addExercise(ex: Exercise) {
-    const { lastSession, pr } = await fetchExerciseData(ex.id)
+    const { lastSession, sessionHistory, pr } = await fetchExerciseData(ex.id)
 
     const firstSet: SetRow = {
       id: uid(), exercise_id: ex.id, exercise_name: ex.name_fr ?? ex.name,
@@ -632,7 +671,7 @@ export default function WorkoutSessionPage() {
           is_bilateral_dumbbell: ex.is_bilateral_dumbbell ?? false,
           is_unilateral: ex.is_unilateral ?? false,
           unilateral_both_sides: true,
-          sets: [firstSet], lastSession, pr,
+          sets: [firstSet], lastSession, sessionHistory, pr,
           superset_id: ssId,
         }
         const updated = [...prev]
@@ -649,7 +688,7 @@ export default function WorkoutSessionPage() {
         is_bilateral_dumbbell: ex.is_bilateral_dumbbell ?? false,
         is_unilateral: ex.is_unilateral ?? false,
         unilateral_both_sides: true,
-        sets: [firstSet], lastSession, pr,
+        sets: [firstSet], lastSession, sessionHistory, pr,
       }])
     }
     setShowSearch(false)
@@ -841,8 +880,9 @@ export default function WorkoutSessionPage() {
         is_unilateral: g.is_unilateral ?? false,
         unilateral_both_sides: g.unilateral_both_sides ?? true,
         superset_id: g.superset_id ?? null,
+        note: s.note?.trim() || null,
       }))),
-      notes: null,
+      notes: sessionNote.trim() || null,
       rpe_overall: null,
     }
 
@@ -910,7 +950,7 @@ export default function WorkoutSessionPage() {
     } finally {
       setCompleting(false)
     }
-  }, [groups, workoutId, STORAGE_KEY, sessionName])
+  }, [groups, workoutId, STORAGE_KEY, sessionName, sessionNote])
 
   // Tonnage total séance (travail + échauffement)
   const totalTonnage = groups.reduce((acc, g) => acc + calcTonnageGroup(g), 0)
@@ -1754,6 +1794,7 @@ export default function WorkoutSessionPage() {
                 onAddDropSet={() => addDropSet(gIdx)}
                 onUpdateSet={(setId, key, value) => updateSet(gIdx, setId, key, value)}
                 onRemoveSet={(setId) => removeSet(gIdx, setId)}
+                onUpdateSetNote={(setId, note) => updateSet(gIdx, setId, 'note', note)}
                 onToggleUnilateral={() => toggleUnilateralSides(gIdx)}
                 onCycleSetType={(setId) => cycleSetType(gIdx, setId)}
                 onAddToSuperset={() => { setSupersetTargetIdx(gIdx); setShowSearch(true) }}
@@ -1803,6 +1844,47 @@ export default function WorkoutSessionPage() {
           <Plus className="w-4 h-4 mr-2" style={{ color: 'var(--fiq-accent)' }} />
           Ajouter un exercice
         </Button>
+
+        {/* ── Note de séance — accordéon collapsible ── */}
+        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--fiq-border)', background: 'var(--fiq-faint)' }}>
+          <button
+            className="w-full flex items-center gap-2 px-4 py-3 text-left"
+            onClick={() => setShowSessionNote(v => !v)}
+          >
+            <MessageSquare className="w-3.5 h-3.5 flex-shrink-0" style={{ color: sessionNote ? 'var(--fiq-accent)' : 'var(--fiq-muted)' }} />
+            <span className="text-xs font-semibold flex-1" style={{ color: sessionNote ? 'var(--fiq-text)' : 'var(--fiq-muted)' }}>
+              {sessionNote ? sessionNote.slice(0, 40) + (sessionNote.length > 40 ? '…' : '') : '📝 Ajouter une note de séance'}
+            </span>
+            {showSessionNote
+              ? <ChevronUp className="w-3.5 h-3.5" style={{ color: 'var(--fiq-muted)' }} />
+              : <ChevronDown className="w-3.5 h-3.5" style={{ color: 'var(--fiq-muted)' }} />
+            }
+          </button>
+          {showSessionNote && (
+            <div className="px-4 pb-4">
+              <textarea
+                value={sessionNote}
+                onChange={(e) => setSessionNote(e.target.value.slice(0, 500))}
+                placeholder="Sensations, observations, ajustements…"
+                rows={3}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 12,
+                  background: 'var(--fiq-faint)',
+                  border: '1px solid var(--fiq-border)',
+                  color: 'var(--fiq-text)',
+                  fontSize: 14,
+                  resize: 'none',
+                  outline: 'none',
+                }}
+              />
+              <p className="text-right text-[10px] mt-1" style={{ color: sessionNote.length >= 450 ? 'var(--fiq-orange)' : 'var(--fiq-muted)' }}>
+                {sessionNote.length}/500
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Timer repos sticky bas ────────────────────────────── */}
@@ -2104,7 +2186,7 @@ const SET_TYPE_CONFIG: Record<SetType, { label: string; color: string; bg: strin
 
 // ── Composant exercice avec sets ──────────────────────────────
 function ExerciseCard({
-  group, onAddSet, onAddWarmup, onAddDropSet, onUpdateSet, onRemoveSet, onToggleUnilateral,
+  group, onAddSet, onAddWarmup, onAddDropSet, onUpdateSet, onRemoveSet, onUpdateSetNote, onToggleUnilateral,
   onCycleSetType, onAddToSuperset, onRemoveSuperset, onMoveUp, onMoveDown,
   circuitBadge, isInCircuit,
   restDurationForExercise, onSetRestDuration, showRestPicker, onToggleRestPicker,
@@ -2115,6 +2197,8 @@ function ExerciseCard({
   onAddDropSet: () => void
   onUpdateSet: (setId: string, key: keyof SetRow, value: string | boolean | number) => void
   onRemoveSet: (setId: string) => void
+  /** Met à jour la note d'une série spécifique */
+  onUpdateSetNote: (setId: string, note: string) => void
   onToggleUnilateral: () => void
   onCycleSetType: (setId: string) => void
   onAddToSuperset: () => void
@@ -2136,6 +2220,8 @@ function ExerciseCard({
 }) {
   const [showHistory, setShowHistory] = useState(true)
   const [showPlateCalc, setShowPlateCalc] = useState(false)
+  // ID du set dont la note inline est ouverte (null = aucune)
+  const [openNoteSetId, setOpenNoteSetId] = useState<string | null>(null)
   const tonnage = calcTonnageGroup(group)
   const isBilateral = group.is_bilateral_dumbbell ?? false
   const isUnilateral = group.is_unilateral ?? false
@@ -2267,6 +2353,21 @@ function ExerciseCard({
               </div>
             )
           })}
+
+          {/* Historique compact des 3 dernières séances distinctes */}
+          {group.sessionHistory && group.sessionHistory.length > 1 && (
+            <div className="pt-2 mt-2" style={{ borderTop: '1px solid var(--fiq-border)' }}>
+              <p className="fiq-label mb-1.5">Historique</p>
+              <div className="space-y-0.5">
+                {group.sessionHistory.map((h, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <span className="text-[11px]" style={{ color: 'var(--fiq-muted)' }}>{h.date}</span>
+                    <span className="text-[11px] font-semibold" style={{ color: 'var(--fiq-text)' }}>{h.topSets}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2288,12 +2389,14 @@ function ExerciseCard({
         </p>
       )}
 
-      <div className="grid grid-cols-[40px_1fr_1fr_48px_36px_32px] gap-1.5">
+      {/* En-tête colonnes — 7 colonnes : # | poids | reps | RPE | RIR | validé | suppr */}
+      <div className="grid grid-cols-[40px_1fr_1fr_48px_36px_20px_32px] gap-1.5">
         <span className="fiq-label text-center">#</span>
         <span className="fiq-label text-center">Poids (kg)</span>
         <span className="fiq-label text-center">Reps</span>
         <span className="fiq-label text-center">RPE</span>
         <span className="fiq-label text-center">RIR</span>
+        <span />
         <span />
       </div>
 
@@ -2318,75 +2421,142 @@ function ExerciseCard({
           : '#B4FF4A'                   // confortable — vert
           : 'var(--fiq-border)'
 
+        // Indicateur de validation : set "complet" si poids ET reps remplis et > 0
+        const isComplete = !s.is_warmup &&
+          s.weight_kg !== '' && parseW(s.weight_kg) > 0 &&
+          s.reps !== '' && Number(s.reps) > 0
+
+        const noteOpen = openNoteSetId === s.id
+
         return (
-          <div key={s.id} className="grid grid-cols-[40px_1fr_1fr_48px_36px_32px] gap-1.5 items-center">
-            {/* Numéro / badge type — tap pour cycler (sauf échauffement) */}
-            <button
-              className="flex items-center justify-center h-9 rounded-lg"
-              style={{ background: s.is_warmup ? '#F59E0B22' : typeCfg.bg }}
-              onClick={() => !s.is_warmup && onCycleSetType(s.id)}
-              title={s.is_warmup ? 'Échauffement' : 'Tap pour changer le type'}
-            >
-              {isPR
-                ? <span className="text-xs font-black" style={{ color: 'var(--fiq-accent)' }}>PR</span>
-                : s.is_warmup
-                  ? <span className="text-xs font-bold" style={{ color: '#F59E0B' }}>C</span>
-                  : setType !== 'work'
-                    ? <span className="text-xs font-black" style={{ color: typeCfg.color }}>{typeCfg.label}</span>
-                    : isTopSet && group.sets.filter(x => !x.is_warmup && x.weight_kg !== '').length > 1
-                      ? <span className="text-xs" style={{ color: 'var(--fiq-accent)' }}>★</span>
-                      : <span className="text-xs" style={{ color: 'var(--fiq-text)' }}>{s.set_number}</span>
-              }
-            </button>
-            <Input
-              type="text"
-              inputMode="decimal"
-              placeholder="—"
-              value={s.weight_kg}
-              onChange={(e) => onUpdateSet(s.id, 'weight_kg', e.target.value)}
-              className="text-center text-sm h-9"
-              style={{
-                background: 'var(--surface)',
-                borderColor: isPR ? 'var(--fiq-accent)' : setType === 'top_set' ? '#F59E0B44' : setType === 'backoff' ? '#3D8BFF44' : setType === 'dropset' ? '#FF6B3544' : setType === 'failure' ? '#EF444444' : 'var(--fiq-border)',
-                color: 'var(--fiq-text)',
-              }}
-            />
-            <Input
-              type="text"
-              inputMode="numeric"
-              placeholder="—"
-              value={s.reps}
-              onChange={(e) => onUpdateSet(s.id, 'reps', e.target.value)}
-              className="text-center text-sm h-9"
-              style={{ background: 'var(--surface)', borderColor: 'var(--fiq-border)', color: 'var(--fiq-text)' }}
-            />
-            <Input
-              type="text"
-              inputMode="decimal"
-              placeholder="—"
-              value={s.rpe}
-              onChange={(e) => onUpdateSet(s.id, 'rpe', e.target.value)}
-              className="text-center text-sm h-9"
-              style={{
-                background: 'var(--surface)',
-                borderColor: hasRpe ? rpeAccent : 'var(--fiq-border)',
-                color: hasRpe ? rpeAccent : 'var(--fiq-text)',
-                fontWeight: hasRpe ? 800 : undefined,
-              }}
-            />
-            {/* RIR dérivé — lecture seule, code couleur */}
-            <div className="flex items-center justify-center h-9">
-              {rir !== null ? (
-                <span className="text-xs font-black tabular-nums" style={{ color: rpeAccent }}>
-                  {rir === 0 ? 'FAIL' : rir % 1 === 0 ? String(rir) : rir.toFixed(1)}
-                </span>
-              ) : (
-                <span className="text-xs" style={{ color: 'var(--fiq-border)' }}>—</span>
-              )}
+          <div key={s.id}>
+            <div className="grid grid-cols-[40px_1fr_1fr_48px_36px_20px_32px] gap-1.5 items-center">
+              {/* Numéro / badge type — tap pour cycler (sauf échauffement) */}
+              <button
+                className="flex items-center justify-center h-9 rounded-lg"
+                style={{ background: s.is_warmup ? '#F59E0B22' : typeCfg.bg }}
+                onClick={() => !s.is_warmup && onCycleSetType(s.id)}
+                title={s.is_warmup ? 'Échauffement' : 'Tap pour changer le type'}
+              >
+                {isPR
+                  ? <span className="text-xs font-black" style={{ color: 'var(--fiq-accent)' }}>PR</span>
+                  : s.is_warmup
+                    ? <span className="text-xs font-bold" style={{ color: '#F59E0B' }}>C</span>
+                    : setType !== 'work'
+                      ? <span className="text-xs font-black" style={{ color: typeCfg.color }}>{typeCfg.label}</span>
+                      : isTopSet && group.sets.filter(x => !x.is_warmup && x.weight_kg !== '').length > 1
+                        ? <span className="text-xs" style={{ color: 'var(--fiq-accent)' }}>★</span>
+                        : <span className="text-xs" style={{ color: 'var(--fiq-text)' }}>{s.set_number}</span>
+                }
+              </button>
+              <Input
+                type="text"
+                inputMode="decimal"
+                placeholder="—"
+                value={s.weight_kg}
+                onChange={(e) => onUpdateSet(s.id, 'weight_kg', e.target.value)}
+                className="text-center text-sm h-9"
+                style={{
+                  background: 'var(--surface)',
+                  borderColor: isPR ? 'var(--fiq-accent)' : setType === 'top_set' ? '#F59E0B44' : setType === 'backoff' ? '#3D8BFF44' : setType === 'dropset' ? '#FF6B3544' : setType === 'failure' ? '#EF444444' : 'var(--fiq-border)',
+                  color: 'var(--fiq-text)',
+                }}
+              />
+              <Input
+                type="text"
+                inputMode="numeric"
+                placeholder="—"
+                value={s.reps}
+                onChange={(e) => onUpdateSet(s.id, 'reps', e.target.value)}
+                className="text-center text-sm h-9"
+                style={{ background: 'var(--surface)', borderColor: 'var(--fiq-border)', color: 'var(--fiq-text)' }}
+              />
+              <Input
+                type="text"
+                inputMode="decimal"
+                placeholder="—"
+                value={s.rpe}
+                onChange={(e) => onUpdateSet(s.id, 'rpe', e.target.value)}
+                className="text-center text-sm h-9"
+                style={{
+                  background: 'var(--surface)',
+                  borderColor: hasRpe ? rpeAccent : 'var(--fiq-border)',
+                  color: hasRpe ? rpeAccent : 'var(--fiq-text)',
+                  fontWeight: hasRpe ? 800 : undefined,
+                }}
+              />
+              {/* RIR dérivé — lecture seule, code couleur */}
+              <div className="flex items-center justify-center h-9">
+                {rir !== null ? (
+                  <span className="text-xs font-black tabular-nums" style={{ color: rpeAccent }}>
+                    {rir === 0 ? 'FAIL' : rir % 1 === 0 ? String(rir) : rir.toFixed(1)}
+                  </span>
+                ) : (
+                  <span className="text-xs" style={{ color: 'var(--fiq-border)' }}>—</span>
+                )}
+              </div>
+              {/* Indicateur visuel "set validé" — cercle vert avec ✓ si poids + reps remplis */}
+              <div className="flex items-center justify-center">
+                <div
+                  className="flex items-center justify-center rounded-full"
+                  style={{
+                    width: 12,
+                    height: 12,
+                    background: isComplete ? 'var(--fiq-accent)' : 'transparent',
+                    border: `1.5px solid ${isComplete ? 'var(--fiq-accent)' : 'var(--fiq-border)'}`,
+                    transition: 'background 0.15s, border-color 0.15s',
+                    flexShrink: 0,
+                  }}
+                >
+                  {isComplete && (
+                    <svg width="7" height="6" viewBox="0 0 7 6" fill="none">
+                      <path d="M1 3l1.5 1.5L6 1" stroke="#0A0C0F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => onRemoveSet(s.id)} className="flex items-center justify-center">
+                <Trash2 className="w-3.5 h-3.5" style={{ color: 'var(--fiq-muted)' }} />
+              </button>
             </div>
-            <button onClick={() => onRemoveSet(s.id)} className="flex items-center justify-center">
-              <Trash2 className="w-3.5 h-3.5" style={{ color: 'var(--fiq-muted)' }} />
-            </button>
+
+            {/* Bouton note 💬 — discret, à droite hors grille */}
+            <div className="flex items-center gap-1.5 mt-0.5 pl-[52px]">
+              <button
+                onClick={() => setOpenNoteSetId(noteOpen ? null : s.id)}
+                className="flex items-center gap-1 text-[10px] py-0.5"
+                style={{ color: s.note ? 'var(--fiq-blue)' : 'var(--fiq-muted)' }}
+                title="Note pour ce set"
+              >
+                <MessageSquare className="w-3 h-3" />
+                {s.note ? s.note.slice(0, 30) + (s.note.length > 30 ? '…' : '') : ''}
+              </button>
+            </div>
+
+            {/* Input note inline — s'ouvre sous la row */}
+            {noteOpen && (
+              <div className="pl-[52px] pr-1 pb-1.5">
+                <input
+                  autoFocus
+                  type="text"
+                  maxLength={200}
+                  placeholder="Note…"
+                  value={s.note ?? ''}
+                  onChange={(e) => onUpdateSetNote(s.id, e.target.value)}
+                  onBlur={() => setOpenNoteSetId(null)}
+                  style={{
+                    width: '100%',
+                    padding: '5px 10px',
+                    borderRadius: 8,
+                    background: 'var(--fiq-faint)',
+                    border: '1px solid var(--fiq-border)',
+                    color: 'var(--fiq-text)',
+                    fontSize: 12,
+                    outline: 'none',
+                  }}
+                />
+              </div>
+            )}
           </div>
         )
       })}

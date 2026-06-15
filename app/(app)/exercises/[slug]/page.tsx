@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Zap, Star, Target } from 'lucide-react'
 import { FiqDumbbell } from '@/components/ui/FiqIcons'
+import { ExerciseProgressionChart } from '@/components/exercises/ExerciseProgressionChart'
 import type { Metadata } from 'next'
 
 export const dynamic = 'force-dynamic'
@@ -129,8 +130,11 @@ export default async function ExerciseDetailPage({ params }: Props) {
 
   if (!ex) notFound()
 
-  // Charger PRs + historique en parallèle
-  const [{ data: prs }, { data: rawSets }] = await Promise.all([
+  // Calcul de la date limite 12 semaines
+  const twelveWeeksAgo = new Date(Date.now() - 84 * 86400000).toISOString()
+
+  // Charger PRs + historique + top sets progression en parallèle
+  const [{ data: prs }, { data: rawSets }, { data: topSetsRaw }] = await Promise.all([
     supabase
       .from('personal_records')
       .select('record_type, value, achieved_date')
@@ -145,6 +149,18 @@ export default async function ExerciseDetailPage({ params }: Props) {
       .eq('is_warmup', false)
       .order('workout_id', { ascending: false })
       .limit(30),
+
+    // Top sets des 12 dernières semaines pour le graphique de progression
+    supabase
+      .from('workout_sets')
+      .select('weight_kg, reps, created_at, workouts(completed_at)')
+      .eq('exercise_id', ex.id)
+      .eq('user_id', user.id)
+      .eq('set_type', 'top_set')
+      .not('workouts', 'is', null)
+      .gte('created_at', twelveWeeksAgo)
+      .order('created_at', { ascending: true })
+      .limit(50),
   ])
 
   // Grouper les sets par séance → max 3 dernières séances
@@ -174,6 +190,22 @@ export default async function ExerciseDetailPage({ params }: Props) {
 
   const prTopSet = prs?.find(p => p.record_type === 'top_set')
   const pr1RM    = prs?.find(p => p.record_type === '1rm_estimated')
+
+  // Préparer les données du graphique de progression
+  type TopSetRaw = {
+    weight_kg: number | null
+    reps: number | null
+    created_at: string
+    workouts: { completed_at: string | null } | null
+  }
+  const progressionData = (topSetsRaw ?? [] as TopSetRaw[]).reduce<{ date: string; poids: number }[]>((acc, s) => {
+    const raw = s as unknown as TopSetRaw
+    const dateStr = (raw.workouts?.completed_at ?? raw.created_at)
+    if (!raw.weight_kg || !dateStr) return acc
+    const label = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(dateStr))
+    acc.push({ date: label, poids: raw.weight_kg })
+    return acc
+  }, [])
 
   const name      = ex.name_fr ?? ex.name
   const eqColor   = EQUIPMENT_COLOR[ex.equipment] ?? 'var(--fiq-muted)'
@@ -209,6 +241,20 @@ export default async function ExerciseDetailPage({ params }: Props) {
             <p className="text-sm mt-0.5" style={{ color: 'var(--fiq-muted)' }}>{ex.name}</p>
           )}
         </div>
+
+        {/* Vidéo démo — affichée uniquement si video_url défini */}
+        {ex.video_url && (
+          // eslint-disable-next-line jsx-a11y/media-has-caption
+          <video
+            src={ex.video_url}
+            autoPlay
+            muted
+            loop
+            playsInline
+            className="w-full rounded-2xl"
+            style={{ maxHeight: '200px', objectFit: 'cover', background: 'var(--fiq-faint)' }}
+          />
+        )}
 
         {/* Badges */}
         <div className="flex flex-wrap gap-2">
@@ -428,6 +474,11 @@ export default async function ExerciseDetailPage({ params }: Props) {
             </div>
           )}
         </div>
+      )}
+
+      {/* ── Graphique progression top sets — 12 semaines ── */}
+      {progressionData.length >= 3 && (
+        <ExerciseProgressionChart data={progressionData} />
       )}
 
       {/* État vide */}

@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .select('name, description, level, goal, sessions_per_week, duration_weeks')
     .eq('slug', slug)
     .eq('is_public', true)
-    .single()
+    .maybeSingle()
 
   if (!program) return { title: 'Programme — ForgeIQ' }
 
@@ -60,7 +60,8 @@ export default async function ProgramDetailPage({ params }: Props) {
     supabase.from('programs')
       .select('id, name, slug, description, level, goal, equipment, sessions_per_week, duration_weeks, structure, is_custom')
       .eq('slug', slug)
-      .single(),
+      .eq('is_public', true)
+      .maybeSingle(),
     supabase.from('profiles')
       .select('current_program_id, gym_id, gym_equipment_profiles(tier, name, logo_emoji, features)')
       .eq('id', user.id).single(),

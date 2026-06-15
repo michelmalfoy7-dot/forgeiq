@@ -96,6 +96,8 @@ export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id
   const [saving, setSaving]             = useState(false)
   const [caption, setCaption]           = useState(post.caption)
   const [deleted, setDeleted]           = useState(false)
+  // Modale de confirmation suppression branded ForgeIQ
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   // Bouton suivre inline (discover feed)
   const [isFollowing, setIsFollowing]   = useState(post.is_following ?? false)
   const [followLoading, setFollowLoading] = useState(false)
@@ -220,7 +222,6 @@ export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id
 
   // ── Supprimer le post ──────────────────────────────────────
   async function handleDelete() {
-    if (!confirm('Supprimer ce post du feed ?')) return
     try {
       const res = await fetch('/api/social/share', {
         method:  'DELETE',
@@ -229,6 +230,7 @@ export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id
       })
       if (res.ok) { setDeleted(true); onDelete?.(post.id) }
     } catch { /* silencieux */ }
+    setShowDeleteConfirm(false)
     setShowMenu(false)
   }
 
@@ -450,12 +452,52 @@ export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id
             Modifier la caption
           </button>
           <div style={{ height: 1, background: 'var(--fiq-border)' }} />
-          <button onClick={handleDelete}
+          <button onClick={() => { setShowDeleteConfirm(true); setShowMenu(false) }}
             className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-left hover:opacity-80 transition-opacity"
             style={{ color: 'var(--fiq-red)' }}>
             <Trash2 className="w-4 h-4" />
             Supprimer du feed
           </button>
+        </div>
+      )}
+
+      {/* ── Modale confirmation suppression ── */}
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.75)' }}
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div
+            className="w-full max-w-[320px] rounded-2xl p-5 space-y-4"
+            style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="text-center space-y-1">
+              <p className="font-black text-base" style={{ color: 'var(--fiq-text)' }}>
+                Supprimer ce post ?
+              </p>
+              <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>
+                Cette action est irréversible.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="py-2.5 rounded-xl text-sm font-semibold"
+                style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleDelete}
+                className="py-2.5 rounded-xl text-sm font-black"
+                style={{ background: 'var(--fiq-red)', color: '#fff' }}
+              >
+                Supprimer
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

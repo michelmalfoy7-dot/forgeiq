@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { grantReferralRewardIfEligible } from '@/app/api/referral/route'
+import { sendPushToUser } from '@/lib/utils/push'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,6 +17,7 @@ type SetInput = {
   is_bilateral_dumbbell?: boolean
   is_unilateral?: boolean
   unilateral_both_sides?: boolean
+  note?: string | null  // note libre par série (colonne workout_sets.note TEXT)
 }
 
 export async function POST(request: Request) {
@@ -30,7 +32,7 @@ export async function POST(request: Request) {
       .from('profiles')
       .select('include_warmup_in_tonnage')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
     const includeWarmup = profilePref?.include_warmup_in_tonnage ?? false
 
     // Calculer les métriques de la séance
@@ -169,6 +171,11 @@ export async function POST(request: Request) {
       }
     }
 
+    // ── Notifier les followers pour chaque PR battu (fire-and-forget) ──
+    if (newPRs.length > 0) {
+      notifyFollowersOfPRs(user.id, newPRs, upserts).catch(() => null)
+    }
+
     // ── Mise à jour streak d'entraînement (semaines consécutives) ──
     // Ne compte pas les jours de repos ni le cardio rapide comme "semaine d'entraînement"
     let trainingMilestone: { streak: number; type: 'training' } | null = null
@@ -180,7 +187,7 @@ export async function POST(request: Request) {
         .from('profiles')
         .select('training_streak_weeks, last_training_week_iso')
         .eq('id', user.id)
-        .single()
+        .maybeSingle()
 
       if (prof) {
         const lastWeek = prof.last_training_week_iso
@@ -215,6 +222,55 @@ export async function POST(request: Request) {
     console.error('[workout/complete]', e)
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
   }
+}
+
+// ── Notifier les followers d'un PR battu ─────────────────────────────────────
+// Fire-and-forget : ne bloque jamais la réponse principale
+async function notifyFollowersOfPRs(
+  userId: string,
+  prExerciseNames: string[],
+  upserts: { exercise_id: string; exercise_name: string; record_type: string; value: number }[]
+): Promise<void> {
+  const { createClient: createAdminClient } = await import('@supabase/supabase-js')
+  const supabaseAdmin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  // Récupérer le display_name de l'utilisateur
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('display_name')
+    .eq('id', userId)
+    .maybeSingle()
+  const displayName = profile?.display_name ?? 'Un athlète'
+
+  // Récupérer les followers (max 50 pour éviter les timeouts)
+  const { data: follows } = await supabaseAdmin
+    .from('follows')
+    .select('follower_id')
+    .eq('following_id', userId)
+    .limit(50)
+
+  if (!follows || follows.length === 0) return
+
+  // Construire le message — premier PR en titre, liste courte dans le body
+  const topPR = upserts.find(u => u.record_type === 'top_set' && prExerciseNames.includes(u.exercise_name))
+  const prBody = topPR
+    ? `${topPR.exercise_name} — ${topPR.value}kg`
+    : prExerciseNames.slice(0, 2).join(', ')
+
+  // Envoyer en parallèle (silencieux si un follower n'a pas de subscription)
+  await Promise.allSettled(
+    follows.map(f =>
+      sendPushToUser(f.follower_id, {
+        title: `🏆 PR de ${displayName}`,
+        body: prBody,
+        url: '/social',
+        tag: 'pr-notification',
+      })
+    )
+  )
 }
 
 function getISOWeek(date: Date): string {

@@ -255,6 +255,7 @@ export function ProgramsClient({ programs, currentProgramId, userGoal, userLevel
   const [filterLevel, setFilterLevel] = useState<string>('all')
   const [filterGoal, setFilterGoal] = useState<string>('all')
   const [filterSessions, setFilterSessions] = useState<string>('all')
+  const [filterEquipment, setFilterEquipment] = useState<string>('all')
   const [showFilters, setShowFilters] = useState(false)
   const [adoptTarget, setAdoptTarget] = useState<Program | null>(null)
   const [adopting, setAdopting] = useState(false)
@@ -264,6 +265,7 @@ export function ProgramsClient({ programs, currentProgramId, userGoal, userLevel
     if (filterLevel !== 'all' && !p.level.includes(filterLevel)) return false
     if (filterGoal !== 'all' && !p.goal.includes(filterGoal)) return false
     if (filterSessions !== 'all' && String(p.sessions_per_week) !== filterSessions) return false
+    if (filterEquipment !== 'all' && !p.equipment.includes(filterEquipment)) return false
     return true
   })
 
@@ -286,7 +288,7 @@ export function ProgramsClient({ programs, currentProgramId, userGoal, userLevel
     }
   }
 
-  const activeFilters = [filterLevel, filterGoal, filterSessions].filter(f => f !== 'all').length
+  const activeFilters = [filterLevel, filterGoal, filterSessions, filterEquipment].filter(f => f !== 'all').length
 
   return (
     <>
@@ -423,6 +425,23 @@ export function ProgramsClient({ programs, currentProgramId, userGoal, userLevel
                     border: `1px solid ${filterSessions === v ? 'var(--fiq-accent)' : 'var(--fiq-border)'}`,
                   }}>
                   {v === 'all' ? 'Toutes' : `${v}×`}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="fiq-label mb-2">Équipement</p>
+            <div className="flex flex-wrap gap-2">
+              {(['all', 'full_gym', 'home_basic', 'home_advanced', 'bodyweight'] as const).map(v => (
+                <button key={v}
+                  onClick={() => setFilterEquipment(v)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{
+                    background: filterEquipment === v ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
+                    color: filterEquipment === v ? 'var(--bg)' : 'var(--fiq-muted)',
+                    border: `1px solid ${filterEquipment === v ? 'var(--fiq-accent)' : 'var(--fiq-border)'}`,
+                  }}>
+                  {v === 'all' ? 'Tout' : EQUIP_LABELS[v] ?? v}
                 </button>
               ))}
             </div>

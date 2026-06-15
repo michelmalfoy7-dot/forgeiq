@@ -35,6 +35,8 @@ export type CoachPromptCtx = {
   sessionsPerWeek: number | null
   weightTrend: number | null
   weightKg: number | null
+  targetWeightKg?: number | null
+  ewmaVariation7d?: number | null
   sleepDeepMin: number | null
   sleepTotalMin: number | null
   fatigueScore: number | null
@@ -52,6 +54,7 @@ export type CoachPromptCtx = {
   caloriesConsumed: number | null
   carbsG: number | null
   fatG: number | null
+  microDeficiencies?: { nutrient: string; pct: number }[]
   tonnageDelta: { muscle: string; delta: number }[]
   tdeeBreakdown: {
     bmr: number
@@ -118,10 +121,16 @@ export function buildSystemPrompt(ctx: CoachPromptCtx): string {
     alerts.push(`⚠️ Protéines insuffisantes (${ctx.proteinG}g / objectif ${PROTEIN_TARGET}g) → mentionner`)
   if (ctx.sysBp !== null && ctx.sysBp > 135)
     alerts.push(`🚨 Tension systolique élevée (${ctx.sysBp} mmHg) → recommander bilan médical`)
+  // Fatigue extrême + manque de sommeil critique → recommander repos médical
+  if ((ctx.fatigueScore ?? 0) >= 9 && ctx.sleepTotalMin !== null && ctx.sleepTotalMin < 240)
+    alerts.push(`🚨 Fatigue critique (${ctx.fatigueScore}/10) + sommeil très insuffisant (${ctx.sleepTotalMin ? Math.round(ctx.sleepTotalMin / 60) : '?'}h) → recommander repos complet et consultation médicale si ça persiste`)
   if (needsDeload)
     alerts.push(`🔄 DÉCHARGE RECOMMANDÉE : ${overloadedMuscles.join(', ')} dépassent le MAV + fatigue ${ctx.fatigueScore}/10 — suggérer une semaine à 40-60% du volume habituel`)
   if (overloadedMuscles.length > 0 && !needsDeload)
     alerts.push(`📈 Volume élevé (> MAV) : ${overloadedMuscles.join(', ')} — surveiller les signes de surentraînement`)
+  // Carences micronutriments détectées
+  if (ctx.microDeficiencies && ctx.microDeficiencies.length > 0)
+    alerts.push(`🧬 Carences détectées : ${ctx.microDeficiencies.map(m => `${m.nutrient}: ${m.pct}% DRI`).join(', ')}`)
 
   return `Tu es le Coach IA de ForgeIQ — un coach fitness personnel bienveillant, expert et direct. Tu parles toujours en français.
 
@@ -144,7 +153,9 @@ export function buildSystemPrompt(ctx: CoachPromptCtx): string {
 
 ## Données biométriques du jour
 - Poids brut : ${ctx.weightKg ?? 'non renseigné'}kg
-- Poids lissé (EWMA) : ${ctx.weightTrend ?? 'non renseigné'}kg
+- Poids lissé (EWMA) : ${ctx.weightTrend ?? 'non renseigné'}kg${ctx.ewmaVariation7d !== null && ctx.ewmaVariation7d !== undefined ? `
+- Tendance poids 7j : ${ctx.ewmaVariation7d > 0 ? '+' : ''}${ctx.ewmaVariation7d.toFixed(1)} kg/semaine` : ''}${ctx.targetWeightKg !== null && ctx.targetWeightKg !== undefined && ctx.weightTrend !== null ? `
+- Objectif poids : ${ctx.targetWeightKg}kg (écart actuel : ${(ctx.weightTrend - ctx.targetWeightKg).toFixed(1)} kg)` : ''}
 - Sommeil profond : ${ctx.sleepDeepMin ?? 'non renseigné'}min
 - Sommeil total : ${ctx.sleepTotalMin ? Math.round(ctx.sleepTotalMin / 60) + 'h' : 'non renseigné'}
 - Fatigue (1-10) : ${ctx.fatigueScore ?? 'non renseigné'}

@@ -23,10 +23,13 @@ export async function GET(req: Request) {
     const today = new Date().toISOString().split('T')[0]
 
     // Charger profil + programme + log du jour + PRs en parallèle
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
+
     const [
       { data: profile },
       { data: todayLog },
       { data: topPRs },
+      { data: last7DaysLogs },
     ] = await Promise.all([
       supabase.from('profiles')
         .select('current_program_id, sessions_per_week, goal, level, weight_kg, gym_id, gym_equipment_profiles(tier)')
@@ -38,6 +41,15 @@ export async function GET(req: Request) {
         .select('exercise_name, value, unit, record_type')
         .eq('user_id', user.id).eq('record_type', 'top_set')
         .order('value', { ascending: false }).limit(15),
+      // Logs des 7 derniers jours pour comparer l'EWMA actuel vs J-7
+      supabase.from('daily_logs')
+        .select('log_date, weight_trend')
+        .eq('user_id', user.id)
+        .gte('log_date', sevenDaysAgo)
+        .lt('log_date', today)
+        .not('weight_trend', 'is', null)
+        .order('log_date', { ascending: true })
+        .limit(7),
     ])
 
     // Résoudre le tier gym de l'utilisateur (premium / standard / home)
@@ -116,11 +128,13 @@ export async function GET(req: Request) {
 
       if (deepSleep < 60) adjustmentReasons.push('Sommeil profond insuffisant')
       if (fatigue >= 8) adjustmentReasons.push('Fatigue élevée')
-      // Perte de poids significative : EWMA < profil onboarding de plus de 3kg
-      // (comparaison profile.weight_kg = poids déclaré à l'inscription, indicateur grossier)
-      // TODO AGENT CORE : comparer EWMA J vs EWMA J-7 quand la donnée est disponible dans daily_logs
-      if (weightTrend !== null && profile?.weight_kg && profile.weight_kg - weightTrend > 3) {
-        adjustmentReasons.push('Perte de poids rapide')
+      // Perte de poids rapide : EWMA aujourd'hui vs EWMA il y a 7 jours > 2.5kg
+      // Comparaison EWMA vs EWMA — fiable et indépendante du poids d'onboarding
+      if (weightTrend !== null && (last7DaysLogs ?? []).length > 0) {
+        const ewma7DaysAgo = (last7DaysLogs ?? [])[0]?.weight_trend ?? null
+        if (ewma7DaysAgo !== null && (ewma7DaysAgo - weightTrend) > 2.5) {
+          adjustmentReasons.push('Perte de poids rapide')
+        }
       }
 
       if (adjustmentReasons.length > 0) {

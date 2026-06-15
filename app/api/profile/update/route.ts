@@ -22,8 +22,35 @@ export async function POST(req: NextRequest) {
       catch { return NextResponse.json({ data: null, error: 'Timezone invalide' }, { status: 400 }) }
     }
 
+    // Validation des bornes numériques
+    const bounds: Record<string, [number, number]> = {
+      age: [10, 120],
+      height_cm: [100, 250],
+      weight_kg: [20, 300],
+      target_weight_kg: [20, 300],
+      sessions_per_week: [1, 14],
+      steps_goal: [1000, 50000],
+    }
+    const numericFields: Record<string, number | null | undefined> = {
+      age, height_cm, weight_kg, target_weight_kg, sessions_per_week, steps_goal,
+    }
+    for (const [field, [min, max]] of Object.entries(bounds)) {
+      const val = numericFields[field]
+      if (val != null) {
+        const n = Number(val)
+        if (isNaN(n) || n < min || n > max) {
+          return NextResponse.json({ data: null, error: `Valeur invalide: ${field}` }, { status: 400 })
+        }
+      }
+    }
+
+    // Sanitizer display_name côté serveur (même si l'UI limite à 50)
+    const sanitizedDisplayName = typeof display_name === 'string'
+      ? display_name.trim().slice(0, 50) || null
+      : display_name ?? undefined
+
     const { error } = await supabase.from('profiles').update({
-      display_name,
+      display_name: sanitizedDisplayName,
       goal,
       level,
       equipment,

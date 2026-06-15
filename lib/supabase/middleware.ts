@@ -47,7 +47,26 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // 1c. Flash onboarding : user connecté qui a déjà fini l'onboarding → redirect immédiat
+  if (user && pathname.startsWith('/onboarding')) {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('onboarding_done')
+        .eq('id', user.id)
+        .maybeSingle()
+      if (profile?.onboarding_done) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard'
+        return NextResponse.redirect(url)
+      }
+    } catch {
+      // En cas d'erreur réseau, laisser passer — la page gérera elle-même
+    }
+  }
+
   // Routes app protégées → /login?next=<path> si non connecté
+  // Note : /pricing est une route publique et n'a pas besoin d'être dans isAppRoute
   const isAppRoute = pathname.startsWith('/dashboard') ||
     pathname.startsWith('/workout') ||
     pathname.startsWith('/checkin') ||
@@ -56,7 +75,6 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/exercises') ||
     pathname.startsWith('/coach') ||
     pathname.startsWith('/profile') ||
-    pathname.startsWith('/pricing') ||
     pathname.startsWith('/nutrition') ||
     pathname.startsWith('/social') ||
     pathname.startsWith('/admin')
@@ -67,6 +85,27 @@ export async function updateSession(request: NextRequest) {
     // Mémoriser la page cible pour y revenir après login
     if (pathname !== '/login') url.searchParams.set('next', pathname)
     return NextResponse.redirect(url)
+  }
+
+  // 1b. Protection /admin : vérifier is_admin dans profiles
+  if (user && pathname.startsWith('/admin')) {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', user.id)
+        .maybeSingle()
+      if (!profile?.is_admin) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard'
+        return NextResponse.redirect(url)
+      }
+    } catch {
+      // En cas d'erreur réseau, bloquer par précaution
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
   }
 
   return supabaseResponse

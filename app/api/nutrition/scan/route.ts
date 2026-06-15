@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
       .from('foods_library')
       .select('*')
       .eq('barcode', barcode)
-      .single()
+      .maybeSingle()
 
     if (cached) {
       return NextResponse.json({ data: cached, error: null, source: 'cache' })
@@ -100,11 +100,29 @@ export async function GET(req: NextRequest) {
     }
 
     // 3. Mettre en cache dans foods_library
-    const { data: inserted } = await supabase
-      .from('foods_library')
-      .insert(food)
-      .select()
-      .single()
+    // Race condition : deux requêtes simultanées peuvent tenter l'insert en même temps
+    // → en cas de contrainte unique (barcode), récupérer la ligne existante plutôt que crasher
+    let inserted: typeof food | null = null
+    try {
+      const { data } = await supabase
+        .from('foods_library')
+        .insert(food)
+        .select()
+        .single()
+      inserted = data
+    } catch (insertErr) {
+      const code = (insertErr as { code?: string })?.code
+      if (code === '23505') {
+        // Doublon barcode : récupérer la ligne déjà présente
+        const { data: existing } = await supabase
+          .from('foods_library')
+          .select('*')
+          .eq('barcode', barcode)
+          .maybeSingle()
+        inserted = existing
+      }
+      // Autre erreur → on retourne les données OFF sans cache
+    }
 
     return NextResponse.json({ data: inserted ?? food, error: null, source: 'openfoodfacts' })
   } catch (err) {

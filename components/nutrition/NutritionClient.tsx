@@ -667,6 +667,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
   // Scan barcode
   const [scanLoading, setScanLoading] = useState(false)
   const [barcodeError, setBarcodeError] = useState<string | null>(null)
+  const [incompleteNutrition, setIncompleteNutrition] = useState(false) // fix 3e
   // Photo IA
   const [photoAnalysis, setPhotoAnalysis] = useState<PhotoAnalysis | null>(null)
   const [photoQuantities, setPhotoQuantities] = useState<Record<number, string>>({})
@@ -687,7 +688,8 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
   const [recLoading, setRecLoading] = useState(false)
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null)
   const [recipePortions, setRecipePortions] = useState(1)
-  // Création recette
+  // Création / édition recette
+  const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null) // null = création, id = édition
   const [recipeName, setRecipeName] = useState('')
   const [recipeDescription, setRecipeDescription] = useState('')
   const [recipeServings, setRecipeServings] = useState(1)
@@ -754,13 +756,18 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFood, favorites])
 
+  // Compteur de rechargement favoris — permet de forcer un rechargement même si favorites est vide
+  const [favReloadKey, setFavReloadKey] = useState(0)
+
   // Charger les favoris dès l'ouverture du modal (pour les afficher dans l'écran 'choose')
-  // Aussi recharger si la liste a été vidée (cache invalidé après saveFavorite)
+  // Aussi recharger si la liste a été vidée (cache invalidé après saveFavorite ou suppression)
   useEffect(() => { loadFavorites() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (favorites.length === 0 && !favLoading) loadFavorites()
+    // Recharge les favoris à chaque changement de mode sans guard sur la longueur —
+    // corrige le bug où le dernier favori supprimé empêchait tout rechargement ultérieur
+    loadFavorites()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode])
+  }, [mode, favReloadKey])
 
   // Cycling des messages de chargement analyse photo
   useEffect(() => {
@@ -814,6 +821,8 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
         fiber_g: data.fiber_g,
         barcode: data.barcode,
       })
+      // Avertissement si valeurs nutritionnelles absentes ou nulles (fix 3e)
+      setIncompleteNutrition(data.calories == null || data.calories === 0)
       setMode('confirm')
     } finally {
       setScanLoading(false)
@@ -1023,7 +1032,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
   // ── Favoris ──────────────────────────────────────────────────
 
   async function loadFavorites() {
-    if (favorites.length > 0) return
+    // Plus de guard sur favorites.length — permet de recharger après une suppression
     setFavLoading(true)
     try {
       const res = await fetch('/api/nutrition/favorites')
@@ -1073,6 +1082,8 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
     try {
       await fetch(`/api/nutrition/favorites?id=${favId}`, { method: 'DELETE' })
       setFavorites(prev => prev.filter(f => f.id !== favId))
+      // Déclenche un rechargement du cache pour garantir la cohérence (fix 3a)
+      setFavReloadKey(k => k + 1)
     } finally {
       setDeletingFavId(null)
     }
@@ -1113,6 +1124,25 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
   async function deleteRecipe(id: string) {
     await fetch(`/api/nutrition/recipes?id=${id}`, { method: 'DELETE' })
     setRecipes(prev => prev.filter(r => r.id !== id))
+  }
+
+  function startEditRecipe(r: Recipe) {
+    setEditingRecipeId(r.id)
+    setRecipeName(r.name)
+    setRecipeDescription(r.description ?? '')
+    setRecipeServings(r.total_servings)
+    setRecipeIngredients((r.recipe_ingredients ?? []).map((ing, i) => ({
+      food_name: ing.food_name,
+      food_id: ing.food_id ?? null,
+      quantity_g: ing.quantity_g,
+      calories_per_100g: ing.calories_per_100g ?? null,
+      protein_per_100g: ing.protein_per_100g ?? null,
+      carbs_per_100g: ing.carbs_per_100g ?? null,
+      fat_per_100g: ing.fat_per_100g ?? null,
+      fiber_per_100g: ing.fiber_per_100g ?? null,
+      sort_order: ing.sort_order ?? i,
+    })))
+    setMode('create-recipe')
   }
 
   async function logRecipe() {
@@ -1223,10 +1253,12 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
     if (!recipeName.trim() || recipeIngredients.length === 0) return
     setSavingRecipe(true)
     try {
+      const isEditing = editingRecipeId !== null
       const res = await fetch('/api/nutrition/recipes', {
-        method: 'POST',
+        method: isEditing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          ...(isEditing && { id: editingRecipeId }),
           name: recipeName.trim(),
           description: recipeDescription.trim() || null,
           total_servings: recipeServings,
@@ -1235,7 +1267,13 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
       })
       const { data } = await res.json()
       if (data) {
-        setRecipes(prev => [data, ...prev])
+        if (isEditing) {
+          // Mise à jour locale de la recette modifiée
+          setRecipes(prev => prev.map(r => r.id === editingRecipeId ? data : r))
+        } else {
+          setRecipes(prev => [data, ...prev])
+        }
+        setEditingRecipeId(null)
         setRecipeName('')
         setRecipeDescription('')
         setRecipeServings(1)
@@ -1250,11 +1288,18 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
   // ── Navigation retour ────────────────────────────────────────
 
   function goBack() {
+    setIncompleteNutrition(false) // reset warning à chaque navigation retour
     if (mode === 'confirm' || mode === 'search' || mode === 'scan' || mode === 'photo' || mode === 'favorites' || mode === 'recipes') {
       setMode('choose')
     } else if (mode === 'photo-confirm') {
       setMode('photo')
     } else if (mode === 'create-recipe') {
+      // Reset état édition si on revient depuis le formulaire (fix 5)
+      setEditingRecipeId(null)
+      setRecipeName('')
+      setRecipeDescription('')
+      setRecipeServings(1)
+      setRecipeIngredients([])
       setMode('recipes')
     } else if (mode === 'recipe-confirm') {
       setMode('recipes')
@@ -1274,7 +1319,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
     'photo-confirm': '📸 Aliments détectés',
     'favorites': '⭐ Mes favoris',
     'recipes': '🍽️ Mes recettes',
-    'create-recipe': '➕ Nouvelle recette',
+    'create-recipe': editingRecipeId ? '✏️ Modifier la recette' : '➕ Nouvelle recette',
     'recipe-confirm': '🍽️ Portion & repas',
   }
 
@@ -1598,9 +1643,18 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
                         )}
                       </div>
                     </button>
+                    {/* Bouton édition recette (fix 5) */}
+                    <button
+                      onClick={() => startEditRecipe(r)}
+                      className="px-2.5 rounded-xl flex items-center"
+                      style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
+                      title="Modifier la recette"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       onClick={() => deleteRecipe(r.id)}
-                      className="px-3 rounded-xl flex items-center"
+                      className="px-2.5 rounded-xl flex items-center"
                       style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
                     >
                       <Trash2 className="w-4 h-4" />
@@ -1984,7 +2038,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
             >
               {savingRecipe
                 ? <Loader2 className="w-4 h-4 animate-spin" />
-                : <><Check className="w-4 h-4" />Sauvegarder la recette ({recipeIngredients.length} ingr.)</>}
+                : <><Check className="w-4 h-4" />{editingRecipeId ? 'Mettre à jour la recette' : `Sauvegarder la recette (${recipeIngredients.length} ingr.)`}</>}
             </button>
           </div>
         )}
@@ -2183,6 +2237,12 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
                   </p>
                   {selectedFood.brand && (
                     <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>{selectedFood.brand}</p>
+                  )}
+                  {/* Avertissement valeurs incomplètes après scan (fix 3e) */}
+                  {incompleteNutrition && (
+                    <p className="text-xs mt-1 font-semibold" style={{ color: 'var(--fiq-yellow, #F59E0B)' }}>
+                      ⚠ Valeurs nutritionnelles incomplètes — vérifie avant d'ajouter
+                    </p>
                   )}
                 </div>
                 {/* Bouton favoris */}
@@ -2388,6 +2448,8 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
                             </>
                           )}
                         </p>
+                        {/* MacroPreview également en mode unités — même composant que mode grammes */}
+                        {MacroPreview}
                       </div>
                     ) : (
                       /* Input grammes classique */
@@ -2630,6 +2692,9 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
 
   const [microCollapsed, setMicroCollapsed] = useState(true)
 
+  // ── Toast "Aliment ajouté" (fix 3d) ─────────────────────────
+  const [addedToast, setAddedToast] = useState(false)
+
   // ── Paywall modal (features Pro) ─────────────────────────────
   const [showPaywall, setShowPaywall] = useState(false)
   const [paywallTrigger, setPaywallTrigger] = useState<'photo' | 'general'>('general')
@@ -2741,6 +2806,9 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
 
   function handleAdded(log: FoodLog) {
     setLogs(prev => [...prev, log])
+    // Toast discret "Aliment ajouté" — 2 secondes (fix 3d)
+    setAddedToast(true)
+    setTimeout(() => setAddedToast(false), 2000)
   }
 
   // ── Suggestions IA ───────────────────────────────────────────
@@ -2826,14 +2894,23 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
   const [copying, setCopying] = useState(false)
   const [copyToast, setCopyToast] = useState<string | null>(null)
 
+  // Calcule le jour précédant une date ISO (YYYY-MM-DD)
+  function getPrevDay(dateStr: string): string {
+    const d = new Date(dateStr + 'T12:00:00')
+    d.setDate(d.getDate() - 1)
+    return d.toISOString().split('T')[0]
+  }
+
   async function copyYesterdayMeals() {
     if (copying) return
     setCopying(true)
     try {
+      // Passe viewDate comme cible et le jour précédent comme source
+      // (corrige le bug où on naviguait sur un jour passé : on copie le bon jour)
       const res = await fetch('/api/nutrition/log/copy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_date: viewDate }),
+        body: JSON.stringify({ date: viewDate, sourceDate: getPrevDay(viewDate) }),
       })
       const { data, error } = await res.json()
       if (error || !data) {
@@ -3027,6 +3104,16 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
           style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
         >
           {copyToast}
+        </div>
+      )}
+
+      {/* Toast "Aliment ajouté" (fix 3d) — fond accent, 2s */}
+      {addedToast && (
+        <div
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[60] px-5 py-2.5 rounded-xl text-sm font-black shadow-lg pointer-events-none"
+          style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+        >
+          ✓ Ajouté au journal
         </div>
       )}
 

@@ -417,6 +417,12 @@ function StepGoal({ value, onSelect }: { value?: string; onSelect: (v: string) =
           </button>
         ))}
       </div>
+      {/* 3c. Indication auto-avance */}
+      {!value && (
+        <p className="text-center" style={{ fontSize: '11px', color: 'var(--fiq-muted)' }}>
+          Sélectionne pour continuer →
+        </p>
+      )}
     </div>
   )
 }
@@ -512,6 +518,12 @@ function StepLevel({ value, onSelect }: { value?: string; onSelect: (v: string) 
           </button>
         ))}
       </div>
+      {/* 3c. Indication auto-avance */}
+      {!value && (
+        <p className="text-center" style={{ fontSize: '11px', color: 'var(--fiq-muted)' }}>
+          Sélectionne pour continuer →
+        </p>
+      )}
     </div>
   )
 }
@@ -533,6 +545,7 @@ function StepEquipment({
   const supabase = createClient()
   const [gyms, setGyms] = useState<GymRow[]>([])
   const [gymsLoading, setGymsLoading] = useState(false)
+  const [gymsError, setGymsError] = useState(false)
 
   const equipOptions = [
     { value: 'full_gym', emoji: '🏋️', label: 'Salle complète', sub: 'Barres, haltères, machines, câbles' },
@@ -545,16 +558,21 @@ function StepEquipment({
   useEffect(() => {
     if (value !== 'full_gym' || gyms.length > 0) return
     setGymsLoading(true)
+    setGymsError(false)
     ;(async () => {
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('gym_equipment_profiles')
           .select('id, name, logo_emoji, tier')
           .order('name')
           .limit(20)
-        setGyms((data ?? []) as GymRow[])
+        if (error || !data) {
+          setGymsError(true)
+        } else {
+          setGyms(data as GymRow[])
+        }
       } catch {
-        // silencieux
+        setGymsError(true)
       } finally {
         setGymsLoading(false)
       }
@@ -594,18 +612,44 @@ function StepEquipment({
             {value === opt.value && <Check className="ml-auto w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />}
           </button>
         ))}
+        {/* Indication auto-avance pour étapes 2 et 4 (pas ici, mais ajoutée dans StepGoal/StepLevel) */}
       </div>
 
       {/* Sélecteur de chaîne de salle */}
       {value === 'full_gym' && (
         <div className="space-y-3">
           <p className="fiq-label">Ta salle de sport</p>
-          {gymsLoading ? (
-            <div className="flex items-center gap-2 py-2">
-              <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--fiq-muted)' }} />
-              <span className="text-sm" style={{ color: 'var(--fiq-muted)' }}>Chargement…</span>
+
+          {/* 3a. Skeleton loader pendant le chargement */}
+          {gymsLoading && (
+            <div className="space-y-2">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="h-12 rounded-xl animate-pulse"
+                  style={{ background: 'var(--fiq-faint)', borderRadius: '12px' }}
+                />
+              ))}
             </div>
-          ) : (
+          )}
+
+          {/* 3b. Message d'erreur explicite */}
+          {!gymsLoading && gymsError && (
+            <div className="space-y-3">
+              <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>
+                Impossible de charger les salles. Tu pourras configurer ta salle plus tard dans ton profil.
+              </p>
+              <button
+                onClick={() => { onSelect('full_gym'); onGymId(undefined); onNext() }}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black transition-all"
+                style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+              >
+                Continuer quand même <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {!gymsLoading && !gymsError && (
             <div className="space-y-2">
               {sortedGyms.map((gym) => (
                 <button
@@ -637,6 +681,7 @@ function StepEquipment({
               </button>
             </div>
           )}
+
           <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
             Ta salle permet d&apos;adapter les exercices aux machines disponibles.
           </p>

@@ -24,9 +24,10 @@ export async function POST(request: Request) {
         started_at: new Date().toISOString(),
       })
       .select()
-      .single()
+      .maybeSingle()
 
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
+    if (!data) return NextResponse.json({ data: null, error: 'Impossible de créer la séance' }, { status: 500 })
     return NextResponse.json({ data, error: null })
   } catch (e) {
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })

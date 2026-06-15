@@ -213,9 +213,10 @@ export async function POST(req: NextRequest) {
       { data: weekWorkoutsData },
       { data: eightWeekWorkouts },
       { data: persistentMemoryRaw },
+      { data: ewma7DaysAgoLog },
     ] = await Promise.all([
       supabase.from('profiles')
-        .select('display_name, goal, level, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g')
+        .select('display_name, goal, level, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, target_weight_kg')
         .eq('id', user.id).single(),
       supabase.from('daily_logs')
         .select('weight_kg, weight_trend, sleep_deep_min, sleep_total_min, fatigue_score, protein_g, steps, sys_bp')
@@ -236,7 +237,7 @@ export async function POST(req: NextRequest) {
         .order('value', { ascending: false }).limit(30),
       // Macros réelles du jour (food_logs) — pour le bilan calorique coach
       supabase.from('food_logs')
-        .select('calories, protein_g, carbs_g, fat_g')
+        .select('calories, protein_g, carbs_g, fat_g, iron_mg, magnesium_mg, zinc_mg, calcium_mg, vitamin_d_mcg, potassium_mg, vitamin_c_mg')
         .eq('user_id', user.id).eq('log_date', today),
       // Moyenne steps 30j (journées complètes = exclut aujourd'hui + zéros)
       // .limit(30) explicite : borne la requête à 30 lignes max, cohérent avec la fenêtre glissante
@@ -267,6 +268,15 @@ export async function POST(req: NextRequest) {
         .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
         .order('created_at', { ascending: false })
         .limit(20),
+      // Log J-7 pour calculer la variation EWMA sur 7 jours
+      supabase.from('daily_logs')
+        .select('weight_trend')
+        .eq('user_id', user.id)
+        .lte('log_date', sevenDaysAgo)
+        .not('weight_trend', 'is', null)
+        .order('log_date', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ])
 
     // ── Volume hebdomadaire par groupe musculaire ────────────────────────────
@@ -386,6 +396,12 @@ export async function POST(req: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(HISTORY_LIMIT)
 
+    // ── Variation EWMA 7 jours ───────────────────────────────────────────────
+    const ewma7DaysAgo = ewma7DaysAgoLog?.weight_trend ?? null
+    const ewmaVariation7d = (recentWeightTrend !== null && ewma7DaysAgo !== null)
+      ? parseFloat((recentWeightTrend - ewma7DaysAgo).toFixed(1))
+      : null
+
     // Totaux nutrition du jour depuis food_logs (plus précis que protein_g du check-in)
     //
     // SOURCES DE PROTÉINES — deux champs distincts, priorité à food_logs :
@@ -407,6 +423,44 @@ export async function POST(req: NextRequest) {
       { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
     )
     const hasFoodLogs = (todayFoodLogs ?? []).length > 0
+
+    // ── Carences micronutriments (< 50% DRI athlète) ─────────────────────────
+    // DRI athlètes (valeurs journalières de référence pour sportifs actifs)
+    const DRI_ATHLETES: Record<string, { key: string; label: string; target: number }> = {
+      iron_mg:       { key: 'iron_mg',       label: 'fer',         target: 18 },
+      magnesium_mg:  { key: 'magnesium_mg',  label: 'magnésium',   target: 400 },
+      zinc_mg:       { key: 'zinc_mg',        label: 'zinc',        target: 11 },
+      calcium_mg:    { key: 'calcium_mg',     label: 'calcium',     target: 1000 },
+      vitamin_d_mcg: { key: 'vitamin_d_mcg', label: 'vitamine D',  target: 20 },
+      potassium_mg:  { key: 'potassium_mg',  label: 'potassium',   target: 3500 },
+      vitamin_c_mg:  { key: 'vitamin_c_mg',  label: 'vitamine C',  target: 90 },
+    }
+    type FoodLogWithMicros = {
+      calories?: number | null
+      protein_g?: number | null
+      carbs_g?: number | null
+      fat_g?: number | null
+      iron_mg?: number | null
+      magnesium_mg?: number | null
+      zinc_mg?: number | null
+      calcium_mg?: number | null
+      vitamin_d_mcg?: number | null
+      potassium_mg?: number | null
+      vitamin_c_mg?: number | null
+    }
+    const microDeficiencies: { nutrient: string; pct: number }[] = []
+    if (hasFoodLogs) {
+      for (const { key, label, target } of Object.values(DRI_ATHLETES)) {
+        const total = (todayFoodLogs as FoodLogWithMicros[] ?? []).reduce(
+          (acc, l) => acc + ((l[key as keyof FoodLogWithMicros] as number | null | undefined) ?? 0),
+          0
+        )
+        if (total > 0) {
+          const pct = Math.round((total / target) * 100)
+          if (pct < 50) microDeficiencies.push({ nutrient: label, pct })
+        }
+      }
+    }
 
     // Moyenne 30j steps — source stable (journées complètes, zéros exclus)
     const avgSteps30d = (steps30dLogs ?? []).length >= 3
@@ -447,6 +501,8 @@ export async function POST(req: NextRequest) {
       sessionsPerWeek: profile?.sessions_per_week ?? null,
       weightKg: recentWeightKg,
       weightTrend: recentWeightTrend,
+      targetWeightKg: profile?.target_weight_kg ?? null,
+      ewmaVariation7d,
       sleepDeepMin: todayLog?.sleep_deep_min ?? null,
       sleepTotalMin: todayLog?.sleep_total_min ?? null,
       fatigueScore: todayLog?.fatigue_score ?? null,
@@ -464,6 +520,7 @@ export async function POST(req: NextRequest) {
       caloriesConsumed: hasFoodLogs ? Math.round(foodTotals.calories) : null,
       carbsG: hasFoodLogs ? Math.round(foodTotals.carbs_g) : null,
       fatG: hasFoodLogs ? Math.round(foodTotals.fat_g) : null,
+      microDeficiencies: microDeficiencies.length > 0 ? microDeficiencies : undefined,
       tonnageDelta,
       tdeeBreakdown: {
         bmr:                  coachDailyTarget.bmr,

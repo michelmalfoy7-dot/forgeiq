@@ -335,10 +335,11 @@ export default async function PublicProfilePage({ params }: PageProps) {
             style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
           >
             {targetProfile.avatar_url ? (
-              // eslint-disable-next-line @next/next-eslint/no-img-element
-              <img
+              <Image
                 src={targetProfile.avatar_url}
                 alt={targetProfile.display_name ?? targetProfile.username}
+                width={64}
+                height={64}
                 className="w-full h-full rounded-2xl object-cover"
               />
             ) : (
@@ -362,26 +363,20 @@ export default async function PublicProfilePage({ params }: PageProps) {
           </div>
         </div>
 
-        {/* Compteurs followers/following — cliquables */}
+        {/* Compteurs followers/following — non-cliquables (page /followers inexistante) */}
         <div className="flex gap-4">
-          <Link
-            href={`/u/${targetProfile.username}/followers`}
-            className="text-center transition-opacity active:opacity-70"
-          >
+          <div className="text-center">
             <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>
               {targetProfile.followers_count ?? 0}
             </p>
             <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>abonnés</p>
-          </Link>
-          <Link
-            href={`/u/${targetProfile.username}/followers?tab=following`}
-            className="text-center transition-opacity active:opacity-70"
-          >
+          </div>
+          <div className="text-center">
             <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>
               {targetProfile.following_count ?? 0}
             </p>
             <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>abonnements</p>
-          </Link>
+          </div>
         </div>
 
         {/* Bouton Follow (si pas son propre profil) */}

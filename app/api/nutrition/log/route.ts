@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
     if (food_id) {
       const { data: lib } = await supabase
         .from('foods_library')
-        .select('iron_mg,magnesium_mg,zinc_mg,calcium_mg,vitamin_d_mcg,potassium_mg,vitamin_c_mg')
+        .select('iron_mg,magnesium_mg,zinc_mg,calcium_mg,vitamin_d_mcg,potassium_mg,vitamin_c_mg,sodium_mg')
         .eq('id', food_id)
         .maybeSingle()
 
@@ -100,6 +100,8 @@ export async function POST(req: NextRequest) {
         entry.vitamin_d_mcg = lib.vitamin_d_mcg != null ? Math.round(lib.vitamin_d_mcg * r * 100)  / 100  : null
         entry.potassium_mg  = lib.potassium_mg  != null ? Math.round(lib.potassium_mg  * r * 10)   / 10   : null
         entry.vitamin_c_mg  = lib.vitamin_c_mg  != null ? Math.round(lib.vitamin_c_mg  * r * 100)  / 100  : null
+        // Sodium — présent dans foods_library (OpenFoodFacts) et food_logs (colonne ajoutée Sprint 14)
+        entry.sodium_mg     = lib.sodium_mg     != null ? Math.round(lib.sodium_mg     * r * 10)   / 10   : null
       }
     }
 
@@ -161,6 +163,7 @@ export async function PATCH(req: NextRequest) {
     if (existing.potassium_mg  != null) updates.potassium_mg  = Math.round(existing.potassium_mg  * ratio * 10)   / 10
     if (existing.vitamin_c_mg  != null) updates.vitamin_c_mg  = Math.round(existing.vitamin_c_mg  * ratio * 100)  / 100
     if (existing.vitamin_d_mcg != null) updates.vitamin_d_mcg = Math.round(existing.vitamin_d_mcg * ratio * 100)  / 100
+    if (existing.sodium_mg     != null) updates.sodium_mg     = Math.round(existing.sodium_mg     * ratio * 10)   / 10
 
     // Mise à jour du meal_type si fourni
     if (meal_type) updates.meal_type = meal_type

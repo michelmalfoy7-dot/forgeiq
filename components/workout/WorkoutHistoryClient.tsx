@@ -31,6 +31,7 @@ type Workout = {
   started_at: string | null
   notes: string | null
   program_id: string | null
+  workout_type?: string | null
   workout_sets: WorkoutSet[]
 }
 
@@ -457,13 +458,19 @@ function CalendarView({ workouts }: Props) {
   // Séances du jour sélectionné
   const selectedWorkouts = selectedDate ? (workoutsByDate.get(selectedDate) ?? []) : []
 
-  // Streak actuelle (jours consécutifs avec au moins 1 séance, jusqu'à aujourd'hui)
+  // Streak actuelle (jours consécutifs avec au moins 1 vraie séance, jusqu'à aujourd'hui)
+  // Exclut les jours de repos (session_name === 'Jour de repos' ou workout_type === 'rest')
   const streak = useMemo(() => {
     let count = 0
     const d = new Date(today)
     while (true) {
       const str = d.toISOString().split('T')[0]
-      if (!workoutsByDate.has(str)) break
+      const dayWorkouts = workoutsByDate.get(str) ?? []
+      // Un jour de repos ne compte pas pour le streak
+      const hasRealWorkout = dayWorkouts.some(
+        w => w.session_name !== 'Jour de repos' && w.workout_type !== 'rest'
+      )
+      if (!hasRealWorkout) break
       count++
       d.setDate(d.getDate() - 1)
     }
