@@ -148,8 +148,10 @@ CREATE TABLE IF NOT EXISTS foods_library (
 );
 
 ALTER TABLE foods_library ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "foods_library_public_read" ON foods_library FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "foods_library_insert" ON foods_library FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "foods_library_public_read" ON foods_library;
+CREATE POLICY "foods_library_public_read" ON foods_library FOR SELECT USING (true);
+DROP POLICY IF EXISTS "foods_library_insert" ON foods_library;
+CREATE POLICY "foods_library_insert" ON foods_library FOR INSERT WITH CHECK (true);
 
 CREATE INDEX IF NOT EXISTS foods_library_barcode_idx ON foods_library(barcode) WHERE barcode IS NOT NULL;
 CREATE INDEX IF NOT EXISTS foods_library_name_idx ON foods_library USING gin(to_tsvector('french', coalesce(name_fr, name)));
@@ -174,10 +176,14 @@ CREATE TABLE IF NOT EXISTS food_logs (
 );
 
 ALTER TABLE food_logs ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "food_logs_select" ON food_logs FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "food_logs_insert" ON food_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "food_logs_update" ON food_logs FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "food_logs_delete" ON food_logs FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "food_logs_select" ON food_logs;
+CREATE POLICY "food_logs_select" ON food_logs FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "food_logs_insert" ON food_logs;
+CREATE POLICY "food_logs_insert" ON food_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "food_logs_update" ON food_logs;
+CREATE POLICY "food_logs_update" ON food_logs FOR UPDATE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "food_logs_delete" ON food_logs;
+CREATE POLICY "food_logs_delete" ON food_logs FOR DELETE USING (auth.uid() = user_id);
 
 CREATE INDEX IF NOT EXISTS food_logs_user_date_idx ON food_logs(user_id, log_date DESC);
 
@@ -223,7 +229,8 @@ CREATE TABLE IF NOT EXISTS food_favorites (
 );
 
 ALTER TABLE food_favorites ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "favorites_own" ON food_favorites FOR ALL USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "favorites_own" ON food_favorites;
+CREATE POLICY "favorites_own" ON food_favorites FOR ALL USING (auth.uid() = user_id);
 
 CREATE TABLE IF NOT EXISTS recipes (
   id             UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -248,7 +255,8 @@ CREATE TABLE IF NOT EXISTS recipes (
 );
 
 ALTER TABLE recipes ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "recipes_own" ON recipes FOR ALL USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "recipes_own" ON recipes;
+CREATE POLICY "recipes_own" ON recipes FOR ALL USING (auth.uid() = user_id);
 
 CREATE TABLE IF NOT EXISTS recipe_ingredients (
   id             UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -272,7 +280,8 @@ CREATE TABLE IF NOT EXISTS recipe_ingredients (
 );
 
 ALTER TABLE recipe_ingredients ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "recipe_ingredients_own" ON recipe_ingredients
+DROP POLICY IF EXISTS "recipe_ingredients_own" ON recipe_ingredients;
+CREATE POLICY "recipe_ingredients_own" ON recipe_ingredients
   FOR ALL USING (EXISTS (SELECT 1 FROM recipes r WHERE r.id = recipe_id AND r.user_id = auth.uid()));
 
 -- Pour les tables déjà créées sans les colonnes micro
@@ -309,8 +318,10 @@ CREATE TABLE IF NOT EXISTS exercise_aliases (
 );
 
 ALTER TABLE exercise_aliases ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "aliases_public_read" ON exercise_aliases FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "aliases_admin_insert" ON exercise_aliases FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "aliases_public_read" ON exercise_aliases;
+CREATE POLICY "aliases_public_read" ON exercise_aliases FOR SELECT USING (true);
+DROP POLICY IF EXISTS "aliases_admin_insert" ON exercise_aliases;
+CREATE POLICY "aliases_admin_insert" ON exercise_aliases FOR INSERT WITH CHECK (true);
 
 CREATE INDEX IF NOT EXISTS exercise_aliases_norm_idx ON exercise_aliases(alias_norm);
 
@@ -332,7 +343,8 @@ CREATE TABLE IF NOT EXISTS progress_photos (
 
 CREATE INDEX IF NOT EXISTS progress_photos_user_date ON progress_photos(user_id, photo_date DESC);
 ALTER TABLE progress_photos ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "progress_photos_owner_only" ON progress_photos FOR ALL USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "progress_photos_owner_only" ON progress_photos;
+CREATE POLICY "progress_photos_owner_only" ON progress_photos FOR ALL USING (auth.uid() = user_id);
 
 
 -- ════════════════════════════════════════════════════════════
@@ -352,7 +364,8 @@ CREATE TABLE IF NOT EXISTS gym_equipment_profiles (
 );
 
 ALTER TABLE gym_equipment_profiles ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "gym_profiles_public_read" ON gym_equipment_profiles FOR SELECT USING (true);
+DROP POLICY IF EXISTS "gym_profiles_public_read" ON gym_equipment_profiles;
+CREATE POLICY "gym_profiles_public_read" ON gym_equipment_profiles FOR SELECT USING (true);
 
 -- Lien gym_id sur profiles (après création de la table gym_equipment_profiles)
 ALTER TABLE profiles
@@ -367,11 +380,14 @@ ALTER TABLE profiles
 
 -- Mise à jour RLS profiles pour profils publics
 DROP POLICY IF EXISTS "Utilisateur voit son propre profil" ON profiles;
-CREATE POLICY IF NOT EXISTS "profiles_select" ON profiles
+DROP POLICY IF EXISTS "profiles_select" ON profiles;
+CREATE POLICY "profiles_select" ON profiles
   FOR SELECT USING (is_public = true OR auth.uid() = id);
-CREATE POLICY IF NOT EXISTS "profiles_update_own" ON profiles
+DROP POLICY IF EXISTS "profiles_update_own" ON profiles;
+CREATE POLICY "profiles_update_own" ON profiles
   FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY IF NOT EXISTS "profiles_insert_own" ON profiles
+DROP POLICY IF EXISTS "profiles_insert_own" ON profiles;
+CREATE POLICY "profiles_insert_own" ON profiles
   FOR INSERT WITH CHECK (auth.uid() = id);
 
 CREATE TABLE IF NOT EXISTS follows (
@@ -384,9 +400,12 @@ CREATE TABLE IF NOT EXISTS follows (
 );
 
 ALTER TABLE follows ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "follows_select" ON follows FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "follows_insert" ON follows FOR INSERT WITH CHECK (auth.uid() = follower_id);
-CREATE POLICY IF NOT EXISTS "follows_delete" ON follows FOR DELETE USING (auth.uid() = follower_id);
+DROP POLICY IF EXISTS "follows_select" ON follows;
+CREATE POLICY "follows_select" ON follows FOR SELECT USING (true);
+DROP POLICY IF EXISTS "follows_insert" ON follows;
+CREATE POLICY "follows_insert" ON follows FOR INSERT WITH CHECK (auth.uid() = follower_id);
+DROP POLICY IF EXISTS "follows_delete" ON follows;
+CREATE POLICY "follows_delete" ON follows FOR DELETE USING (auth.uid() = follower_id);
 
 CREATE TABLE IF NOT EXISTS workout_shares (
   id             UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -400,10 +419,13 @@ CREATE TABLE IF NOT EXISTS workout_shares (
 );
 
 ALTER TABLE workout_shares ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "shares_select" ON workout_shares
+DROP POLICY IF EXISTS "shares_select" ON workout_shares;
+CREATE POLICY "shares_select" ON workout_shares
   FOR SELECT USING (auth.uid() = user_id OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = user_id AND p.is_public = true));
-CREATE POLICY IF NOT EXISTS "shares_insert" ON workout_shares FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "shares_delete" ON workout_shares FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "shares_insert" ON workout_shares;
+CREATE POLICY "shares_insert" ON workout_shares FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "shares_delete" ON workout_shares;
+CREATE POLICY "shares_delete" ON workout_shares FOR DELETE USING (auth.uid() = user_id);
 
 -- Colonne is_public si table existait sans elle
 ALTER TABLE workout_shares
@@ -418,9 +440,12 @@ CREATE TABLE IF NOT EXISTS likes (
 );
 
 ALTER TABLE likes ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "likes_select" ON likes FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "likes_insert" ON likes FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "likes_delete" ON likes FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "likes_select" ON likes;
+CREATE POLICY "likes_select" ON likes FOR SELECT USING (true);
+DROP POLICY IF EXISTS "likes_insert" ON likes;
+CREATE POLICY "likes_insert" ON likes FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "likes_delete" ON likes;
+CREATE POLICY "likes_delete" ON likes FOR DELETE USING (auth.uid() = user_id);
 
 CREATE TABLE IF NOT EXISTS social_profiles (
   id              UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -482,7 +507,8 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "notifs_own" ON notifications FOR ALL USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "notifs_own" ON notifications;
+CREATE POLICY "notifs_own" ON notifications FOR ALL USING (auth.uid() = user_id);
 CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -496,7 +522,8 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 );
 
 ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "push_subs_own" ON push_subscriptions FOR ALL USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "push_subs_own" ON push_subscriptions;
+CREATE POLICY "push_subs_own" ON push_subscriptions FOR ALL USING (auth.uid() = user_id);
 
 CREATE TABLE IF NOT EXISTS reactions (
   id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -508,9 +535,12 @@ CREATE TABLE IF NOT EXISTS reactions (
 );
 
 ALTER TABLE reactions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "reactions_select" ON reactions FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "reactions_insert" ON reactions FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "reactions_delete" ON reactions FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "reactions_select" ON reactions;
+CREATE POLICY "reactions_select" ON reactions FOR SELECT USING (true);
+DROP POLICY IF EXISTS "reactions_insert" ON reactions;
+CREATE POLICY "reactions_insert" ON reactions FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "reactions_delete" ON reactions;
+CREATE POLICY "reactions_delete" ON reactions FOR DELETE USING (auth.uid() = user_id);
 
 
 -- ════════════════════════════════════════════════════════════
@@ -530,7 +560,8 @@ CREATE TABLE IF NOT EXISTS fasting_sessions (
 );
 
 ALTER TABLE fasting_sessions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "fasting_own" ON fasting_sessions FOR ALL USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "fasting_own" ON fasting_sessions;
+CREATE POLICY "fasting_own" ON fasting_sessions FOR ALL USING (auth.uid() = user_id);
 CREATE INDEX IF NOT EXISTS fasting_user_date_idx ON fasting_sessions(user_id, log_date DESC);
 
 
@@ -553,7 +584,8 @@ CREATE TABLE IF NOT EXISTS cardio_activities (
 );
 
 ALTER TABLE cardio_activities ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "cardio_own" ON cardio_activities FOR ALL USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "cardio_own" ON cardio_activities;
+CREATE POLICY "cardio_own" ON cardio_activities FOR ALL USING (auth.uid() = user_id);
 CREATE INDEX IF NOT EXISTS cardio_user_date_idx ON cardio_activities(user_id, log_date DESC);
 
 
@@ -578,7 +610,8 @@ CREATE TABLE IF NOT EXISTS coach_memory (
 );
 
 ALTER TABLE coach_memory ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "coach_memory_own" ON coach_memory FOR ALL USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "coach_memory_own" ON coach_memory;
+CREATE POLICY "coach_memory_own" ON coach_memory FOR ALL USING (auth.uid() = user_id);
 CREATE INDEX IF NOT EXISTS coach_memory_user_idx ON coach_memory(user_id, created_at DESC);
 
 
