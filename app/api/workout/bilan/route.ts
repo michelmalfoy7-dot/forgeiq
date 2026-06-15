@@ -78,6 +78,21 @@ export async function POST(req: NextRequest) {
         .order('set_number'),
     ])
 
+    // Durée moyenne sur les 10 dernières séances (pour comparaison)
+    const { data: avgDurationRows } = await supabase
+      .from('workouts')
+      .select('duration_min')
+      .eq('user_id', user.id)
+      .not('completed_at', 'is', null)
+      .not('duration_min', 'is', null)
+      .neq('id', workout_id)
+      .order('session_date', { ascending: false })
+      .limit(10)
+
+    const avgDuration = avgDurationRows && avgDurationRows.length > 0
+      ? Math.round(avgDurationRows.reduce((sum, w) => sum + (w.duration_min ?? 0), 0) / avgDurationRows.length)
+      : null
+
     if (!workout) return NextResponse.json({ data: null, error: 'Séance introuvable' }, { status: 404 })
 
     const workingSets = (workoutSets ?? []).filter(s => !s.is_warmup)
@@ -133,6 +148,44 @@ export async function POST(req: NextRequest) {
       for (const pr of prs ?? []) prMap[pr.exercise_id] = pr.value
     }
 
+    // ── 3b. Groupes musculaires des exercices (pour le groupe dominant) ─
+    let muscleMap: Record<string, string[]> = {}
+    if (exerciseIds.length > 0) {
+      const { data: exoRows } = await supabase
+        .from('exercises_library')
+        .select('id, muscle_primary')
+        .in('id', exerciseIds)
+
+      for (const ex of exoRows ?? []) {
+        if (ex.id && Array.isArray(ex.muscle_primary)) {
+          muscleMap[ex.id] = ex.muscle_primary as string[]
+        }
+      }
+    }
+
+    // Calcul du groupe musculaire dominant (nb de sets par muscle primaire)
+    const muscleSetCount: Record<string, number> = {}
+    for (const s of workingSets) {
+      if (!s.exercise_id || s.is_warmup) continue
+      const muscles = muscleMap[s.exercise_id] ?? []
+      for (const m of muscles.slice(0, 1)) {  // Premier muscle primaire seulement
+        muscleSetCount[m] = (muscleSetCount[m] ?? 0) + 1
+      }
+    }
+    const dominantMuscleEntry = Object.entries(muscleSetCount).sort((a, b) => b[1] - a[1])[0]
+    const dominantMuscle = dominantMuscleEntry
+      ? { name: dominantMuscleEntry[0], sets: dominantMuscleEntry[1], total: workingSets.length }
+      : null
+
+    const muscleNamesFR: Record<string, string> = {
+      chest: 'Pectoraux', lats: 'Dos (Dorsaux)', mid_back: 'Dos (Milieu)',
+      upper_back: 'Dos (Haut)', lower_back: 'Bas du dos', shoulders: 'Épaules',
+      front_delt: 'Deltoïde avant', side_delt: 'Deltoïde latéral', rear_delt: 'Deltoïde arrière',
+      biceps: 'Biceps', triceps: 'Triceps', quads: 'Quadriceps', hamstrings: 'Ischio-jambiers',
+      glutes: 'Fessiers', calves: 'Mollets', abs: 'Abdominaux', core: 'Gainage',
+      obliques: 'Obliques', forearms: 'Avant-bras', traps: 'Trapèzes', neck: 'Cou',
+    }
+
     // ── 4. Composition du contexte enrichi ───────────────────────────────
     const goalLabels: Record<string, string> = {
       weight_loss: 'perte de poids', muscle_gain: 'prise de muscle',
@@ -154,7 +207,7 @@ export async function POST(req: NextRequest) {
       e.sets++
     }
 
-    // Lignes de tendance par exercice
+    // Lignes de tendance par exercice (enrichies : % du PR all-time)
     const trendLines: string[] = []
     for (const [exId, cur] of Object.entries(currentByExercise)) {
       const name = workingSets.find(s => s.exercise_id === exId)?.exercise_name ?? exId
@@ -162,6 +215,9 @@ export async function POST(req: NextRequest) {
       const prevBest = history[0]?.weight_kg ?? null
       const pr = cur.prBefore
       const newPR = pr !== null && cur.maxWeight > pr
+      const prPct = pr !== null && pr > 0 && !newPR
+        ? Math.round(cur.maxWeight / pr * 100)
+        : null
 
       let line = `${name} : ${cur.maxWeight}kg×${cur.maxReps} (${cur.sets} séries)`
       if (newPR) line += ' — 🏆 NOUVEAU PR'
@@ -170,7 +226,7 @@ export async function POST(req: NextRequest) {
         if (delta !== 0) line += ` (${delta > 0 ? '+' : ''}${parseFloat(delta.toFixed(2))}kg vs séance préc.)`
         else line += ` (stable vs séance préc.)`
       }
-      if (pr !== null) line += ` | PR all-time : ${pr}kg`
+      if (pr !== null) line += ` | PR all-time : ${pr}kg${prPct !== null ? ` (à ${prPct}% du max)` : ''}`
       trendLines.push(line)
     }
 
@@ -179,12 +235,25 @@ export async function POST(req: NextRequest) {
       ? Math.round(((workout.total_tonnage_kg ?? 0) - lastTonnage) / lastTonnage * 100)
       : null
 
+    // Durée vs moyenne
+    const durationLine = workout.duration_min
+      ? avgDuration !== null
+        ? `Durée : ${workout.duration_min} min (moyenne : ${avgDuration} min)`
+        : `Durée : ${workout.duration_min} min`
+      : null
+
+    // Groupe musculaire dominant
+    const dominantMuscleLine = dominantMuscle
+      ? `Muscle dominant : ${muscleNamesFR[dominantMuscle.name] ?? dominantMuscle.name} (${Math.round(dominantMuscle.sets / Math.max(1, dominantMuscle.total) * 100)}% du volume)`
+      : null
+
     const context = [
       `Séance : ${workout.session_name ?? 'Libre'}`,
       `Date : ${workout.session_date}`,
       `Tonnage : ${workout.total_tonnage_kg ?? 0} kg${tonnageDelta !== null ? ` (${tonnageDelta > 0 ? '+' : ''}${tonnageDelta}% vs séance préc.)` : ''}`,
       `Séries de travail : ${workout.total_sets ?? workingSets.length}`,
-      workout.duration_min ? `Durée : ${workout.duration_min} min` : null,
+      durationLine,
+      dominantMuscleLine,
       trendLines.length > 0 ? `\nPerformances par exercice :\n${trendLines.join('\n')}` : null,
       profile?.goal ? `Objectif : ${goalLabels[profile.goal] ?? profile.goal}` : null,
       profile?.level ? `Niveau : ${levelLabels[profile.level] ?? profile.level}` : null,
@@ -194,36 +263,35 @@ export async function POST(req: NextRequest) {
     ].filter(Boolean).join('\n')
 
     // ── 5. Appel Haiku ───────────────────────────────────────────────────
-    const prompt = `Tu es le coach IA de ForgeIQ. Génère un bilan post-séance percutant ET des suggestions concrètes en JSON.
+    const prompt = `Tu es le coach IA de ForgeIQ. Génère un bilan post-séance percutant ET une suggestion concrète en JSON.
 
 DONNÉES CONTEXTUELLES :
 ${context}
 
 Génère exactement ce JSON (rien d'autre) :
 {
-  "congrats": "Accroche dynamique et motivante (15 mots max, factuelle si possible)",
+  "congrats": "Accroche dynamique et motivante (15 mots max, factuelle — cite un chiffre réel si possible)",
   "insights": [
-    { "emoji": "💪", "title": "Titre court", "text": "Observation factuelle sur la performance de cette séance (max 45 mots)" },
-    { "emoji": "🔄", "title": "Titre court", "text": "Point récupération ou nutrition POST-séance (max 45 mots)" },
-    { "emoji": "📈", "title": "Titre court", "text": "Tendance de progression détectée sur les dernières séances (max 45 mots)" }
+    { "emoji": "💪", "title": "Titre court", "text": "Performance clé : top set d'un exercice avec % du PR all-time si dispo (max 45 mots)" },
+    { "emoji": "🎯", "title": "Titre court", "text": "Muscle dominant de la séance + comparaison durée vs moyenne si dispo (max 45 mots)" },
+    { "emoji": "📈", "title": "Titre court", "text": "Tendance tonnage ou progression détectée sur les dernières séances (max 45 mots)" }
   ],
   "suggestions": [
-    { "emoji": "🎯", "action": "Action courte (5 mots max)", "detail": "Explication concrète avec chiffres précis (max 40 mots)" },
-    { "emoji": "🥗", "action": "Action courte (5 mots max)", "detail": "Explication concrète avec chiffres précis (max 40 mots)" }
+    { "emoji": "🎯", "action": "Action courte (5 mots max)", "detail": "UNE seule action concrète pour la PROCHAINE séance — avec chiffres précis (max 40 mots)" }
   ]
 }
 
 Règles :
 - Ne jamais mentionner Claude, Anthropic, OpenAI
-- suggestions = prochaines ACTIONS à faire (commence par un verbe d'action : "Augmenter...", "Viser...", "Reposer...", "Essayer...")
-- Utiliser les données historiques pour être précis (noms d'exercices, kg, reps)
-- Si nouveau PR → en parler dans insights
+- La suggestion = 1 seule action précise pour la prochaine séance (commence par un verbe : "Augmenter...", "Viser...", "Essayer...")
+- Utiliser les données historiques pour être précis (noms d'exercices, kg, reps, % du PR)
+- Si nouveau PR → l'accroche doit le mentionner explicitement
 - Adapter selon l'objectif (force ≠ prise de muscle ≠ perte de poids)
 - Ton : coach expert, direct, bienveillant. Pas de point d'exclamation excessifs`
 
     const message = await anthropic.messages.create({
       model: AI_MODELS.summary,
-      max_tokens: 700,
+      max_tokens: 600,
       messages: [{ role: 'user', content: prompt }],
     })
 
@@ -241,7 +309,13 @@ Règles :
         congrats: 'Belle séance — continue sur cette lancée.',
         insights: [
           { emoji: '💪', title: 'Tonnage réalisé', text: `${workout.total_tonnage_kg ?? 0} kg soulevés en ${workout.total_sets ?? 0} séries.` },
-          { emoji: '🔄', title: 'Récupération', text: 'Hydrate-toi et vise 40g de protéines dans les 2h post-séance.' },
+          {
+            emoji: '🎯',
+            title: dominantMuscle ? `Focus ${muscleNamesFR[dominantMuscle.name] ?? dominantMuscle.name}` : 'Récupération',
+            text: dominantMuscle
+              ? `Séance dominante ${muscleNamesFR[dominantMuscle.name] ?? dominantMuscle.name} (${Math.round(dominantMuscle.sets / Math.max(1, dominantMuscle.total) * 100)}% du volume).${durationLine ? ` ${durationLine}.` : ''}`
+              : 'Hydrate-toi et vise 40g de protéines dans les 2h post-séance.',
+          },
           { emoji: '📈', title: 'Progression', text: 'Note tes sensations pour mieux calibrer la prochaine séance.' },
         ],
         suggestions: [

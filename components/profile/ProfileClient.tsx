@@ -1125,9 +1125,9 @@ export function ProfileClient({
               </div>
               <div className="divide-y" style={{ borderColor: 'var(--fiq-border)' }}>
                 {([
-                  ['workouts',  '🏋️ Séances',      'CSV de tes séances et tonnages'],
+                  ['workouts',  '🏋️ Séances (résumé)',  'CSV de tes séances et tonnages'],
                   ['checkins',  '📊 Bilans quotidiens', 'Poids, sommeil, fatigue…'],
-                  ['nutrition', '🥗 Nutrition',     'Journal alimentaire complet'],
+                  ['nutrition', '🥗 Nutrition',          'Journal alimentaire complet'],
                 ] as const).map(([type, label, sub]) => (
                   <a
                     key={type}
@@ -1143,6 +1143,19 @@ export function ProfileClient({
                     <Download className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-muted)' }} />
                   </a>
                 ))}
+                {/* Export détaillé séances — une ligne par set */}
+                <a
+                  href="/api/export/workouts"
+                  download
+                  className="flex items-center gap-3 px-4 py-3 text-sm"
+                  style={{ background: 'var(--fiq-card)', color: 'var(--fiq-text)', textDecoration: 'none' }}
+                >
+                  <div className="flex-1">
+                    <p className="font-semibold">📥 Séances détaillées (Hevy-compatible)</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Une ligne par série — exercice, poids, reps, type</p>
+                  </div>
+                  <Download className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-muted)' }} />
+                </a>
               </div>
             </div>
 

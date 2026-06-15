@@ -13,7 +13,7 @@ import { PlateCalculatorModal } from '@/components/workout/PlateCalculatorModal'
 import { roundWeight, weightDelta } from '@/lib/utils/numbers'
 
 // ── Types ─────────────────────────────────────────────────────
-type SetType = 'work' | 'top_set' | 'backoff' | 'dropset' | 'failure'
+type SetType = 'work' | 'top_set' | 'backoff' | 'dropset' | 'failure' | 'pause_rep'
 
 type SetRow = {
   id: string
@@ -128,6 +128,8 @@ export default function WorkoutSessionPage() {
 
   const [groups, setGroups] = useState<ExerciseGroup[]>([])
   const [exercises, setExercises] = useState<Exercise[]>([])
+  // Équipement de l'utilisateur — chargé depuis le profil, utilisé pour les substituts
+  const [userEquipment, setUserEquipment] = useState<string>('full_gym')
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
   const [equipmentFilter, setEquipmentFilter] = useState<string>('all')
@@ -327,11 +329,15 @@ export default function WorkoutSessionPage() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
 
-      const [{ data: exos }, { data: workout }, { data: aliasRows }] = await Promise.all([
+      const [{ data: exos }, { data: workout }, { data: aliasRows }, { data: profileData }] = await Promise.all([
         supabase.from('exercises_library').select('id,name,name_fr,slug,muscle_primary,equipment,is_bilateral_dumbbell,is_unilateral').order('name_fr'),
         supabase.from('workouts').select('session_name, completed_at, program_id').eq('id', workoutId).single(),
         supabase.from('exercise_aliases').select('exercise_id, alias'),
+        supabase.from('profiles').select('equipment').eq('id', user?.id ?? '').maybeSingle(),
       ])
+
+      // Charger l'équipement utilisateur pour les substitutions
+      if (profileData?.equipment) setUserEquipment(profileData.equipment as string)
 
       // Séance déjà terminée en base → rediriger immédiatement (évite le retour via back button)
       if (workout?.completed_at) {
@@ -705,7 +711,7 @@ export default function WorkoutSessionPage() {
         ...updated[groupIdx],
         sets: updated[groupIdx].sets.map((s) => {
           if (s.id !== setId || s.is_warmup) return s
-          const order: SetType[] = ['work', 'top_set', 'backoff', 'dropset', 'failure']
+          const order: SetType[] = ['work', 'top_set', 'backoff', 'dropset', 'failure', 'pause_rep']
           const cur = s.set_type ?? 'work'
           const next = order[(order.indexOf(cur) + 1) % order.length]
           return { ...s, set_type: next }
@@ -882,6 +888,40 @@ export default function WorkoutSessionPage() {
       ;[updated[groupIdx], updated[target]] = [updated[target], updated[groupIdx]]
       return updated
     })
+  }
+
+  // ── Substituer un exercice — remplace nom + id, conserve les sets ──
+  function handleSubstitute(groupIdx: number, substitute: SubstituteExercise) {
+    setGroups((prev) => {
+      const updated = [...prev]
+      const g = updated[groupIdx]
+      updated[groupIdx] = {
+        ...g,
+        exercise_id:   substitute.id,
+        exercise_name: substitute.name,
+        // Mettre à jour les sets avec le nouvel exercice (weight/reps conservés)
+        sets: g.sets.map((s) => ({
+          ...s,
+          exercise_id:   substitute.id,
+          exercise_name: substitute.name,
+        })),
+        // Réinitialiser lastSession / PR car c'est un autre exercice
+        lastSession:    [],
+        sessionHistory: [],
+        pr:             undefined,
+      }
+      return updated
+    })
+    // Charger les données de performance du nouvel exercice en arrière-plan
+    fetchExerciseData(substitute.id).then(({ lastSession, sessionHistory, pr }) => {
+      setGroups((prev) => {
+        const idx = prev.findIndex((g) => g.exercise_id === substitute.id)
+        if (idx < 0) return prev
+        const updated = [...prev]
+        updated[idx] = { ...updated[idx], lastSession, sessionHistory, pr }
+        return updated
+      })
+    }).catch(() => { /* silencieux */ })
   }
 
   // ── TERMINER SÉANCE ──────────────────────────────────────────
@@ -1835,6 +1875,8 @@ export default function WorkoutSessionPage() {
                 onToggleRestPicker={() => setRestPickerExerciseId(
                   restPickerExerciseId === group.exercise_id ? null : group.exercise_id
                 )}
+                userEquipment={userEquipment}
+                onSubstitute={(sub) => handleSubstitute(gIdx, sub)}
               />
 
               {/* Connecteur entre exercices du même groupe */}
@@ -2203,11 +2245,21 @@ export default function WorkoutSessionPage() {
 
 // Libellés et couleurs des types de série
 const SET_TYPE_CONFIG: Record<SetType, { label: string; color: string; bg: string }> = {
-  work:    { label: '',   color: 'var(--fiq-muted)',   bg: 'transparent' },
-  top_set: { label: '★',  color: '#F59E0B',            bg: '#F59E0B22' },  // Top set — charge maximale
-  backoff: { label: 'B',  color: 'var(--fiq-blue)',    bg: '#3D8BFF22' },  // Back-off — charge réduite, volume
-  dropset: { label: '⬇', color: 'var(--fiq-orange)',  bg: '#FF6B3522' },  // Drop set — enchaîné sans repos
-  failure: { label: 'X',  color: 'var(--fiq-red)',     bg: '#EF444422' },  // Echec musculaire
+  work:      { label: '',   color: 'var(--fiq-muted)',   bg: 'transparent' },
+  top_set:   { label: '★',  color: '#F59E0B',            bg: '#F59E0B22' },  // Top set — charge maximale
+  backoff:   { label: 'B',  color: 'var(--fiq-blue)',    bg: '#3D8BFF22' },  // Back-off — charge réduite, volume
+  dropset:   { label: '⬇', color: 'var(--fiq-orange)',  bg: '#FF6B3522' },  // Drop set — enchaîné sans repos
+  failure:   { label: 'X',  color: 'var(--fiq-red)',     bg: '#EF444422' },  // Echec musculaire
+  pause_rep: { label: 'PR', color: '#A855F7',            bg: '#A855F722' },  // Pause-rep — pause en bas du mouvement
+}
+
+// Type retourné par l'API substitute
+type SubstituteExercise = {
+  id: string
+  name: string
+  primary_muscles: string[]
+  equipment: string
+  difficulty?: string
 }
 
 // ── Composant exercice avec sets ──────────────────────────────
@@ -2216,6 +2268,7 @@ function ExerciseCard({
   onCycleSetType, onAddToSuperset, onRemoveSuperset, onMoveUp, onMoveDown,
   circuitBadge, isInCircuit,
   restDurationForExercise, onSetRestDuration, showRestPicker, onToggleRestPicker,
+  userEquipment, onSubstitute,
 }: {
   group: ExerciseGroup
   onAddSet: () => void
@@ -2243,16 +2296,50 @@ function ExerciseCard({
   showRestPicker: boolean
   /** Toggle l'ouverture du picker de repos */
   onToggleRestPicker: () => void
+  /** Équipement de l'utilisateur (full_gym / home / etc.) pour filtrer les substituts */
+  userEquipment: string
+  /** Callback appelé quand l'user choisit un substitut */
+  onSubstitute: (substitute: SubstituteExercise) => void
 }) {
   const [showHistory, setShowHistory] = useState(true)
   const [showPlateCalc, setShowPlateCalc] = useState(false)
   // ID du set dont la note inline est ouverte (null = aucune)
   const [openNoteSetId, setOpenNoteSetId] = useState<string | null>(null)
+  // États du bottomsheet substitutions
+  const [showSubstitutes, setShowSubstitutes] = useState(false)
+  const [substitutes, setSubstitutes] = useState<SubstituteExercise[]>([])
+  const [substitutesLoading, setSubstitutesLoading] = useState(false)
+  const [substituteToast, setSubstituteToast] = useState<string | null>(null)
   const tonnage = calcTonnageGroup(group)
   const isBilateral = group.is_bilateral_dumbbell ?? false
   const isUnilateral = group.is_unilateral ?? false
   const bothSides = group.unilateral_both_sides ?? true
   const inSuperset = !!group.superset_id
+
+  // Ouvrir le bottomsheet substituts — fetch l'API au tap
+  async function openSubstituteSheet() {
+    // Exercice fictif (non en bibliothèque) → pas de substitution possible
+    if (group.exercise_id.startsWith('suggested-')) return
+    setShowSubstitutes(true)
+    setSubstitutesLoading(true)
+    setSubstitutes([])
+    try {
+      const res = await fetch(
+        `/api/exercises/substitute?exercise_id=${group.exercise_id}&equipment=${userEquipment}&limit=5`
+      )
+      const json = await res.json() as { data: SubstituteExercise[] | null; error: string | null }
+      if (json.data) setSubstitutes(json.data)
+    } catch { /* silencieux */ }
+    finally { setSubstitutesLoading(false) }
+  }
+
+  // Appliquer le substitut et fermer
+  function handleChooseSubstitute(sub: SubstituteExercise) {
+    onSubstitute(sub)
+    setShowSubstitutes(false)
+    setSubstituteToast(sub.name)
+    setTimeout(() => setSubstituteToast(null), 2500)
+  }
 
   // Couleur du groupe : bleu pour circuit, orange pour superset simple
   const groupColor = isInCircuit ? 'var(--fiq-blue)' : 'var(--fiq-orange)'
@@ -2272,6 +2359,17 @@ function ExerciseCard({
       className="fiq-card space-y-3"
       style={inSuperset ? { borderLeft: `3px solid ${groupColor}` } : undefined}
     >
+      {/* Toast substitution */}
+      {substituteToast && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold"
+          style={{ background: '#B4FF4A18', border: '1px solid #B4FF4A44', color: 'var(--fiq-accent)' }}
+        >
+          <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+          Exercice remplacé : {substituteToast}
+        </div>
+      )}
+
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -2314,6 +2412,17 @@ function ExerciseCard({
               style={{ background: '#B4FF4A22', color: 'var(--fiq-accent)', border: '1px solid #B4FF4A44' }}>
               PR {group.pr}kg
             </span>
+          )}
+          {/* Bouton substituer l'exercice */}
+          {!group.exercise_id.startsWith('suggested-') && (
+            <button
+              onClick={openSubstituteSheet}
+              className="flex items-center justify-center w-7 h-7 rounded-lg"
+              title="Substituer cet exercice"
+              style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
+            >
+              <RefreshCw className="w-3.5 h-3.5" style={{ color: 'var(--fiq-muted)' }} />
+            </button>
           )}
           {/* Calculateur de disques */}
           <button
@@ -2753,6 +2862,100 @@ function ExerciseCard({
           initialWeight={topWeight > 0 ? topWeight : undefined}
           onClose={() => setShowPlateCalc(false)}
         />
+      )}
+
+      {/* ── Bottomsheet substituts ─────────────────────────── */}
+      {showSubstitutes && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-50"
+            style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setShowSubstitutes(false)}
+          />
+          {/* Sheet */}
+          <div
+            className="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl"
+            style={{
+              maxHeight: '75dvh',
+              background: 'var(--fiq-card)',
+              border: '1px solid var(--fiq-border)',
+              borderBottom: 'none',
+            }}
+          >
+            {/* Handle */}
+            <div className="flex justify-center pt-3 pb-2">
+              <div className="w-10 h-1 rounded-full" style={{ background: 'var(--fiq-border)' }} />
+            </div>
+
+            {/* Header */}
+            <div
+              className="flex items-center justify-between px-5 pb-4"
+              style={{ borderBottom: '1px solid var(--fiq-border)' }}
+            >
+              <div>
+                <p className="font-black text-sm" style={{ color: 'var(--fiq-text)' }}>
+                  Substituts pour
+                </p>
+                <p className="text-xs mt-0.5 truncate max-w-[240px]" style={{ color: 'var(--fiq-accent)' }}>
+                  {group.exercise_name}
+                </p>
+              </div>
+              <button onClick={() => setShowSubstitutes(false)}>
+                <X className="w-5 h-5" style={{ color: 'var(--fiq-muted)' }} />
+              </button>
+            </div>
+
+            {/* Contenu */}
+            <div
+              className="overflow-y-auto px-4 py-3 space-y-2"
+              style={{ maxHeight: 'calc(75dvh - 100px)', paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
+            >
+              {substitutesLoading && (
+                <div className="flex items-center justify-center gap-2 py-8">
+                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--fiq-accent)' }} />
+                  <span className="text-sm" style={{ color: 'var(--fiq-muted)' }}>Recherche des substituts…</span>
+                </div>
+              )}
+
+              {!substitutesLoading && substitutes.length === 0 && (
+                <div className="text-center py-8">
+                  <RefreshCw className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--fiq-muted)' }} />
+                  <p className="text-sm" style={{ color: 'var(--fiq-muted)' }}>
+                    Aucun substitut trouvé pour cet équipement.
+                  </p>
+                </div>
+              )}
+
+              {!substitutesLoading && substitutes.map((sub) => (
+                <div
+                  key={sub.id}
+                  className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--fiq-border)' }}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-sm truncate" style={{ color: 'var(--fiq-text)' }}>
+                      {sub.name}
+                    </p>
+                    <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--fiq-muted)' }}>
+                      {(sub.primary_muscles ?? []).slice(0, 3).join(', ')}
+                      {sub.equipment && (
+                        <span style={{ opacity: 0.6 }}> · {sub.equipment}</span>
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleChooseSubstitute(sub)}
+                    className="flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-black"
+                    style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+                  >
+                    Choisir
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
       )}
     </div>
   )

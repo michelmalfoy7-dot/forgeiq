@@ -142,8 +142,8 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ data: feed, error: null })
+    return NextResponse.json({ data: feed, hasMore: feed.length === PAGE_SIZE, error: null })
   } catch {
-    return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
+    return NextResponse.json({ data: null, hasMore: false, error: 'Erreur serveur' }, { status: 500 })
   }
 }

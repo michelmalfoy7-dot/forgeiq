@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Loader2, ChevronDown, CheckCircle2, Compass, Users, UserPlus } from 'lucide-react'
+import { Loader2, CheckCircle2, Compass, Users, UserPlus } from 'lucide-react'
 import { WorkoutPost } from './WorkoutPost'
 import type { FeedPost } from './WorkoutPost'
 
@@ -39,6 +39,7 @@ export function FeedList({ initialDiscoverPosts, initialFollowingPosts, suggeste
   const [followingMore, setFollowingMore]   = useState(initialFollowingPosts.length >= PAGE_SIZE)
 
   const [loading, setLoading] = useState(false)
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
   // Follow state per suggested athlete
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set())
@@ -70,21 +71,21 @@ export function FeedList({ initialDiscoverPosts, initialFollowingPosts, suggeste
     try {
       if (activeTab === 'discover') {
         const res  = await fetch(`/api/social/feed?mode=discover&page=${discoverPage}`)
-        const json = await res.json() as { data: FeedPost[] | null; error: string | null }
+        const json = await res.json() as { data: FeedPost[] | null; hasMore: boolean; error: string | null }
         if (json.data && json.data.length > 0) {
           setDiscoverPosts((prev) => [...prev, ...json.data!])
           setDiscoverPage((p) => p + 1)
-          setDiscoverMore(json.data.length >= PAGE_SIZE)
+          setDiscoverMore(json.hasMore ?? json.data.length >= PAGE_SIZE)
         } else {
           setDiscoverMore(false)
         }
       } else {
         const res  = await fetch(`/api/social/feed?mode=following&page=${followingPage}`)
-        const json = await res.json() as { data: FeedPost[] | null; error: string | null }
+        const json = await res.json() as { data: FeedPost[] | null; hasMore: boolean; error: string | null }
         if (json.data && json.data.length > 0) {
           setFollowingPosts((prev) => [...prev, ...json.data!])
           setFollowingPage((p) => p + 1)
-          setFollowingMore(json.data.length >= PAGE_SIZE)
+          setFollowingMore(json.hasMore ?? json.data.length >= PAGE_SIZE)
         } else {
           setFollowingMore(false)
         }
@@ -95,6 +96,24 @@ export function FeedList({ initialDiscoverPosts, initialFollowingPosts, suggeste
       setLoading(false)
     }
   }, [activeTab, discoverPage, followingPage, loading])
+
+  // IntersectionObserver — déclenche loadMore quand le sentinel entre dans le viewport
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void loadMore()
+        }
+      },
+      { rootMargin: '200px' }
+    )
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [loadMore])
 
   const posts   = activeTab === 'discover' ? discoverPosts : followingPosts
   const hasMore = activeTab === 'discover' ? discoverMore  : followingMore
@@ -277,19 +296,34 @@ export function FeedList({ initialDiscoverPosts, initialFollowingPosts, suggeste
         </div>
       )}
 
-      {/* ── Bouton charger plus ── */}
+      {/* ── Sentinel infinite scroll — visible uniquement si hasMore ── */}
       {hasMore && posts.length > 0 && (
-        <button
-          onClick={loadMore}
-          disabled={loading}
-          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-sm font-bold transition-all active:scale-[0.98] disabled:opacity-60"
-          style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)' }}
-        >
-          {loading
-            ? <><Loader2 className="w-4 h-4 animate-spin" /> Chargement…</>
-            : <><ChevronDown className="w-4 h-4" /> Charger plus</>
-          }
-        </button>
+        <div ref={sentinelRef}>
+          {loading && (
+            <div className="space-y-3">
+              {[1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="fiq-card animate-pulse space-y-3"
+                  style={{ padding: '16px' }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl flex-shrink-0" style={{ background: 'var(--fiq-faint)' }} />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 rounded" style={{ background: 'var(--fiq-faint)', width: '50%' }} />
+                      <div className="h-2.5 rounded" style={{ background: 'var(--fiq-faint)', width: '35%' }} />
+                    </div>
+                  </div>
+                  <div className="h-12 rounded-xl" style={{ background: 'var(--fiq-faint)' }} />
+                  <div className="flex gap-4">
+                    <div className="h-2.5 rounded" style={{ background: 'var(--fiq-faint)', width: '30%' }} />
+                    <div className="h-2.5 rounded" style={{ background: 'var(--fiq-faint)', width: '25%' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── Fin du feed ── */}
@@ -299,6 +333,13 @@ export function FeedList({ initialDiscoverPosts, initialFollowingPosts, suggeste
           <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
             {activeTab === 'discover' ? 'Tu as tout vu — reviens après ta prochaine séance 💪' : 'Fin du feed — explore de nouveaux athlètes'}
           </p>
+        </div>
+      )}
+
+      {/* Spinner de chargement initial (skeleton déjà affiché via sentinel) */}
+      {loading && !hasMore && posts.length === 0 && (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--fiq-muted)' }} />
         </div>
       )}
     </div>

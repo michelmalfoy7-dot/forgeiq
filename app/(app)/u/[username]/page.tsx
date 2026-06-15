@@ -363,20 +363,20 @@ export default async function PublicProfilePage({ params }: PageProps) {
           </div>
         </div>
 
-        {/* Compteurs followers/following — non-cliquables (page /followers inexistante) */}
+        {/* Compteurs followers/following — cliquables */}
         <div className="flex gap-4">
-          <div className="text-center">
-            <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>
+          <Link href={`/u/${username}/followers`} className="text-center group">
+            <p className="text-lg font-black fiq-data group-hover:underline" style={{ color: 'var(--fiq-text)' }}>
               {targetProfile.followers_count ?? 0}
             </p>
             <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>abonnés</p>
-          </div>
-          <div className="text-center">
-            <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>
+          </Link>
+          <Link href={`/u/${username}/followers?tab=following`} className="text-center group">
+            <p className="text-lg font-black fiq-data group-hover:underline" style={{ color: 'var(--fiq-text)' }}>
               {targetProfile.following_count ?? 0}
             </p>
             <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>abonnements</p>
-          </div>
+          </Link>
         </div>
 
         {/* Bouton Follow (si pas son propre profil) */}
