@@ -105,9 +105,20 @@ export default async function NutritionPage() {
     fat_g:     dailyTarget.macros.fat_g,
   }
 
-  // Statut Pro — déterminé côté serveur, transmis au client pour gating UI
-  const { isProUser } = await import('@/lib/utils/plan')
-  const isPro = isProUser(profile as Parameters<typeof isProUser>[0])
+  // Statut Pro — requête minimale séparée pour éviter l'échec silencieux
+  // si une colonne du SELECT principal n'existe pas en production
+  const { data: planRow } = await supabase
+    .from('profiles')
+    .select('subscription_status, subscription_plan, is_admin')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  const isPro = !!(
+    planRow?.is_admin ||
+    planRow?.subscription_status === 'lifetime' ||
+    planRow?.subscription_status === 'pro' ||
+    planRow?.subscription_plan === 'lifetime'
+  )
 
   return (
     <NutritionClient
