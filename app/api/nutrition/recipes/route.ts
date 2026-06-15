@@ -163,8 +163,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ data: full, error: null })
   } catch (err) {
-    console.error('Recipe create error:', err)
-    return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
+    const detail = err instanceof Error ? err.message : String(err)
+    console.error('Recipe create error:', detail)
+    return NextResponse.json({ data: null, error: `Erreur serveur: ${detail}` }, { status: 500 })
   }
 }
 
