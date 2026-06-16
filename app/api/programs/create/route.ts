@@ -17,6 +17,28 @@ export async function POST(req: NextRequest) {
 
     const slug = `custom-${user.id.slice(0, 8)}-${Date.now()}`
 
+    // Résoudre les noms d'exercices pour les stocker dans la structure
+    type DayInput = { name: string; exercise_ids?: string[] }
+    const allExerciseIds = (days as DayInput[]).flatMap(d => d.exercise_ids ?? [])
+    const exMap: Record<string, { name_fr: string | null; name: string }> = {}
+    if (allExerciseIds.length > 0) {
+      const { data: exRows } = await supabase
+        .from('exercises_library')
+        .select('id, name, name_fr')
+        .in('id', allExerciseIds)
+      for (const ex of exRows ?? []) exMap[ex.id] = ex
+    }
+
+    const structureDays = (days as DayInput[]).map(d => ({
+      name: d.name,
+      exercises: (d.exercise_ids ?? []).map(id => ({
+        exercise_id: id,
+        name_fr: exMap[id]?.name_fr ?? exMap[id]?.name ?? 'Exercice',
+        sets: 4,
+        reps: '8-12',
+      })),
+    }))
+
     const { data: program, error } = await supabase
       .from('programs')
       .insert({
@@ -28,7 +50,7 @@ export async function POST(req: NextRequest) {
         equipment: ['full_gym', 'home_basic', 'home_advanced', 'bodyweight'],
         sessions_per_week,
         duration_weeks: 8,
-        structure: { days: days.map((d: { name: string }) => d.name) },
+        structure: { days: structureDays },
         is_custom: true,
         is_public: false,
         created_by: user.id,

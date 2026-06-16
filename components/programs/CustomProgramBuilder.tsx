@@ -20,6 +20,19 @@ type Day = {
   exercises: Exercise[]
 }
 
+export type BuilderDay = {
+  id: string
+  name: string
+  exercises: Exercise[]
+}
+
+export type BuilderInitialData = {
+  programId: string
+  name: string
+  sessionsPerWeek: number
+  days: BuilderDay[]
+}
+
 function uid() { return Math.random().toString(36).slice(2) }
 
 const MUSCLE_LABELS: Record<string, string> = {
@@ -119,17 +132,21 @@ function ExerciseSearchModal({
   )
 }
 
-export function CustomProgramBuilder({ exercises }: { exercises: Exercise[] }) {
+export function CustomProgramBuilder({ exercises, initialData }: { exercises: Exercise[]; initialData?: BuilderInitialData }) {
   const router = useRouter()
-  const [name, setName] = useState('')
-  const [sessionsPerWeek, setSessionsPerWeek] = useState(3)
-  const [days, setDays] = useState<Day[]>([
+  const isEditing = !!initialData?.programId
+
+  const defaultDays: Day[] = initialData?.days ?? [
     { id: uid(), name: 'Séance 1', exercises: [] },
     { id: uid(), name: 'Séance 2', exercises: [] },
     { id: uid(), name: 'Séance 3', exercises: [] },
-  ])
+  ]
+
+  const [name, setName] = useState(initialData?.name ?? '')
+  const [sessionsPerWeek, setSessionsPerWeek] = useState(initialData?.sessionsPerWeek ?? 3)
+  const [days, setDays] = useState<Day[]>(defaultDays)
   const [searchForDay, setSearchForDay] = useState<string | null>(null)
-  const [expandedDay, setExpandedDay] = useState<string | null>(days[0]?.id ?? null)
+  const [expandedDay, setExpandedDay] = useState<string | null>(defaultDays[0]?.id ?? null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -168,18 +185,17 @@ export function CustomProgramBuilder({ exercises }: { exercises: Exercise[] }) {
     setError('')
     setSaving(true)
     try {
-      const res = await fetch('/api/programs/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          sessions_per_week: sessionsPerWeek,
-          days: days.map(d => ({ name: d.name, exercise_ids: d.exercises.map(e => e.id) })),
-        }),
-      })
+      const payload = {
+        name: name.trim(),
+        sessions_per_week: sessionsPerWeek,
+        days: days.map(d => ({ name: d.name, exercise_ids: d.exercises.map(e => e.id) })),
+      }
+      const url = isEditing ? `/api/programs/${initialData.programId}` : '/api/programs/create'
+      const method = isEditing ? 'PATCH' : 'POST'
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const { data, error: apiError } = await res.json()
       if (apiError) { setError(apiError); return }
-      if (data?.id) router.push('/programs')
+      if (data?.id || (isEditing && !apiError)) router.push('/programs?tab=mine')
     } finally {
       setSaving(false)
     }
@@ -305,7 +321,10 @@ export function CustomProgramBuilder({ exercises }: { exercises: Exercise[] }) {
           disabled={saving}
           className="w-full py-4 rounded-xl font-black text-base flex items-center justify-center gap-2"
           style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}>
-          {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : '✓ Enregistrer le programme'}
+          {saving
+            ? <Loader2 className="w-5 h-5 animate-spin" />
+            : isEditing ? '✓ Enregistrer les modifications' : '✓ Enregistrer le programme'
+          }
         </button>
       </div>
 

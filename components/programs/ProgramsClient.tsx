@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Dumbbell, Calendar, Clock, CheckCircle, X, ChevronRight, Filter, Eye, Sparkles, Users, Globe, Lock, TrendingUp, Copy } from 'lucide-react'
+import { Plus, Dumbbell, Calendar, Clock, CheckCircle, X, ChevronRight, Filter, Eye, Sparkles, Users, Globe, Lock, TrendingUp, Copy, Pencil } from 'lucide-react'
 import Link from 'next/link'
 
 type TierKey = 'premium' | 'standard' | 'home'
@@ -238,7 +238,7 @@ function AdoptModal({ program, onClose, onConfirm, loading, gymTier, gymName, gy
 }
 
 function ProgramCard({
-  p, isCurrent, onAdopt, onFork, forkLoading, gymTier, gymFeatures, showAuthor, authorName, authorUsername, isPublished, onTogglePublish, publishLoading,
+  p, isCurrent, onAdopt, onFork, forkLoading, gymTier, gymFeatures, showAuthor, authorName, authorUsername, isPublished, onTogglePublish, publishLoading, showEdit,
 }: {
   p: Program
   isCurrent: boolean
@@ -253,6 +253,7 @@ function ProgramCard({
   isPublished?: boolean
   onTogglePublish?: (p: Program, publish: boolean) => void
   publishLoading?: boolean
+  showEdit?: boolean
 }) {
   return (
     <div
@@ -329,6 +330,17 @@ function ProgramCard({
           Détail
         </Link>
 
+        {/* Bouton éditer — mes programmes seulement */}
+        {showEdit && (
+          <Link
+            href={`/programs/custom?edit=${p.id}`}
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-semibold text-sm"
+            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}>
+            <Pencil className="w-4 h-4" />
+            Éditer
+          </Link>
+        )}
+
         {/* Bouton publier/dépublier sur "Mes programmes" */}
         {onTogglePublish && (
           <button
@@ -384,7 +396,14 @@ export function ProgramsClient({
   isPro = false, generationsLeft = 0,
 }: Props) {
   const router = useRouter()
-  const [tab, setTab] = useState<'forgeiq' | 'community' | 'mine'>('forgeiq')
+  // Ouvre directement l'onglet "mine" si ?tab=mine dans l'URL (ex: après édition)
+  const [tab, setTab] = useState<'forgeiq' | 'community' | 'mine'>(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search).get('tab')
+      if (p === 'mine' || p === 'community') return p
+    }
+    return 'forgeiq'
+  })
   const [filterLevel, setFilterLevel] = useState<string>('all')
   const [filterGoal, setFilterGoal] = useState<string>('all')
   const [filterSessions, setFilterSessions] = useState<string>('all')
@@ -722,7 +741,8 @@ export function ProgramsClient({
                     onAdopt={setAdoptTarget} gymTier={gymTier ?? null} gymFeatures={gymFeatures ?? null}
                     isPublished={publishedIds.has(p.id)}
                     onTogglePublish={togglePublish}
-                    publishLoading={publishingId === p.id} />
+                    publishLoading={publishingId === p.id}
+                    showEdit />
                 ))}
               </div>
             </>
