@@ -446,12 +446,12 @@ export default function WorkoutSessionPage() {
           const [{ data: allLastSets }, { data: allPRs }] = matchIds.length > 0
             ? await Promise.all([
                 supabase.from('workout_sets')
-                  .select('weight_kg, reps, exercise_id, workouts!inner(user_id)')
+                  .select('weight_kg, reps, exercise_id, workout_id, workouts!inner(user_id)')
                   .in('exercise_id', matchIds)
                   .eq('workouts.user_id', user.id)
                   .not('is_warmup', 'eq', true)
                   .order('created_at', { ascending: false })
-                  .limit(matchIds.length * 5),
+                  .limit(matchIds.length * 10),
                 supabase.from('personal_records')
                   .select('exercise_id, value')
                   .in('exercise_id', matchIds)
@@ -460,11 +460,19 @@ export default function WorkoutSessionPage() {
               ])
             : [{ data: [] }, { data: [] }]
 
+          // Ne garder que les sets de la SESSION LA PLUS RÉCENTE par exercice
+          // (évite de mélanger des sets de sessions différentes dans la comparaison)
           const lastSetsByEx: Record<string, { weight_kg: number; reps: number }[]> = {}
+          const lastWorkoutByEx: Record<string, string> = {}
           for (const s of allLastSets ?? []) {
-            const exId = (s as { exercise_id: string }).exercise_id
-            if (!lastSetsByEx[exId]) lastSetsByEx[exId] = []
-            if (lastSetsByEx[exId].length < 4) lastSetsByEx[exId].push({ weight_kg: s.weight_kg, reps: s.reps })
+            const exId = (s as { exercise_id: string; workout_id: string }).exercise_id
+            const wId = (s as { workout_id: string }).workout_id
+            if (!lastSetsByEx[exId]) {
+              lastSetsByEx[exId] = [{ weight_kg: s.weight_kg, reps: s.reps }]
+              lastWorkoutByEx[exId] = wId
+            } else if (lastWorkoutByEx[exId] === wId && lastSetsByEx[exId].length < 4) {
+              lastSetsByEx[exId].push({ weight_kg: s.weight_kg, reps: s.reps })
+            }
           }
           const prByEx: Record<string, number> = {}
           for (const pr of allPRs ?? []) prByEx[pr.exercise_id] = pr.value
@@ -2618,70 +2626,30 @@ function ExerciseCard({
                         : <span className="text-xs" style={{ color: 'var(--fiq-text)' }}>{s.set_number}</span>
                 }
               </button>
-              {/* Poids avec steppers -2.5 / +2.5 */}
-              <div className="flex items-center gap-0.5">
-                <button
-                  style={stepperBtnStyle}
-                  onClick={() => {
-                    const cur = parseFloat(String(s.weight_kg).replace(',', '.')) || 0
-                    const next = Math.max(0, Math.round((cur - 2.5) * 100) / 100)
-                    onUpdateSet(s.id, 'weight_kg', String(next))
-                  }}
-                  aria-label="-2.5 kg"
-                >−</button>
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="—"
-                  value={s.weight_kg}
-                  onChange={(e) => onUpdateSet(s.id, 'weight_kg', e.target.value)}
-                  className="text-center text-sm h-9 flex-1 min-w-0"
-                  style={{
-                    background: 'var(--surface)',
-                    borderColor: isPR ? 'var(--fiq-accent)' : setType === 'top_set' ? '#F59E0B44' : setType === 'backoff' ? '#3D8BFF44' : setType === 'dropset' ? '#FF6B3544' : setType === 'failure' ? '#EF444444' : 'var(--fiq-border)',
-                    color: 'var(--fiq-text)',
-                    padding: '0 2px',
-                  }}
-                />
-                <button
-                  style={stepperBtnStyle}
-                  onClick={() => {
-                    const cur = parseFloat(String(s.weight_kg).replace(',', '.')) || 0
-                    const next = Math.round((cur + 2.5) * 100) / 100
-                    onUpdateSet(s.id, 'weight_kg', String(next))
-                  }}
-                  aria-label="+2.5 kg"
-                >+</button>
-              </div>
-              {/* Reps avec steppers -1 / +1 */}
-              <div className="flex items-center gap-0.5">
-                <button
-                  style={stepperBtnStyle}
-                  onClick={() => {
-                    const cur = Number(s.reps) || 0
-                    const next = Math.max(0, cur - 1)
-                    onUpdateSet(s.id, 'reps', String(next))
-                  }}
-                  aria-label="-1 rep"
-                >−</button>
-                <Input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="—"
-                  value={s.reps}
-                  onChange={(e) => onUpdateSet(s.id, 'reps', e.target.value)}
-                  className="text-center text-sm h-9 flex-1 min-w-0"
-                  style={{ background: 'var(--surface)', borderColor: 'var(--fiq-border)', color: 'var(--fiq-text)', padding: '0 2px' }}
-                />
-                <button
-                  style={stepperBtnStyle}
-                  onClick={() => {
-                    const cur = Number(s.reps) || 0
-                    onUpdateSet(s.id, 'reps', String(cur + 1))
-                  }}
-                  aria-label="+1 rep"
-                >+</button>
-              </div>
+              {/* Poids — input pleine largeur */}
+              <Input
+                type="text"
+                inputMode="decimal"
+                placeholder="—"
+                value={s.weight_kg}
+                onChange={(e) => onUpdateSet(s.id, 'weight_kg', e.target.value)}
+                className="text-center text-base font-bold h-9 min-w-0 w-full"
+                style={{
+                  background: 'var(--surface)',
+                  borderColor: isPR ? 'var(--fiq-accent)' : setType === 'top_set' ? '#F59E0B44' : setType === 'backoff' ? '#3D8BFF44' : setType === 'dropset' ? '#FF6B3544' : setType === 'failure' ? '#EF444444' : 'var(--fiq-border)',
+                  color: 'var(--fiq-text)',
+                }}
+              />
+              {/* Reps — input pleine largeur */}
+              <Input
+                type="text"
+                inputMode="numeric"
+                placeholder="—"
+                value={s.reps}
+                onChange={(e) => onUpdateSet(s.id, 'reps', e.target.value)}
+                className="text-center text-base font-bold h-9 min-w-0 w-full"
+                style={{ background: 'var(--surface)', borderColor: 'var(--fiq-border)', color: 'var(--fiq-text)' }}
+              />
               <Input
                 type="text"
                 inputMode="decimal"
@@ -2731,8 +2699,42 @@ function ExerciseCard({
               </button>
             </div>
 
-            {/* Bouton note 💬 + comparaison dernière séance — discrets, sous la row */}
-            <div className="flex items-center justify-between mt-0.5 pl-[52px] pr-1">
+            {/* Sous-row : steppers ±2.5kg / ±1rep + note + comparaison */}
+            <div className="flex items-center gap-2 mt-1 pl-[44px] pr-1">
+              {/* Stepper poids */}
+              <div className="flex items-center gap-0.5">
+                <button
+                  className="flex items-center justify-center text-xs font-bold"
+                  style={{ width: 26, height: 22, borderRadius: 6, background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)', flexShrink: 0 }}
+                  onClick={() => { const c = parseFloat(String(s.weight_kg).replace(',', '.')) || 0; onUpdateSet(s.id, 'weight_kg', String(Math.max(0, Math.round((c - 2.5) * 100) / 100))) }}
+                  aria-label="-2.5 kg"
+                >−</button>
+                <span className="text-[9px] px-1" style={{ color: 'var(--fiq-muted)' }}>kg</span>
+                <button
+                  className="flex items-center justify-center text-xs font-bold"
+                  style={{ width: 26, height: 22, borderRadius: 6, background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)', flexShrink: 0 }}
+                  onClick={() => { const c = parseFloat(String(s.weight_kg).replace(',', '.')) || 0; onUpdateSet(s.id, 'weight_kg', String(Math.round((c + 2.5) * 100) / 100)) }}
+                  aria-label="+2.5 kg"
+                >+</button>
+              </div>
+              {/* Stepper reps */}
+              <div className="flex items-center gap-0.5">
+                <button
+                  className="flex items-center justify-center text-xs font-bold"
+                  style={{ width: 26, height: 22, borderRadius: 6, background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)', flexShrink: 0 }}
+                  onClick={() => { const c = Number(s.reps) || 0; onUpdateSet(s.id, 'reps', String(Math.max(0, c - 1))) }}
+                  aria-label="-1 rep"
+                >−</button>
+                <span className="text-[9px] px-1" style={{ color: 'var(--fiq-muted)' }}>reps</span>
+                <button
+                  className="flex items-center justify-center text-xs font-bold"
+                  style={{ width: 26, height: 22, borderRadius: 6, background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)', flexShrink: 0 }}
+                  onClick={() => { const c = Number(s.reps) || 0; onUpdateSet(s.id, 'reps', String(c + 1)) }}
+                  aria-label="+1 rep"
+                >+</button>
+              </div>
+              <div className="flex-1" />
+              {/* Note */}
               <button
                 onClick={() => setOpenNoteSetId(noteOpen ? null : s.id)}
                 className="flex items-center gap-1 text-[10px] py-0.5"
@@ -2740,9 +2742,9 @@ function ExerciseCard({
                 title="Note pour ce set"
               >
                 <MessageSquare className="w-3 h-3" />
-                {s.note ? s.note.slice(0, 30) + (s.note.length > 30 ? '…' : '') : ''}
+                {s.note ? s.note.slice(0, 20) + (s.note.length > 20 ? '…' : '') : ''}
               </button>
-              {/* Comparaison inline : valeur de la dernière séance pour ce set */}
+              {/* Comparaison dernière séance */}
               {lastSetData && !s.is_warmup && (
                 <span
                   className="text-[10px] font-semibold tabular-nums flex-shrink-0"

@@ -36,18 +36,22 @@ export type TDEEBreakdown = {
 
 /** Map keyword (nom session) → valeur MET scientifique */
 export const CARDIO_ACTIVITY_KEYWORDS: Record<string, number> = {
-  'vélo':       8.0,
-  'cyclisme':   8.0,
-  'course':     9.8,
-  'natation':   8.0,
-  'yoga':       3.0,
-  'pilates':    3.0,
-  'randonnée':  6.0,
-  'football':   8.0,
-  'tennis':     7.3,
-  'combat':     9.5,
-  'boxe':       9.5,
-  'stretching': 2.5,
+  'vélo':          8.0,
+  'cyclisme':      8.0,
+  'course':        9.8,
+  'natation':      8.0,
+  'yoga':          3.0,
+  'pilates':       3.0,
+  'randonnée':     6.0,
+  'football':      8.0,
+  'tennis':        7.3,
+  'combat':        9.5,
+  'boxe':          9.5,
+  'stretching':    2.5,
+  'corde':         11.8, // corde à sauter modéré ~120 sauts/min (Ainsworth 2011)
+  'jump rope':     11.8,
+  'skipping':      11.8,
+  'double under':  12.3, // double unders CrossFit
 }
 
 // MET par défaut pour les activités non reconnues

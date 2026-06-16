@@ -56,6 +56,7 @@ export type CoachPromptCtx = {
   fatG: number | null
   microDeficiencies?: { nutrient: string; pct: number }[]
   tonnageDelta: { muscle: string; delta: number }[]
+  sessionTonnageContext?: string | null
   tdeeBreakdown: {
     bmr: number
     stepsKcal: number
@@ -198,6 +199,10 @@ ${ctx.tonnageDelta.length > 0
       return `${d.muscle} ${label}`
     }).join(' | ')
   : 'Données insuffisantes'}
+${ctx.sessionTonnageContext ? `
+## Tonnage en contexte — séance du jour
+${ctx.sessionTonnageContext}
+→ Si en dessous de la baseline : normal (récupération) ou à creuser (fatigue/motivation). Si au-dessus : signaler la progression.` : ''}
 
 ## Alertes actives
 ${alerts.length ? alerts.join('\n') : 'Aucune alerte'}

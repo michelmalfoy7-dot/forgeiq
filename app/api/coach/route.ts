@@ -106,6 +106,34 @@ Règles :
   }
 }
 
+// Classifie le nom de séance en type (legs/push/pull/full/free)
+function classifySessionType(name: string): 'legs' | 'push' | 'pull' | 'full' | 'free' {
+  const n = name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  if (/jambe|leg|squat|deadlift|souleве|rdl|tibia|curl femoral|leg press|presse/.test(n)) return 'legs'
+  if (/push|pousse|chest|pecto|epaule|tricep|developpe|developpé|developpe|press|benchpress/.test(n)) return 'push'
+  if (/pull|tirage|dos|back|bicep|curl|rowing|row|tractions/.test(n)) return 'pull'
+  if (/full|corps|total|compound/.test(n)) return 'full'
+  return 'free'
+}
+
+// Calcule la baseline 30j pour le type de séance du jour, compare avec aujourd'hui
+function computeSessionTypeCtx(
+  sessions30d: { session_name: string; total_tonnage_kg: number | null }[],
+  todaySession: { session_name: string; total_tonnage_kg: number | null } | undefined
+): string | null {
+  if (!todaySession) return null
+  const type = classifySessionType(todaySession.session_name)
+  if (type === 'free') return null
+  const sameType = sessions30d.filter(s => classifySessionType(s.session_name) === type && s.total_tonnage_kg)
+  if (sameType.length < 3) return null
+  const baseline = Math.round(sameType.reduce((acc, s) => acc + (s.total_tonnage_kg ?? 0), 0) / sameType.length)
+  const todayKg = todaySession.total_tonnage_kg
+  if (!todayKg) return `Séance ${type} · Baseline 30j : ${baseline}kg (${sameType.length} sessions)`
+  const delta = Math.round(((todayKg - baseline) / baseline) * 100)
+  const sign = delta >= 0 ? '+' : ''
+  return `Séance ${type} · Baseline 30j : ${baseline}kg · Aujourd'hui : ${todayKg}kg (${sign}${delta}%)`
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -214,6 +242,7 @@ export async function POST(req: NextRequest) {
       { data: eightWeekWorkouts },
       { data: persistentMemoryRaw },
       { data: ewma7DaysAgoLog },
+      { data: tonnage30dData },
     ] = await Promise.all([
       supabase.from('profiles')
         .select('display_name, goal, level, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, target_weight_kg')
@@ -277,6 +306,15 @@ export async function POST(req: NextRequest) {
         .order('log_date', { ascending: false })
         .limit(1)
         .maybeSingle(),
+      // Séances 30j avec nom + tonnage — baseline par type de séance
+      supabase.from('workouts')
+        .select('session_name, total_tonnage_kg')
+        .eq('user_id', user.id)
+        .gte('session_date', thirtyDaysAgo)
+        .not('completed_at', 'is', null)
+        .not('total_tonnage_kg', 'is', null)
+        .order('session_date', { ascending: false })
+        .limit(60),
     ])
 
     // ── Volume hebdomadaire par groupe musculaire ────────────────────────────
@@ -469,6 +507,12 @@ export async function POST(req: NextRequest) {
 
     // TDEE dynamique du jour — même source de vérité que dashboard/nutrition
     const todayWorkoutInRecent = (recentWorkouts ?? []).find(w => w.session_date === today)
+
+    // Contexte tonnage par type de séance (legs/push/pull/full) — baseline 30j vs aujourd'hui
+    const sessionTypeCtx = computeSessionTypeCtx(
+      (tonnage30dData ?? []) as { session_name: string; total_tonnage_kg: number | null }[],
+      todayWorkoutInRecent as { session_name: string; total_tonnage_kg: number | null } | undefined
+    )
     const isRestDay = !todayWorkoutInRecent
     const coachDailyTarget = calcDailyTarget({
       weight_kg:         profile?.weight_kg,
@@ -522,6 +566,7 @@ export async function POST(req: NextRequest) {
       fatG: hasFoodLogs ? Math.round(foodTotals.fat_g) : null,
       microDeficiencies: microDeficiencies.length > 0 ? microDeficiencies : undefined,
       tonnageDelta,
+      sessionTonnageContext: sessionTypeCtx,
       tdeeBreakdown: {
         bmr:                  coachDailyTarget.bmr,
         stepsKcal:            coachDailyTarget.stepsKcal,

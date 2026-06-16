@@ -174,6 +174,8 @@ export default function WorkoutPage() {
 
   async function startWorkout(sessionName: string, exercises?: { name: string; sets: number; reps: string; weight_kg: number | null; note: string }[], programId?: string | null) {
     setStarting(true)
+    // Nettoyer le draft "Refaire" — ne doit jamais contaminer une nouvelle séance
+    try { localStorage.removeItem('forgeiq_draft_exercises') } catch { /* ignore */ }
     try {
       const res = await fetch('/api/workout/start', {
         method: 'POST',
@@ -266,7 +268,15 @@ export default function WorkoutPage() {
         body: JSON.stringify({ workout_id: activeWorkoutId }),
       })
     } catch { /* ignore — on nettoie quand même */ }
-    clearWorkoutLocalStorage(activeWorkoutId)
+    // Supprimer TOUS les forgeiq_workout_* pour éviter les séances fantômes résiduelles
+    try {
+      const keysToRemove: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key?.startsWith('forgeiq_workout_') || key?.startsWith('forgeiq_start_')) keysToRemove.push(key)
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k))
+    } catch { /* ignore */ }
     setActiveWorkoutId(null)
     setAbandoningWorkout(false)
   }

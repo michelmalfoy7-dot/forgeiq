@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
       .eq('id', workout_id)
       .eq('user_id', user.id)
       .is('completed_at', null)
-      .single()
+      .maybeSingle()
 
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
 
