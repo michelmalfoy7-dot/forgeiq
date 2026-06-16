@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { WorkoutPost } from '@/components/social/WorkoutPost'
 import { FollowButton } from '@/components/social/FollowButton'
+import { MessageButton } from '@/components/social/MessageButton'
 import { ShareBig5Button } from '@/components/social/ShareBig5Button'
 import type { FeedPost } from '@/components/social/WorkoutPost'
 import { buildExercisesMap } from '@/lib/utils/social'
@@ -379,12 +380,17 @@ export default async function PublicProfilePage({ params }: PageProps) {
           </Link>
         </div>
 
-        {/* Bouton Follow (si pas son propre profil) */}
+        {/* Actions : Follow + Message (si pas son propre profil) */}
         {!isOwnProfile && (
-          <FollowButton
-            targetUserId={targetProfile.user_id}
-            initialIsFollowing={isFollowing}
-          />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <FollowButton
+                targetUserId={targetProfile.user_id}
+                initialIsFollowing={isFollowing}
+              />
+            </div>
+            <MessageButton recipientId={targetProfile.user_id} />
+          </div>
         )}
       </div>
 

@@ -16,10 +16,26 @@ export default async function ProgressPage() {
   twelveWeeksAgo.setDate(twelveWeeksAgo.getDate() - 84)
   const since = twelveWeeksAgo.toISOString().split('T')[0]
 
+  // Cette semaine et la semaine dernière (pour Feature A delta + Feature D)
+  const today = new Date()
+  const dayOfWeek = today.getDay() // 0=dimanche
+  const startOfWeek = new Date(today)
+  startOfWeek.setDate(today.getDate() - ((dayOfWeek + 6) % 7)) // lundi
+  startOfWeek.setHours(0, 0, 0, 0)
+  const startOfLastWeek = new Date(startOfWeek)
+  startOfLastWeek.setDate(startOfWeek.getDate() - 7)
+
+  const todayStr = today.toISOString().split('T')[0]
+  const startOfWeekStr = startOfWeek.toISOString().split('T')[0]
+  const startOfLastWeekStr = startOfLastWeek.toISOString().split('T')[0]
+
   const [
     { data: weightLogs },
     { data: workouts },
     { data: prs },
+    { data: profile },
+    { data: thisWeekWorkouts },
+    { data: lastWeekWorkouts },
   ] = await Promise.all([
     supabase.from('daily_logs')
       .select('log_date, weight_kg, weight_trend')
@@ -40,6 +56,27 @@ export default async function ProgressPage() {
       .eq('user_id', user.id)
       .eq('record_type', 'top_set')
       .order('value', { ascending: false }),
+
+    supabase.from('profiles')
+      .select('target_weight_kg, sessions_per_week')
+      .eq('id', user.id)
+      .maybeSingle(),
+
+    // Séances cette semaine (lundi → aujourd'hui)
+    supabase.from('workouts')
+      .select('session_date, total_tonnage_kg')
+      .eq('user_id', user.id)
+      .not('completed_at', 'is', null)
+      .gte('session_date', startOfWeekStr)
+      .lte('session_date', todayStr),
+
+    // Séances semaine dernière
+    supabase.from('workouts')
+      .select('session_date, total_tonnage_kg')
+      .eq('user_id', user.id)
+      .not('completed_at', 'is', null)
+      .gte('session_date', startOfLastWeekStr)
+      .lt('session_date', startOfWeekStr),
   ])
 
   // Regrouper le tonnage par semaine ISO
@@ -65,6 +102,81 @@ export default async function ProgressPage() {
     trend: l.weight_trend,
   }))
 
+  // ── Feature A & B : tonnage cette semaine vs semaine dernière ─────────────
+  const tonnageThisWeek = (thisWeekWorkouts ?? []).reduce((sum, w) => sum + (w.total_tonnage_kg ?? 0), 0)
+  const tonnageLastWeek = (lastWeekWorkouts ?? []).reduce((sum, w) => sum + (w.total_tonnage_kg ?? 0), 0)
+  const sessionsThisWeek = (thisWeekWorkouts ?? []).length
+
+  // ── Feature B : plateau — comparer les 3 dernières semaines ISO ──────────
+  const last3Weeks = weeklyTonnage.slice(-3)
+  let plateauDetected = false
+  if (last3Weeks.length === 3) {
+    const values = last3Weeks.map(w => w.tonnage)
+    const maxVal = Math.max(...values)
+    const minVal = Math.min(...values)
+    if (maxVal > 0 && (maxVal - minVal) / maxVal < 0.03) {
+      plateauDetected = true
+    }
+  }
+
+  // ── Feature C : projection objectif poids ────────────────────────────────
+  const targetWeight = profile?.target_weight_kg ?? null
+  // Tendance EWMA sur 4 semaines : (ewma_today - ewma_4weeks_ago) / 4
+  const trendLogs = (weightLogs ?? []).filter(l => l.weight_trend != null)
+  let weeklyWeightTrend: number | null = null // kg/semaine, positif = prise, négatif = perte
+  if (trendLogs.length >= 2) {
+    // On cherche un point ~4 semaines en arrière
+    const latestTrend = trendLogs[trendLogs.length - 1].weight_trend!
+    const fourWeeksAgoDate = new Date()
+    fourWeeksAgoDate.setDate(fourWeeksAgoDate.getDate() - 28)
+    const oldLog = trendLogs.find(l => new Date(l.log_date + 'T12:00:00') >= fourWeeksAgoDate) ?? trendLogs[0]
+    const oldTrend = oldLog.weight_trend!
+    const daysDiff = Math.max(7, (new Date(trendLogs[trendLogs.length - 1].log_date + 'T12:00:00').getTime() - new Date(oldLog.log_date + 'T12:00:00').getTime()) / 86400000)
+    weeklyWeightTrend = ((latestTrend - oldTrend) / daysDiff) * 7
+  }
+  const currentEwma = trendLogs.length > 0 ? trendLogs[trendLogs.length - 1].weight_trend! : null
+
+  // ── Feature D : score de forme globale 0-100 ────────────────────────────
+  let globalScore: number | null = null
+  {
+    // 40% tendance tonnage (en progression vs plateau)
+    let tonnageScore = 50 // neutre par défaut
+    if (weeklyTonnage.length >= 2) {
+      const last = weeklyTonnage[weeklyTonnage.length - 1].tonnage
+      const prev = weeklyTonnage[weeklyTonnage.length - 2].tonnage
+      if (prev > 0) {
+        const pct = ((last - prev) / prev) * 100
+        // +10% ou plus = 100, -10% ou moins = 0, linéaire entre
+        tonnageScore = Math.max(0, Math.min(100, 50 + pct * 5))
+      }
+    }
+    if (plateauDetected) tonnageScore = Math.min(tonnageScore, 30)
+
+    // 30% régularité séances : sessionsThisWeek vs objectif
+    const targetSessions = profile?.sessions_per_week ?? 3
+    const regularityScore = Math.min(100, (sessionsThisWeek / targetSessions) * 100)
+
+    // 30% poids trend vs objectif
+    let weightScore = 50
+    if (targetWeight !== null && currentEwma !== null && weeklyWeightTrend !== null) {
+      const ecart = targetWeight - currentEwma
+      const absEcart = Math.abs(ecart)
+      if (absEcart < 0.5) {
+        weightScore = 100 // objectif atteint
+      } else if (Math.abs(weeklyWeightTrend) < 0.05) {
+        weightScore = 40 // pas de tendance claire
+      } else if (Math.sign(weeklyWeightTrend) === Math.sign(ecart)) {
+        // Tendance dans la bonne direction
+        const weeksToGoal = absEcart / Math.abs(weeklyWeightTrend)
+        weightScore = weeksToGoal <= 12 ? 90 : weeksToGoal <= 24 ? 70 : 50
+      } else {
+        weightScore = 10 // tendance inverse
+      }
+    }
+
+    globalScore = Math.round(tonnageScore * 0.4 + regularityScore * 0.3 + weightScore * 0.3)
+  }
+
   return (
     <div className="p-4 max-w-lg mx-auto">
       <div className="pt-4 mb-6">
@@ -76,6 +188,13 @@ export default async function ProgressPage() {
         weightData={weightData}
         weeklyTonnage={weeklyTonnage}
         personalRecords={prs ?? []}
+        tonnageThisWeek={Math.round(tonnageThisWeek)}
+        tonnageLastWeek={Math.round(tonnageLastWeek)}
+        plateauDetected={plateauDetected}
+        targetWeight={targetWeight}
+        currentEwma={currentEwma}
+        weeklyWeightTrend={weeklyWeightTrend}
+        globalScore={globalScore}
       />
 
       {/* Séparateur */}

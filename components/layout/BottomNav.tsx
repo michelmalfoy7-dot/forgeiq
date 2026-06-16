@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Dumbbell, Utensils, Users, User } from 'lucide-react'
+import { LayoutDashboard, Dumbbell, Utensils, Users, User, MessageCircle } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { FiqAlert } from '@/components/ui/FiqIcons'
 
@@ -38,6 +38,7 @@ export function BottomNav() {
   const [showQuitModal, setShowQuitModal] = useState(false)
   const [pendingHref, setPendingHref] = useState<string | null>(null)
   const [notifUnread, setNotifUnread] = useState(0)
+  const [msgUnread, setMsgUnread] = useState(0)
 
   // Vérifier localStorage pour une séance active
   const checkActiveWorkout = useCallback(() => {
@@ -61,18 +62,29 @@ export function BottomNav() {
     checkActiveWorkout()
   }, [pathname, checkActiveWorkout])
 
-  // Badge notifications — vérifier le count toutes les 60s
+  // Badge notifications + messages non lus — vérifier toutes les 60s
   useEffect(() => {
-    async function fetchNotifCount() {
+    async function fetchCounts() {
       try {
-        const res  = await fetch('/api/social/notifications')
-        const json = await res.json() as { data: { unread_count: number } | null }
-        if (json.data) setNotifUnread(json.data.unread_count)
+        const [notifRes, msgRes] = await Promise.all([
+          fetch('/api/social/notifications'),
+          fetch('/api/social/messages'),
+        ])
+        const notifJson = await notifRes.json() as { data: { unread_count: number } | null }
+        if (notifJson.data) setNotifUnread(notifJson.data.unread_count)
+
+        const msgJson = await msgRes.json() as {
+          data: Array<{ unread_count: number }> | null
+        }
+        if (msgJson.data) {
+          const total = msgJson.data.reduce((acc, c) => acc + (c.unread_count ?? 0), 0)
+          setMsgUnread(total)
+        }
       } catch { /* silencieux */ }
     }
-    fetchNotifCount()
+    fetchCounts()
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') fetchNotifCount()
+      if (document.visibilityState === 'visible') void fetchCounts()
     }, 60_000)
     return () => clearInterval(interval)
   }, [])
@@ -183,8 +195,8 @@ export function BottomNav() {
                       style={{ width: 7, height: 7, background: 'var(--fiq-accent)' }}
                     />
                   )}
-                  {/* Badge rouge notifications sur Social */}
-                  {item.href === '/social' && notifUnread > 0 && !isActive && (
+                  {/* Badge rouge notifications + messages non lus sur Social */}
+                  {item.href === '/social' && (notifUnread > 0 || msgUnread > 0) && !isActive && (
                     <span
                       className="absolute -top-1 -right-1.5 flex items-center justify-center rounded-full text-[8px] font-black"
                       style={{
@@ -196,7 +208,7 @@ export function BottomNav() {
                         boxShadow: '0 0 0 2px var(--bg)',
                       }}
                     >
-                      {notifUnread > 9 ? '9+' : notifUnread}
+                      {(notifUnread + msgUnread) > 9 ? '9+' : (notifUnread + msgUnread)}
                     </span>
                   )}
                 </div>

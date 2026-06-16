@@ -22,6 +22,17 @@ type PR = {
 }
 type Tab = 'weight' | 'tonnage' | 'prs' | '1rm'
 
+// Props supplémentaires pour les 4 nouvelles features Sprint 15
+interface ExtraProgressProps {
+  tonnageThisWeek: number
+  tonnageLastWeek: number
+  plateauDetected: boolean
+  targetWeight: number | null
+  currentEwma: number | null
+  weeklyWeightTrend: number | null // kg/semaine, négatif = perte
+  globalScore: number | null       // 0-100
+}
+
 type OneRmExercise = { exercise_id: string; exercise_name: string; value: number }
 type OneRmPoint    = { date: string; raw_date: string; value_kg: number }
 
@@ -179,17 +190,259 @@ function TonnageSummary({ data }: { data: TonnagePoint[] }) {
   )
 }
 
+// ─── Feature A : Delta tonnage semaine réelle ─────────────────────────────────
+// Affiche le tonnage de la semaine courante (lundi→auj) vs la semaine précédente
+function TonnageDeltaBar({
+  thisWeek,
+  lastWeek,
+}: {
+  thisWeek: number
+  lastWeek: number
+}) {
+  if (lastWeek === 0 && thisWeek === 0) return null
+  const hasDelta = lastWeek > 0
+  const pct = hasDelta ? Math.round(((thisWeek - lastWeek) / lastWeek) * 100) : null
+  const positive = pct !== null ? pct >= 0 : true
+
+  return (
+    <div
+      className="flex items-center justify-between px-3 py-2.5 rounded-xl"
+      style={{ background: 'var(--fiq-faint)' }}
+    >
+      <div>
+        <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>
+          Cette semaine&nbsp;
+          <span style={{ color: 'var(--fiq-accent)' }}>
+            {thisWeek.toLocaleString('fr-FR')} kg
+          </span>
+        </p>
+        {hasDelta && (
+          <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+            vs sem. précédente
+          </p>
+        )}
+      </div>
+
+      {hasDelta && pct !== null && (
+        <span
+          className="text-xs font-black px-2.5 py-1 rounded-lg flex-shrink-0 flex items-center gap-1"
+          style={{
+            background: positive ? 'rgba(180,255,74,0.12)' : 'rgba(239,68,68,0.12)',
+            color: positive ? '#B4FF4A' : '#EF4444',
+            border: `1px solid ${positive ? 'rgba(180,255,74,0.25)' : 'rgba(239,68,68,0.25)'}`,
+          }}
+        >
+          {positive ? '↑' : '↓'} {positive && pct > 0 ? '+' : ''}{pct}%
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ─── Feature B : Alerte plateau ──────────────────────────────────────────────
+function PlateauAlert() {
+  return (
+    <div
+      className="flex gap-3 items-start px-3 py-3"
+      style={{
+        borderLeft: '3px solid var(--fiq-orange)',
+        background: 'rgba(255,107,53,0.08)',
+        borderRadius: 12,
+      }}
+    >
+      <span style={{ fontSize: 18, flexShrink: 0 }}>⚠</span>
+      <div>
+        <p className="text-sm font-black" style={{ color: 'var(--fiq-orange)' }}>
+          Plateau détecté
+        </p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+          Ton tonnage est stable depuis 3 semaines. Essaie d&apos;augmenter le volume ou l&apos;intensité sur 1-2 exercices clés.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Feature C : Projection objectif poids ───────────────────────────────────
+function WeightProjection({
+  targetWeight,
+  currentEwma,
+  weeklyTrend,
+}: {
+  targetWeight: number
+  currentEwma: number
+  weeklyTrend: number | null
+}) {
+  const ecart = Math.round((targetWeight - currentEwma) * 10) / 10
+  const absEcart = Math.abs(ecart)
+  const atGoal = absEcart < 0.5
+
+  // Calcul projection
+  let projectionLine: string
+  let projectionColor = '#3D8BFF'
+
+  if (atGoal) {
+    projectionLine = 'Objectif atteint 🎯'
+    projectionColor = '#B4FF4A'
+  } else if (weeklyTrend === null || Math.abs(weeklyTrend) < 0.05) {
+    projectionLine = 'Pas de tendance claire — continue le suivi'
+    projectionColor = '#6B7280'
+  } else if (Math.sign(weeklyTrend) !== Math.sign(ecart)) {
+    projectionLine = 'Ta tendance actuelle s\'éloigne de l\'objectif'
+    projectionColor = '#EF4444'
+  } else {
+    const weeks = Math.round(absEcart / Math.abs(weeklyTrend))
+    const targetDate = new Date()
+    targetDate.setDate(targetDate.getDate() + weeks * 7)
+    const monthLabel = new Intl.DateTimeFormat('fr-FR', { month: 'short', year: 'numeric' }).format(targetDate)
+    const rythme = weeklyTrend > 0
+      ? `+${Math.abs(weeklyTrend).toFixed(2)} kg/sem`
+      : `−${Math.abs(weeklyTrend).toFixed(2)} kg/sem`
+    projectionLine = `À ce rythme (${rythme}) → atteint dans ~${weeks} sem. (${monthLabel})`
+  }
+
+  return (
+    <div
+      className="fiq-card space-y-3"
+      style={{ fontSize: 13 }}
+    >
+      <p className="font-black text-sm" style={{ color: 'var(--fiq-text)' }}>Objectif poids</p>
+
+      {/* Ligne métriques */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div>
+          <p className="fiq-label" style={{ fontSize: 10 }}>Objectif</p>
+          <p className="font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
+            {targetWeight} <span style={{ color: 'var(--fiq-muted)', fontWeight: 400, fontSize: 11 }}>kg</span>
+          </p>
+        </div>
+        <div style={{ color: 'var(--fiq-muted)', fontSize: 18, alignSelf: 'center', marginTop: 8 }}>→</div>
+        <div>
+          <p className="fiq-label" style={{ fontSize: 10 }}>Actuel (EWMA)</p>
+          <p className="font-black fiq-data" style={{ color: 'var(--fiq-text)' }}>
+            {currentEwma} <span style={{ color: 'var(--fiq-muted)', fontWeight: 400, fontSize: 11 }}>kg</span>
+          </p>
+        </div>
+        <div>
+          <p className="fiq-label" style={{ fontSize: 10 }}>Écart</p>
+          <p className="font-black fiq-data" style={{ color: ecart < 0 ? '#3D8BFF' : 'var(--fiq-orange)' }}>
+            {ecart > 0 ? '+' : ''}{ecart} <span style={{ color: 'var(--fiq-muted)', fontWeight: 400, fontSize: 11 }}>kg</span>
+          </p>
+        </div>
+      </div>
+
+      {/* Ligne projection */}
+      <p style={{ color: projectionColor, fontSize: 12, fontWeight: 600, lineHeight: 1.4 }}>
+        {projectionLine}
+      </p>
+    </div>
+  )
+}
+
+// ─── Feature D : Score de forme globale ──────────────────────────────────────
+function GlobalFormScore({ score }: { score: number }) {
+  // Couleur selon score
+  const color =
+    score >= 70 ? '#B4FF4A'
+    : score >= 45 ? '#F59E0B'
+    : '#EF4444'
+
+  const label =
+    score >= 70 ? 'En progression'
+    : score >= 45 ? 'Stable'
+    : 'À améliorer'
+
+  // Arc SVG semi-circulaire (rayon 40, stroke-dasharray sur 126 = π*40)
+  const circumference = Math.PI * 40
+  const dashOffset = circumference * (1 - score / 100)
+
+  return (
+    <div
+      className="fiq-card flex items-center gap-4"
+      style={{ padding: '14px 16px' }}
+    >
+      {/* Arc gauge */}
+      <div style={{ position: 'relative', width: 68, height: 40, flexShrink: 0 }}>
+        <svg viewBox="0 0 88 48" width="68" height="40" overflow="visible">
+          {/* Track */}
+          <path
+            d="M4,44 A40,40 0 0,1 84,44"
+            fill="none"
+            stroke="#1F242E"
+            strokeWidth="8"
+            strokeLinecap="round"
+          />
+          {/* Filled arc */}
+          <path
+            d="M4,44 A40,40 0 0,1 84,44"
+            fill="none"
+            stroke={color}
+            strokeWidth="8"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={dashOffset}
+            style={{ transition: 'stroke-dashoffset 600ms ease, stroke 300ms ease' }}
+          />
+        </svg>
+        {/* Score centré sous l'arc */}
+        <p
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            textAlign: 'center',
+            fontSize: 15,
+            fontWeight: 900,
+            color,
+            letterSpacing: '-0.03em',
+            lineHeight: 1,
+          }}
+        >
+          {score}
+        </p>
+      </div>
+
+      <div>
+        <p className="font-black" style={{ color: 'var(--fiq-text)', fontSize: 14 }}>
+          Forme globale
+        </p>
+        <p style={{ color, fontSize: 12, fontWeight: 700 }}>{label}</p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
+          Tonnage · Régularité · Poids
+        </p>
+      </div>
+
+      <div className="ml-auto flex-shrink-0">
+        <span
+          className="font-black"
+          style={{ color: 'var(--fiq-muted)', fontSize: 11 }}
+        >
+          /100
+        </span>
+      </div>
+    </div>
+  )
+}
+
 // ─── Composant principal ──────────────────────────────────────────────────────
 
 export function ProgressCharts({
   weightData,
   weeklyTonnage,
   personalRecords,
+  tonnageThisWeek,
+  tonnageLastWeek,
+  plateauDetected,
+  targetWeight,
+  currentEwma,
+  weeklyWeightTrend,
+  globalScore,
 }: {
   weightData: WeightPoint[]
   weeklyTonnage: TonnagePoint[]
   personalRecords: PR[]
-}) {
+} & ExtraProgressProps) {
   const [tab, setTab] = useState<Tab>('weight')
 
   // ── État 1RM ──────────────────────────────────────────────────
@@ -242,6 +495,9 @@ export function ProgressCharts({
 
   return (
     <div className="space-y-4">
+      {/* ── Feature D : Score de forme globale ───────────────────────────── */}
+      {globalScore !== null && <GlobalFormScore score={globalScore} />}
+
       {/* ── Sélecteur onglets avec transition scale ────────────────────────── */}
       <div className="grid grid-cols-2 gap-2">
         {tabs.map(t => {
@@ -362,6 +618,15 @@ export function ProgressCharts({
           )}
 
           {weightData.length >= 2 && <WeightSummary data={weightData} />}
+
+          {/* Feature C — Projection objectif poids */}
+          {targetWeight !== null && currentEwma !== null && (
+            <WeightProjection
+              targetWeight={targetWeight}
+              currentEwma={Math.round(currentEwma * 10) / 10}
+              weeklyTrend={weeklyWeightTrend}
+            />
+          )}
         </div>
       )}
 
@@ -422,6 +687,12 @@ export function ProgressCharts({
           )}
 
           {weeklyTonnage.length >= 2 && <TonnageSummary data={weeklyTonnage} />}
+
+          {/* Feature A — Delta tonnage semaine réelle */}
+          <TonnageDeltaBar thisWeek={tonnageThisWeek} lastWeek={tonnageLastWeek} />
+
+          {/* Feature B — Alerte plateau */}
+          {plateauDetected && <PlateauAlert />}
         </div>
       )}
 
