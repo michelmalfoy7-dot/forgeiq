@@ -9,24 +9,22 @@ export async function POST() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
 
-    // Supprimer dans l'ordre pour respecter les FK
-    await Promise.all([
-      supabase.from('workout_sets').delete().eq('workout_id',
-        supabase.from('workouts').select('id').eq('user_id', user.id) as unknown as string
-      ),
-      supabase.from('coach_messages').delete().eq('user_id', user.id),
-      supabase.from('personal_records').delete().eq('user_id', user.id),
-      supabase.from('daily_logs').delete().eq('user_id', user.id),
-    ])
-
-    // Supprimer les séries via les workouts de l'user
+    // Supprimer workout_sets en premier (FK child de workouts)
     const { data: userWorkouts } = await supabase
       .from('workouts').select('id').eq('user_id', user.id)
     if (userWorkouts?.length) {
       await supabase.from('workout_sets').delete()
         .in('workout_id', userWorkouts.map(w => w.id))
     }
-    await supabase.from('workouts').delete().eq('user_id', user.id)
+
+    // Puis supprimer le reste en parallèle
+    await Promise.all([
+      supabase.from('workouts').delete().eq('user_id', user.id),
+      supabase.from('coach_messages').delete().eq('user_id', user.id),
+      supabase.from('personal_records').delete().eq('user_id', user.id),
+      supabase.from('daily_logs').delete().eq('user_id', user.id),
+      supabase.from('food_logs').delete().eq('user_id', user.id),
+    ])
 
     // Reset programme actuel
     await supabase.from('profiles').update({

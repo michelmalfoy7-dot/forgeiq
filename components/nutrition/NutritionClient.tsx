@@ -956,7 +956,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
         carbs_per_100g: selectedFood.carbs_g,
         fat_per_100g: selectedFood.fat_g,
         fiber_per_100g: selectedFood.fiber_g,
-        source: selectedFood.barcode ? 'barcode' : 'search',
+        source: selectedFavId ? 'favorite' : selectedFood.barcode ? 'barcode' : 'search',
       }
       const res = await fetch('/api/nutrition/log', {
         method: 'POST',

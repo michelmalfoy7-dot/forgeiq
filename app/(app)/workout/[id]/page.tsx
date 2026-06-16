@@ -331,7 +331,7 @@ export default function WorkoutSessionPage() {
 
       const [{ data: exos }, { data: workout }, { data: aliasRows }, { data: profileData }] = await Promise.all([
         supabase.from('exercises_library').select('id,name,name_fr,slug,muscle_primary,equipment,is_bilateral_dumbbell,is_unilateral').order('name_fr'),
-        supabase.from('workouts').select('session_name, completed_at, program_id').eq('id', workoutId).single(),
+        supabase.from('workouts').select('session_name, completed_at, program_id').eq('id', workoutId).maybeSingle(),
         supabase.from('exercise_aliases').select('exercise_id, alias'),
         supabase.from('profiles').select('equipment').eq('id', user?.id ?? '').maybeSingle(),
       ])

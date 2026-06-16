@@ -15,6 +15,18 @@ export async function GET(request: Request) {
     const shareId = searchParams.get('share_id')
     if (!shareId) return NextResponse.json({ data: null, error: 'share_id requis' }, { status: 400 })
 
+    // Vérifier que le post est public ou appartient à l'utilisateur
+    const { data: share } = await supabase
+      .from('workout_shares')
+      .select('user_id, is_public')
+      .eq('id', shareId)
+      .maybeSingle()
+
+    if (!share) return NextResponse.json({ data: null, error: 'Post introuvable' }, { status: 404 })
+    if (!share.is_public && share.user_id !== user.id) {
+      return NextResponse.json({ data: null, error: 'Accès refusé' }, { status: 403 })
+    }
+
     const { data: likes, error } = await supabase
       .from('likes')
       .select('user_id, created_at')

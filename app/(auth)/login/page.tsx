@@ -38,7 +38,7 @@ export default function LoginPage() {
     setLoading(true)
 
     const supabase = createClient()
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+    const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
 
     setLoading(false)
 
@@ -57,7 +57,8 @@ export default function LoginPage() {
     const { data: profile } = await supabase
       .from('profiles')
       .select('onboarding_done')
-      .single()
+      .eq('id', authData?.user?.id ?? '')
+      .maybeSingle()
 
     router.push(getRedirectPath(profile?.onboarding_done ?? false))
   }

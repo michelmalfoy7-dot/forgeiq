@@ -261,8 +261,11 @@ Règles :
 // ── Route principale ───────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   // Vérification sécurité — Vercel envoie Authorization: Bearer CRON_SECRET
+  if (!CRON_SECRET) {
+    return NextResponse.json({ error: 'CRON_SECRET non configuré' }, { status: 500 })
+  }
   const authHeader = req.headers.get('authorization')
-  if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
+  if (authHeader !== `Bearer ${CRON_SECRET}`) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   }
 

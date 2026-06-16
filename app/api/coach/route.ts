@@ -149,14 +149,9 @@ export async function POST(req: NextRequest) {
     // Récupérer statut, plan et flag admin — détermine le type de comptage
     const { data: subProfile } = await supabase
       .from('profiles')
-      .select('subscription_status, subscription_plan, is_admin')
+      .select('subscription_status, subscription_plan, is_admin, referral_pro_until')
       .eq('id', user.id)
-      .single()
-
-    // Comptes admin / bêta : aucune limite, jamais
-    if (subProfile?.is_admin) {
-      // Pas de vérification de limite — on passe directement à l'envoi
-    }
+      .maybeSingle()
 
     const status = subProfile?.subscription_status ?? 'free'
     const plan   = subProfile?.subscription_plan ?? 'free'
@@ -266,7 +261,7 @@ export async function POST(req: NextRequest) {
         .order('value', { ascending: false }).limit(30),
       // Macros réelles du jour (food_logs) — pour le bilan calorique coach
       supabase.from('food_logs')
-        .select('calories, protein_g, carbs_g, fat_g, iron_mg, magnesium_mg, zinc_mg, calcium_mg, vitamin_d_mcg, potassium_mg, vitamin_c_mg')
+        .select('calories, protein_g, carbs_g, fat_g, iron_mg, magnesium_mg, zinc_mg, calcium_mg, vitamin_d_mcg, potassium_mg, vitamin_c_mg, sodium_mg')
         .eq('user_id', user.id).eq('log_date', today),
       // Moyenne steps 30j (journées complètes = exclut aujourd'hui + zéros)
       // .limit(30) explicite : borne la requête à 30 lignes max, cohérent avec la fenêtre glissante

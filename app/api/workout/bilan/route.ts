@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       .from('profiles')
       .select('subscription_status, is_admin, referral_pro_until')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
     const { isProUser } = await import('@/lib/utils/plan')
     const isPro = isProUser(sub)
     if (!isPro) return NextResponse.json({ data: null, error: 'Bilan IA réservé au plan Pro', paywall: true }, { status: 403 })
@@ -57,12 +57,12 @@ export async function POST(req: NextRequest) {
         .select('session_name, total_tonnage_kg, total_sets, total_reps, duration_min, completed_at, session_date')
         .eq('id', workout_id)
         .eq('user_id', user.id)
-        .single(),
+        .maybeSingle(),
       supabase
         .from('profiles')
         .select('goal, level, weight_kg')
         .eq('id', user.id)
-        .single(),
+        .maybeSingle(),
       supabase
         .from('daily_logs')
         .select('fatigue_score, sleep_total_min, sleep_deep_min, steps, protein_g')
