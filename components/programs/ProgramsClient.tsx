@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Dumbbell, Calendar, Clock, CheckCircle, X, ChevronRight, Filter, Eye, Sparkles, Users, Globe, Lock, TrendingUp } from 'lucide-react'
+import { Plus, Dumbbell, Calendar, Clock, CheckCircle, X, ChevronRight, Filter, Eye, Sparkles, Users, Globe, Lock, TrendingUp, Copy } from 'lucide-react'
 import Link from 'next/link'
 
 type TierKey = 'premium' | 'standard' | 'home'
@@ -238,11 +238,13 @@ function AdoptModal({ program, onClose, onConfirm, loading, gymTier, gymName, gy
 }
 
 function ProgramCard({
-  p, isCurrent, onAdopt, gymTier, gymFeatures, showAuthor, authorName, authorUsername, isPublished, onTogglePublish, publishLoading,
+  p, isCurrent, onAdopt, onFork, forkLoading, gymTier, gymFeatures, showAuthor, authorName, authorUsername, isPublished, onTogglePublish, publishLoading,
 }: {
   p: Program
   isCurrent: boolean
   onAdopt: (p: Program) => void
+  onFork?: (p: Program) => void
+  forkLoading?: boolean
   gymTier: TierKey | null
   gymFeatures: string[] | null
   showAuthor?: boolean
@@ -343,6 +345,18 @@ function ProgramCard({
           </button>
         )}
 
+        {/* Bouton fork — communauté seulement */}
+        {onFork && !isCurrent && (
+          <button
+            onClick={() => onFork(p)}
+            disabled={forkLoading}
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-semibold text-sm"
+            style={{ background: '#3D8BFF18', border: '1px solid #3D8BFF44', color: 'var(--fiq-blue)' }}>
+            <Copy className="w-4 h-4" />
+            {forkLoading ? '...' : 'Copier'}
+          </button>
+        )}
+
         {isCurrent ? (
           <div className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold rounded-xl py-2.5"
             style={{ background: '#B4FF4A15', border: '1px solid #B4FF4A44', color: 'var(--fiq-accent)' }}>
@@ -386,6 +400,8 @@ export function ProgramsClient({
   const [publishedIds, setPublishedIds] = useState<Set<string>>(
     new Set(userPrograms.filter(p => p.is_public).map(p => p.id))
   )
+  const [forkingId, setForkingId] = useState<string | null>(null)
+  const [forkToast, setForkToast] = useState<string | null>(null)
 
   const fetchCommunity = useCallback(async (sort: 'popular' | 'recent') => {
     setCommunityLoading(true)
@@ -430,6 +446,26 @@ export function ProgramsClient({
       }
     } finally {
       setAdopting(false)
+    }
+  }
+
+  async function forkProgram(p: Program) {
+    setForkingId(p.id)
+    try {
+      const res = await fetch('/api/programs/fork', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ program_id: p.id }),
+      })
+      const json = await res.json() as { data: { id: string; name: string } | null; error: string | null }
+      if (json.data) {
+        setSuccessId(json.data.id)
+        setForkToast(json.data.name)
+        setTimeout(() => setForkToast(null), 4000)
+        router.refresh()
+      }
+    } finally {
+      setForkingId(null)
     }
   }
 
@@ -638,7 +674,9 @@ export function ProgramsClient({
               {communityPrograms.map(p => (
                 <ProgramCard key={p.id} p={p} isCurrent={successId === p.id}
                   onAdopt={setAdoptTarget} gymTier={gymTier ?? null} gymFeatures={gymFeatures ?? null}
-                  showAuthor authorName={p.author_name} authorUsername={p.author_username} />
+                  showAuthor authorName={p.author_name} authorUsername={p.author_username}
+                  onFork={p.is_mine ? undefined : forkProgram}
+                  forkLoading={forkingId === p.id} />
               ))}
             </div>
           )}
@@ -690,6 +728,15 @@ export function ProgramsClient({
             </>
           )}
         </>
+      )}
+
+      {/* Toast fork */}
+      {forkToast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-2xl text-sm font-semibold flex items-center gap-2 shadow-lg"
+          style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-accent)', color: 'var(--fiq-text)', whiteSpace: 'nowrap' }}>
+          <Copy className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
+          <span><strong style={{ color: 'var(--fiq-accent)' }}>{forkToast}</strong> copié dans Mes programmes !</span>
+        </div>
       )}
 
       {/* Modal adoption */}
