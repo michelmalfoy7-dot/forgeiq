@@ -110,8 +110,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ data: null, error: likeError.message }, { status: 400 })
     }
 
-    // Incrémenter le compteur de likes (fire-and-forget)
-    updateLikesCount(supabase, body.share_id, 1).catch(() => null)
+    // Incrémenter le compteur de likes (awaité — fire-and-forget échoue sur Vercel)
+    await updateLikesCount(supabase, body.share_id, 1).catch(() => null)
 
     // Notification au propriétaire du post (fire-and-forget, silencieux si table absente)
     createLikeNotification(supabase, user.id, body.share_id).catch(() => null)
@@ -145,8 +145,8 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ data: null, error: deleteError.message }, { status: 400 })
     }
 
-    // Décrémenter le compteur de likes (fire-and-forget)
-    updateLikesCount(supabase, body.share_id, -1).catch(() => null)
+    // Décrémenter le compteur de likes (awaité)
+    await updateLikesCount(supabase, body.share_id, -1).catch(() => null)
 
     return NextResponse.json({ data: { liked: false }, error: null })
   } catch {

@@ -85,7 +85,7 @@ function renderCaption(text: string): React.ReactNode {
 
 export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id: string) => void }) {
   const [liked, setLiked]               = useState(post.is_liked)
-  const [likesCount, setLikesCount]     = useState(post.likes_count)
+  const [likesCount, setLikesCount]     = useState(post.likes_count ?? 0)
   const [commentsCount, setCommentsCount] = useState(post.comments_count)
   const [liking, setLiking]             = useState(false)
   const [sharing, setSharing]           = useState(false)

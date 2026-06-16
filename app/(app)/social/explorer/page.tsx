@@ -122,7 +122,7 @@ export default async function ExplorerPage() {
     const workout = share.workouts as { session_name: string | null; total_tonnage_kg: number | null; total_sets: number | null; completed_at: string | null } | null
     return {
       id: share.id, workout_id: share.workout_id, user_id: share.user_id,
-      caption: share.caption, likes_count: share.likes_count, comments_count: share.comments_count,
+      caption: share.caption, likes_count: share.likes_count ?? 0, comments_count: share.comments_count ?? 0,
       created_at: share.created_at, is_liked: likedIds.has(share.id), is_mine: share.user_id === user?.id,
       exercises: exercisesByWorkout.get(share.workout_id),
       author: {
