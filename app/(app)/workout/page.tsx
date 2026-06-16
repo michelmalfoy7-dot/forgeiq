@@ -234,6 +234,7 @@ export default function WorkoutPage() {
 
   // Enregistrer un jour de repos (workout complété immédiatement, 0 tonnage)
   async function logRestDay() {
+    if (loggingRest) return
     setLoggingRest(true)
     try {
       const startRes = await fetch('/api/workout/start', {
@@ -241,6 +242,7 @@ export default function WorkoutPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_name: 'Jour de repos', program_id: null }),
       })
+      if (!startRes.ok) return
       const { data: startData } = await startRes.json()
       if (!startData?.id) return
 
@@ -252,7 +254,8 @@ export default function WorkoutPage() {
 
       setRestLogged(true)
       setTimeout(() => setRestLogged(false), 3000)
-    } finally {
+    } catch { /* ignore */ }
+    finally {
       setLoggingRest(false)
     }
   }
@@ -283,7 +286,7 @@ export default function WorkoutPage() {
 
   // Enregistrer une activité cardio directement (sans passer par le logger musculation)
   async function logCardio() {
-    if (!cardioActivity || cardioDuration < 1) return
+    if (!cardioActivity || cardioDuration < 1 || loggingCardio) return
     setLoggingCardio(true)
     try {
       const startRes = await fetch('/api/workout/start', {
@@ -291,6 +294,7 @@ export default function WorkoutPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_name: cardioActivity.name, program_id: null }),
       })
+      if (!startRes.ok) return
       const { data: startData } = await startRes.json()
       if (!startData?.id) return
 

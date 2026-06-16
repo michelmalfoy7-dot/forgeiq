@@ -136,15 +136,15 @@ export function CommentSheet({ shareId, initialCount, onClose, onCountChange }: 
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-40"
+        className="fixed inset-0 z-[55]"
         style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
         onClick={onClose}
       />
 
-      {/* Sheet */}
+      {/* Sheet — z-[60] pour passer au-dessus de la bottom nav (z-50) */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-50 flex justify-center"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        className="fixed bottom-0 left-0 right-0 z-[60] flex justify-center"
+        style={{ paddingBottom: 'calc(4rem + env(safe-area-inset-bottom))' }}
       >
         <div
           className="w-full max-w-[480px] rounded-t-3xl flex flex-col"

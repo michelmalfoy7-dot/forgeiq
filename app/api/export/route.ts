@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
 
     let csv = ''
     let filename = ''
+    const EXPORT_LIMIT = 5000
 
     if (type === 'workouts') {
       const { data } = await supabase
@@ -39,6 +40,7 @@ export async function GET(request: NextRequest) {
         .eq('user_id', user.id)
         .not('completed_at', 'is', null)
         .order('session_date', { ascending: false })
+        .limit(EXPORT_LIMIT)
 
       csv = toCSV((data ?? []).map(w => ({
         date:       w.session_date,
@@ -61,6 +63,7 @@ export async function GET(request: NextRequest) {
         .select('log_date, weight_kg, weight_trend, sleep_total_min, sleep_deep_min, fatigue_score, motivation_score, steps, sys_bp, dia_bp, notes')
         .eq('user_id', user.id)
         .order('log_date', { ascending: false })
+        .limit(EXPORT_LIMIT)
 
       csv = toCSV((data ?? []).map(l => ({
         date:         l.log_date,
@@ -83,6 +86,7 @@ export async function GET(request: NextRequest) {
         .select('log_date, meal_type, food_name, quantity_g, calories, protein_g, carbs_g, fat_g')
         .eq('user_id', user.id)
         .order('log_date', { ascending: false })
+        .limit(EXPORT_LIMIT)
 
       csv = toCSV((data ?? []).map(l => ({
         date:       l.log_date,

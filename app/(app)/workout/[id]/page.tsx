@@ -2025,9 +2025,9 @@ export default function WorkoutSessionPage() {
             style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
             onClick={() => { setShowSearch(false); setSearchQuery(''); setMuscleFilter('all'); setEquipmentFilter('all'); setSupersetTargetIdx(null) }}
           />
-          {/* Sheet */}
+          {/* Sheet — z-[60] pour passer au-dessus de la bottom nav (z-50) */}
           <div
-            className="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-3xl"
+            className="fixed inset-x-0 bottom-0 z-[60] flex flex-col rounded-t-3xl"
             style={{
               maxHeight: 'calc(92dvh - env(safe-area-inset-bottom))',
               background: 'var(--surface)',
@@ -2871,15 +2871,16 @@ function ExerciseCard({
         <>
           {/* Backdrop */}
           <div
-            className="fixed inset-0 z-50"
+            className="fixed inset-0 z-[55]"
             style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
             onClick={() => setShowSubstitutes(false)}
           />
-          {/* Sheet */}
+          {/* Sheet — z-[60] pour passer au-dessus de la bottom nav (z-50) */}
           <div
-            className="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl"
+            className="fixed inset-x-0 bottom-0 z-[60] rounded-t-3xl"
             style={{
               maxHeight: '75dvh',
+              paddingBottom: 'calc(4rem + env(safe-area-inset-bottom))',
               background: 'var(--fiq-card)',
               border: '1px solid var(--fiq-border)',
               borderBottom: 'none',

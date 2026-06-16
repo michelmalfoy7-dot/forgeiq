@@ -89,13 +89,33 @@ export default function ConversationPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Polling toutes les 5 secondes
+  // Polling toutes les 5 secondes — suspendu quand l'onglet est en arrière-plan
   useEffect(() => {
-    pollingRef.current = setInterval(() => {
-      void fetchMessages(true)
-    }, 5000)
+    function startPolling() {
+      if (pollingRef.current) return
+      pollingRef.current = setInterval(() => {
+        if (document.visibilityState === 'visible') void fetchMessages(true)
+      }, 5000)
+    }
+    function stopPolling() {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
+      }
+    }
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        void fetchMessages(true)
+        startPolling()
+      } else {
+        stopPolling()
+      }
+    }
+    startPolling()
+    document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current)
+      stopPolling()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [fetchMessages])
 
@@ -149,12 +169,12 @@ export default function ConversationPage() {
   }
 
   // Regrouper les messages par date pour les séparateurs
-  const messagesWithSeparators: Array<{ type: 'separator'; label: string } | { type: 'message'; data: Message }> = []
+  const messagesWithSeparators: Array<{ type: 'separator'; label: string; dateKey: string } | { type: 'message'; data: Message }> = []
   let lastDate = ''
   for (const msg of messages) {
     const msgDate = new Date(msg.created_at).toDateString()
     if (msgDate !== lastDate) {
-      messagesWithSeparators.push({ type: 'separator', label: formatDateSeparator(msg.created_at) })
+      messagesWithSeparators.push({ type: 'separator', label: formatDateSeparator(msg.created_at), dateKey: msgDate })
       lastDate = msgDate
     }
     messagesWithSeparators.push({ type: 'message', data: msg })
@@ -269,7 +289,7 @@ export default function ConversationPage() {
         {messagesWithSeparators.map((item, i) => {
           if (item.type === 'separator') {
             return (
-              <div key={`sep-${i}`} className="flex items-center gap-3 py-3">
+              <div key={`sep-${item.dateKey}`} className="flex items-center gap-3 py-3">
                 <div className="flex-1 h-px" style={{ background: 'var(--fiq-border)' }} />
                 <p className="text-[10px] uppercase font-semibold" style={{ color: 'var(--fiq-muted)', letterSpacing: '0.08em' }}>
                   {item.label}
