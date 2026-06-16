@@ -25,6 +25,9 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 500 })
 
+    // Incrémenter le compteur d'adoptions sur les programmes communauté
+    await supabase.rpc('increment_program_adopted', { pid: program_id })
+
     return NextResponse.json({ data: { program_id, program_name: program.name }, error: null })
   } catch {
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
