@@ -26,11 +26,20 @@ export function NotificationBell({ initialUnread = 0 }: Props) {
     // Fetch initial
     fetchCount()
 
+    // Refresh quand l'onglet redevient visible (ex: retour depuis /notifications)
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') fetchCount()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
     interval = setInterval(() => {
       if (document.visibilityState === 'visible') fetchCount()
     }, 60_000)
 
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [])
 
   return (

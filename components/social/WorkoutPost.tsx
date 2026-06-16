@@ -5,6 +5,7 @@ import { Heart, Share2, Dumbbell, Clock, MessageCircle, Loader2, MoreHorizontal,
 import Image from 'next/image'
 import Link from 'next/link'
 import { CommentSheet } from './CommentSheet'
+import { LikersSheet } from './LikersSheet'
 import { ReactionsBar } from './ReactionsBar'
 
 export type ExerciseInPost = {
@@ -89,6 +90,7 @@ export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id
   const [liking, setLiking]             = useState(false)
   const [sharing, setSharing]           = useState(false)
   const [showComments, setShowComments] = useState(false)
+  const [showLikers, setShowLikers]     = useState(false)
   // Menu ··· (modifier / supprimer)
   const [showMenu, setShowMenu]         = useState(false)
   const [editMode, setEditMode]         = useState(false)
@@ -501,6 +503,15 @@ export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id
         </div>
       )}
 
+      {/* ── Sheet likers ── */}
+      {showLikers && (
+        <LikersSheet
+          shareId={post.id}
+          count={likesCount}
+          onClose={() => setShowLikers(false)}
+        />
+      )}
+
       {/* ── Sheet commentaires ── */}
       {showComments && (
         <CommentSheet
@@ -517,20 +528,32 @@ export function WorkoutPost({ post, onDelete }: { post: FeedPost; onDelete?: (id
       {/* ── Actions ── */}
       <div className="flex items-center gap-1 px-3 pb-3 pt-1 border-t" style={{ borderColor: 'var(--fiq-border)' }}>
         {/* Like */}
-        <button
-          onClick={handleLike}
-          disabled={liking}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all active:scale-95"
-          style={{ color: liked ? '#EF4444' : 'var(--fiq-muted)' }}
-        >
-          <Heart
-            className="w-4 h-4"
-            style={{ fill: liked ? '#EF4444' : 'none', stroke: liked ? '#EF4444' : 'var(--fiq-muted)' }}
-          />
-          <span className="text-xs font-bold">
-            {likesCount > 0 ? likesCount : 'J\'aime'}
-          </span>
-        </button>
+        <div className="flex items-center">
+          <button
+            onClick={handleLike}
+            disabled={liking}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all active:scale-95"
+            style={{ color: liked ? '#EF4444' : 'var(--fiq-muted)' }}
+          >
+            <Heart
+              className="w-4 h-4"
+              style={{ fill: liked ? '#EF4444' : 'none', stroke: liked ? '#EF4444' : 'var(--fiq-muted)' }}
+            />
+          </button>
+          {likesCount > 0 ? (
+            <button
+              onClick={() => setShowLikers(true)}
+              className="text-xs font-bold pr-2 transition-opacity active:opacity-70"
+              style={{ color: liked ? '#EF4444' : 'var(--fiq-muted)' }}
+            >
+              {likesCount}
+            </button>
+          ) : (
+            <span className="text-xs font-bold pr-2" style={{ color: 'var(--fiq-muted)' }}>
+              J&apos;aime
+            </span>
+          )}
+        </div>
 
         {/* Commentaires — toujours afficher le count (même si 0) */}
         <button

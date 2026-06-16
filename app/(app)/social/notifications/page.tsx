@@ -38,8 +38,8 @@ export default async function NotificationsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Marquer toutes comme lues (page ouverte = lues, fire-and-forget)
-  void supabase
+  // Marquer toutes comme lues AVANT de charger (évite la race condition)
+  await supabase
     .from('notifications')
     .update({ is_read: true })
     .eq('user_id', user.id)

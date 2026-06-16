@@ -151,13 +151,13 @@ export function FeedList({ initialDiscoverPosts, initialFollowingPosts, suggeste
       </div>
 
       {/* ── Athlètes suggérés (onglet "Pour toi" uniquement) ── */}
-      {activeTab === 'discover' && suggestedAthletes.length > 0 && (
+      {activeTab === 'discover' && suggestedAthletes.filter(a => !followedIds.has(a.user_id)).length > 0 && (
         <div className="space-y-2">
           <p className="text-[11px] uppercase font-black tracking-widest px-1" style={{ color: 'var(--fiq-muted)' }}>
             Athlètes à découvrir
           </p>
           <div className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-none">
-            {suggestedAthletes.map((athlete) => {
+            {suggestedAthletes.filter(a => !followedIds.has(a.user_id)).map((athlete) => {
               const isFollowed = followedIds.has(athlete.user_id)
               const initial    = (athlete.display_name || athlete.username || '?')[0].toUpperCase()
               return (
@@ -229,12 +229,12 @@ export function FeedList({ initialDiscoverPosts, initialFollowingPosts, suggeste
           </div>
 
           {/* Athlètes suggérés directement dans l'onglet Abonnements */}
-          {suggestedAthletes.length > 0 && (
+          {suggestedAthletes.filter(a => !followedIds.has(a.user_id)).length > 0 && (
             <div className="space-y-2">
               <p className="text-[11px] uppercase font-black tracking-widest px-1" style={{ color: 'var(--fiq-muted)' }}>
                 Athlètes à suivre
               </p>
-              {suggestedAthletes.slice(0, 5).map((athlete) => {
+              {suggestedAthletes.filter(a => !followedIds.has(a.user_id)).slice(0, 5).map((athlete) => {
                 const isFollowed = followedIds.has(athlete.user_id)
                 const initial    = (athlete.display_name || athlete.username || '?')[0].toUpperCase()
                 return (
