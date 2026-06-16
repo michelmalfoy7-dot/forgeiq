@@ -7,20 +7,18 @@ import { useState, useEffect } from 'react'
  * Se met à jour automatiquement via les événements 'online' / 'offline'.
  */
 export function useOnlineStatus(): boolean {
-  // Initialisation côté serveur : on suppose connecté (SSR/SSG)
-  const [isOnline, setIsOnline] = useState(
-    typeof navigator !== 'undefined' ? navigator.onLine : true
-  )
+  // Toujours true en SSR — état identique serveur/client pour éviter l'hydration mismatch.
+  // La valeur réelle est synchronisée dans useEffect (côté client uniquement).
+  const [isOnline, setIsOnline] = useState(true)
 
   useEffect(() => {
+    setIsOnline(navigator.onLine)
+
     const handleOnline  = () => setIsOnline(true)
     const handleOffline = () => setIsOnline(false)
 
     window.addEventListener('online',  handleOnline)
     window.addEventListener('offline', handleOffline)
-
-    // Synchronisation initiale (en cas de montage après changement d'état)
-    setIsOnline(navigator.onLine)
 
     return () => {
       window.removeEventListener('online',  handleOnline)

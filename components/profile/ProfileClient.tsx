@@ -390,7 +390,7 @@ export function ProfileClient({
   // 6. Fix timezone : garantir que la date ISO est traitée en UTC (fallback si 'Z' absent)
   const memberSince = profile?.created_at
     ? new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' }).format(
-        new Date(profile.created_at.endsWith('Z') ? profile.created_at : profile.created_at + 'Z')
+        new Date(profile.created_at)
       )
     : '—'
 
