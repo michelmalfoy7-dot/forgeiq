@@ -421,6 +421,14 @@ export function ProgramsClient({
   )
   const [forkingId, setForkingId] = useState<string | null>(null)
   const [forkToast, setForkToast] = useState<string | null>(null)
+  // Message d'erreur affiché sous forme de toast rouge (adopt / fork / publish)
+  const [errorToast, setErrorToast] = useState<string | null>(null)
+
+  /** Affiche un toast d'erreur pendant 4 secondes puis le masque */
+  function showError(msg: string) {
+    setErrorToast(msg)
+    setTimeout(() => setErrorToast(null), 4000)
+  }
 
   const fetchCommunity = useCallback(async (sort: 'popular' | 'recent') => {
     setCommunityLoading(true)
@@ -462,7 +470,15 @@ export function ProgramsClient({
         setCommunityPrograms(prev => prev.map(p =>
           p.id === adoptTarget.id ? { ...p, adopted_count: (p.adopted_count ?? 0) + 1 } : p
         ))
+      } else {
+        // Feedback d'erreur si l'API retourne un statut non-ok (ex: 403 Pro requis)
+        const json = await res.json().catch(() => ({})) as { error?: string }
+        showError(json.error ?? 'Impossible d\'adopter ce programme. Réessaie.')
+        setAdoptTarget(null)
       }
+    } catch {
+      showError('Erreur réseau — vérifie ta connexion et réessaie.')
+      setAdoptTarget(null)
     } finally {
       setAdopting(false)
     }
@@ -482,7 +498,12 @@ export function ProgramsClient({
         setForkToast(json.data.name)
         setTimeout(() => setForkToast(null), 4000)
         router.refresh()
+      } else {
+        // Feedback d'erreur si le fork échoue côté API
+        showError(json.error ?? 'Impossible de copier ce programme. Réessaie.')
       }
+    } catch {
+      showError('Erreur réseau — vérifie ta connexion et réessaie.')
     } finally {
       setForkingId(null)
     }
@@ -750,12 +771,21 @@ export function ProgramsClient({
         </>
       )}
 
-      {/* Toast fork */}
+      {/* Toast fork réussi */}
       {forkToast && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-2xl text-sm font-semibold flex items-center gap-2 shadow-lg"
           style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-accent)', color: 'var(--fiq-text)', whiteSpace: 'nowrap' }}>
           <Copy className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
           <span><strong style={{ color: 'var(--fiq-accent)' }}>{forkToast}</strong> copié dans Mes programmes !</span>
+        </div>
+      )}
+
+      {/* Toast erreur adopt / fork / publish */}
+      {errorToast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-2xl text-sm font-semibold flex items-center gap-2 shadow-lg"
+          style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-red)', color: 'var(--fiq-text)', whiteSpace: 'nowrap', maxWidth: '90vw' }}>
+          <X className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-red)' }} />
+          <span style={{ color: 'var(--fiq-red)' }}>{errorToast}</span>
         </div>
       )}
 

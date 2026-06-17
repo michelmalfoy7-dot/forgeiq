@@ -40,6 +40,8 @@ export function FeedList({ initialDiscoverPosts, initialFollowingPosts, suggeste
 
   const [loading, setLoading] = useState(false)
   const sentinelRef = useRef<HTMLDivElement>(null)
+  // Ref stable vers loadMore — évite de recréer l'IntersectionObserver à chaque render
+  const loadMoreRef = useRef<() => Promise<void>>(async () => {})
 
   // Follow state per suggested athlete
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set())
@@ -97,7 +99,14 @@ export function FeedList({ initialDiscoverPosts, initialFollowingPosts, suggeste
     }
   }, [activeTab, discoverPage, followingPage, loading])
 
-  // IntersectionObserver — déclenche loadMore quand le sentinel entre dans le viewport
+  // Maintenir la ref loadMoreRef synchronisée avec la version courante de loadMore.
+  // L'observer lit toujours la version la plus récente sans être recréé à chaque render.
+  useEffect(() => {
+    loadMoreRef.current = loadMore
+  }, [loadMore])
+
+  // IntersectionObserver — créé une seule fois au montage, lit loadMoreRef à chaque déclenchement.
+  // Dependency array vide = l'observer n'est pas recréé quand loadMore change.
   useEffect(() => {
     const sentinel = sentinelRef.current
     if (!sentinel) return
@@ -105,7 +114,7 @@ export function FeedList({ initialDiscoverPosts, initialFollowingPosts, suggeste
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) {
-          void loadMore()
+          void loadMoreRef.current()
         }
       },
       { rootMargin: '200px' }
@@ -113,7 +122,8 @@ export function FeedList({ initialDiscoverPosts, initialFollowingPosts, suggeste
 
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [loadMore])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const posts   = activeTab === 'discover' ? discoverPosts : followingPosts
   const hasMore = activeTab === 'discover' ? discoverMore  : followingMore

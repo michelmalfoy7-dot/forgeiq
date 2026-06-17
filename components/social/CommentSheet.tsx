@@ -121,15 +121,28 @@ export function CommentSheet({ shareId, initialCount, onClose, onCountChange }: 
   }
 
   async function handleDelete(commentId: string) {
+    // Sauvegarder l'état avant suppression pour rollback si l'API échoue
+    const snapshot = comments
     setComments((prev) => prev.filter((c) => c.id !== commentId))
     onCountChange(-1)
     try {
-      await fetch('/api/social/comments', {
+      const res = await fetch('/api/social/comments', {
         method:  'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ comment_id: commentId, share_id: shareId }),
       })
-    } catch { /* rollback si besoin — rare */ }
+      if (!res.ok) {
+        // Rollback : restaurer l'état précédent si l'API retourne une erreur
+        setComments(snapshot)
+        onCountChange(1)
+        setError('Impossible de supprimer ce commentaire')
+      }
+    } catch {
+      // Rollback réseau : restaurer l'état précédent
+      setComments(snapshot)
+      onCountChange(1)
+      setError('Erreur réseau — commentaire non supprimé')
+    }
   }
 
   return (

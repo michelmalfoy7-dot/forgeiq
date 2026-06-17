@@ -5,13 +5,22 @@ export const dynamic = 'force-dynamic'
 
 type RouteParams = { params: Promise<{ conversationId: string }> }
 
-// GET /api/social/messages/[conversationId] → messages de la conversation (50 derniers, ASC)
-export async function GET(_req: Request, { params }: RouteParams) {
+const PAGE_LIMIT = 50
+
+// GET /api/social/messages/[conversationId]?before=<message_id>
+// Retourne les PAGE_LIMIT derniers messages (ordre ASC).
+// Pagination vers le passé : passer ?before=<id> pour charger les messages antérieurs.
+// Réponse : { messages, contact, current_user_id, hasMore }
+export async function GET(req: Request, { params }: RouteParams) {
   try {
     const { conversationId } = await params
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
+
+    // Curseur optionnel pour pagination vers le passé
+    const { searchParams } = new URL(req.url)
+    const before = searchParams.get('before') // ID du message le plus ancien déjà chargé
 
     // Vérifier que l'utilisateur est bien dans cette conversation (RLS le fait aussi, mais garde explicite)
     const { data: conv } = await supabase
@@ -25,42 +34,67 @@ export async function GET(_req: Request, { params }: RouteParams) {
       return NextResponse.json({ data: null, error: 'Accès refusé' }, { status: 403 })
     }
 
-    // Récupérer les 50 derniers messages
-    const { data: messages, error } = await supabase
+    // Construire la requête de base
+    let query = supabase
       .from('messages')
       .select('id, sender_id, content, created_at, read_at')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
-      .limit(50)
+      .limit(PAGE_LIMIT + 1) // +1 pour détecter s'il y a une page précédente
+
+    // Pagination par curseur : si `before` fourni, on récupère les messages antérieurs
+    if (before) {
+      // Récupérer le created_at du message-curseur pour filtrer par date
+      const { data: cursorMsg } = await supabase
+        .from('messages')
+        .select('created_at')
+        .eq('id', before)
+        .maybeSingle()
+
+      if (cursorMsg) {
+        query = query.lt('created_at', cursorMsg.created_at)
+      }
+    }
+
+    const { data: rawMessages, error } = await query
 
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
 
-    // Marquer les messages reçus non lus comme lus (fire-and-forget)
-    const unreadIds = (messages ?? [])
-      .filter((m: { sender_id: string; read_at: string | null }) => m.sender_id !== user.id && !m.read_at)
-      .map((m: { id: string }) => m.id)
+    // Déterminer s'il existe des messages encore plus anciens
+    const hasMore = (rawMessages ?? []).length > PAGE_LIMIT
+    const messages = hasMore ? rawMessages!.slice(0, PAGE_LIMIT) : (rawMessages ?? [])
 
-    if (unreadIds.length > 0) {
-      await supabase
-        .from('messages')
-        .update({ read_at: new Date().toISOString() })
-        .in('id', unreadIds)
+    // Marquer les messages reçus non lus comme lus (uniquement sur la première page, pas les pages historiques)
+    if (!before) {
+      const unreadIds = messages
+        .filter((m: { sender_id: string; read_at: string | null }) => m.sender_id !== user.id && !m.read_at)
+        .map((m: { id: string }) => m.id)
+
+      if (unreadIds.length > 0) {
+        await supabase
+          .from('messages')
+          .update({ read_at: new Date().toISOString() })
+          .in('id', unreadIds)
+      }
     }
 
-    // Retourner en ordre chronologique ASC
-    const ordered = [...(messages ?? [])].reverse()
+    // Retourner en ordre chronologique ASC (les plus récents à la fin)
+    const ordered = [...messages].reverse()
 
-    // Charger le profil du contact pour le header
+    // Charger le profil du contact pour le header (seulement à la première page)
     const contactId = conv.participant_1 === user.id ? conv.participant_2 : conv.participant_1
-    const { data: contactProfile } = await supabase
-      .from('social_profiles')
-      .select('user_id, username, display_name, avatar_url')
-      .eq('user_id', contactId)
-      .maybeSingle()
+    const { data: contactProfile } = !before
+      ? await supabase
+          .from('social_profiles')
+          .select('user_id, username, display_name, avatar_url')
+          .eq('user_id', contactId)
+          .maybeSingle()
+      : { data: null }
 
     return NextResponse.json({
       data: {
         messages: ordered,
+        hasMore,
         contact: contactProfile
           ? {
               user_id: contactProfile.user_id,
@@ -68,7 +102,7 @@ export async function GET(_req: Request, { params }: RouteParams) {
               display_name: contactProfile.display_name ?? 'Athlète',
               avatar_url: contactProfile.avatar_url ?? null,
             }
-          : { user_id: contactId, username: null, display_name: 'Athlète', avatar_url: null },
+          : (!before ? { user_id: contactId, username: null, display_name: 'Athlète', avatar_url: null } : null),
         current_user_id: user.id,
       },
       error: null,

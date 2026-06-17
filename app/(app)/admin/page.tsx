@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Users, TrendingUp, CreditCard, Zap, RefreshCw, AlertTriangle, Flame, Dumbbell, Share2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Users, TrendingUp, CreditCard, Zap, RefreshCw, AlertTriangle, Flame, Dumbbell, Share2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react'
 
 interface UserRow {
   id:              string
@@ -35,26 +35,43 @@ interface AdminStats {
     new_last_30d:   number
     active_last_7d: number
   }
+  pagination: {
+    page:        number
+    limit:       number
+    total_users: number
+    total_pages: number
+    has_next:    boolean
+  }
   users: UserRow[]
   generated_at: string
 }
 
+// Nombre d'utilisateurs affichés par page dans l'UI admin
+const ADMIN_PAGE_LIMIT = 50
+
 export default function AdminPage() {
-  const [stats, setStats]         = useState<AdminStats | null>(null)
-  const [loading, setLoading]     = useState(true)
-  const [error, setError]         = useState<string | null>(null)
+  const [stats, setStats]           = useState<AdminStats | null>(null)
+  const [loading, setLoading]       = useState(true)
+  const [error, setError]           = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [search, setSearch]       = useState('')
+  const [search, setSearch]         = useState('')
+  // Page courante de la liste utilisateurs (1-based)
+  const [page, setPage]             = useState(1)
 
-  async function load(isRefresh = false) {
+  async function load(targetPage = page, isRefresh = false) {
     if (isRefresh) setRefreshing(true)
     else setLoading(true)
     try {
-      const res  = await fetch('/api/admin/stats')
+      const res  = await fetch(`/api/admin/stats?page=${targetPage}&limit=${ADMIN_PAGE_LIMIT}`)
       const json = await res.json()
       if (json.error) setError(json.error)
-      else { setStats(json.data); setError(null) }
+      else {
+        setStats(json.data)
+        setError(null)
+        // Réinitialise l'accordéon à chaque changement de page
+        setExpandedId(null)
+      }
     } catch {
       setError('Impossible de charger les stats')
     } finally {
@@ -63,7 +80,7 @@ export default function AdminPage() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(page) }, [page]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
@@ -86,7 +103,7 @@ export default function AdminPage() {
 
   if (!stats) return null
 
-  const { overview, growth, users, generated_at } = stats
+  const { overview, growth, pagination, users, generated_at } = stats
 
   const updatedAt = new Intl.DateTimeFormat('fr-FR', {
     dateStyle: 'short', timeStyle: 'short',
@@ -137,7 +154,7 @@ export default function AdminPage() {
             </p>
           </div>
           <button
-            onClick={() => load(true)}
+            onClick={() => load(page, true)}
             disabled={refreshing}
             style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', borderRadius: 10, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
           >
@@ -254,7 +271,7 @@ export default function AdminPage() {
         <div className="fiq-card p-4">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--fiq-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
-              Utilisateurs ({users.length})
+              Utilisateurs ({pagination.total_users}) — page {pagination.page}/{pagination.total_pages}
             </p>
           </div>
 
@@ -273,8 +290,11 @@ export default function AdminPage() {
           />
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {filtered.length === 0 && (
-              <p style={{ fontSize: 13, color: 'var(--fiq-muted)', textAlign: 'center', padding: '12px 0' }}>Aucun résultat</p>
+            {filtered.length === 0 && !search && (
+              <p style={{ fontSize: 13, color: 'var(--fiq-muted)', textAlign: 'center', padding: '12px 0' }}>Aucun utilisateur sur cette page</p>
+            )}
+            {filtered.length === 0 && search && (
+              <p style={{ fontSize: 13, color: 'var(--fiq-muted)', textAlign: 'center', padding: '12px 0' }}>Aucun résultat pour «&nbsp;{search}&nbsp;»</p>
             )}
             {filtered.map((u, i) => {
               const badge   = planBadge(u)
@@ -376,6 +396,45 @@ export default function AdminPage() {
               )
             })}
           </div>
+
+          {/* Contrôles de pagination — Précédent / Suivant */}
+          {pagination.total_pages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--fiq-border)' }}>
+              <button
+                onClick={() => { const prev = page - 1; setPage(prev); }}
+                disabled={page <= 1 || loading}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  background: page <= 1 ? 'var(--fiq-faint)' : 'var(--fiq-faint)',
+                  border: '1px solid var(--fiq-border)', borderRadius: 8,
+                  padding: '6px 12px', cursor: page <= 1 ? 'not-allowed' : 'pointer',
+                  opacity: page <= 1 ? 0.4 : 1,
+                }}
+              >
+                <ChevronLeft className="w-4 h-4" style={{ color: 'var(--fiq-text)' }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--fiq-text)' }}>Précédent</span>
+              </button>
+
+              <span style={{ fontSize: 12, color: 'var(--fiq-muted)' }}>
+                {page} / {pagination.total_pages}
+              </span>
+
+              <button
+                onClick={() => { const next = page + 1; setPage(next); }}
+                disabled={!pagination.has_next || loading}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  background: 'var(--fiq-faint)',
+                  border: '1px solid var(--fiq-border)', borderRadius: 8,
+                  padding: '6px 12px', cursor: !pagination.has_next ? 'not-allowed' : 'pointer',
+                  opacity: !pagination.has_next ? 0.4 : 1,
+                }}
+              >
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--fiq-text)' }}>Suivant</span>
+                <ChevronRight className="w-4 h-4" style={{ color: 'var(--fiq-text)' }} />
+              </button>
+            </div>
+          )}
         </div>
 
       </div>

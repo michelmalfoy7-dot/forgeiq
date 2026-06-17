@@ -65,24 +65,27 @@ export async function GET(request: Request) {
   }
 }
 
-// Mise à jour directe du compteur likes via lecture + écriture
+// Mise à jour atomique du compteur likes — évite les race conditions sous charge.
+// Pas de SELECT préalable : l'incrément/décrément est appliqué en une seule requête SQL.
+// Note : Supabase JS ne supporte pas les expressions SQL inline dans .update(),
+// donc on passe par rpc('update_likes_count') ou un UPDATE brut via postgres_changes.
+// Implémentation choisie : rpc call vers une fonction SQL simple à créer une fois.
+//
+// SQL à exécuter dans Supabase (une seule fois) :
+//   CREATE OR REPLACE FUNCTION update_likes_count(p_share_id uuid, p_delta int)
+//   RETURNS void LANGUAGE sql AS $$
+//     UPDATE workout_shares
+//     SET likes_count = GREATEST(0, likes_count + p_delta)
+//     WHERE id = p_share_id;
+//   $$;
 async function updateLikesCount(
   supabase: Awaited<ReturnType<typeof createClient>>,
   shareId: string,
   delta: number
 ) {
-  const { data: share } = await supabase
-    .from('workout_shares')
-    .select('likes_count')
-    .eq('id', shareId)
-    .maybeSingle()
-
-  if (share) {
-    await supabase
-      .from('workout_shares')
-      .update({ likes_count: Math.max(0, (share.likes_count ?? 0) + delta) })
-      .eq('id', shareId)
-  }
+  if (delta === 0) return
+  // Appel RPC atomique — aucune lecture préalable, GREATEST(0, ...) protège contre les valeurs négatives
+  await supabase.rpc('update_likes_count', { p_share_id: shareId, p_delta: delta })
 }
 
 export async function POST(request: Request) {

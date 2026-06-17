@@ -78,12 +78,22 @@ export async function GET(req: NextRequest) {
 
     const mrrEstimate = proCount * 4.99
 
-    // Emails depuis auth.users — charge tous les users pour construire l'emailMap
-    // Limité à 1000 (Supabase Admin API) ; acceptable jusqu'à ~1000 users
-    const { data: { users: authUsers } } = await admin.auth.admin.listUsers({ perPage: 1000 })
+    // Emails depuis auth.users — pagination en boucle pour dépasser la limite 1000
+    // Supabase retourne au max 1000 users par page ; on boucle jusqu'à la dernière page
+    const authUsers: { id: string; email?: string }[] = []
+    let authPage = 1
+    const AUTH_PER_PAGE = 1000
+    while (true) {
+      const { data: { users: batch } } = await admin.auth.admin.listUsers({ page: authPage, perPage: AUTH_PER_PAGE })
+      authUsers.push(...batch)
+      // Si la page est incomplète, on a atteint la fin
+      if (batch.length < AUTH_PER_PAGE) break
+      authPage++
+    }
     const emailMap = new Map(authUsers.map(u => [u.id, u.email ?? '']))
 
-    // Dernière séance par user
+    // Dernière séance par user — on limite à limit*5 lignes pour éviter un timeout
+    // sur grande base (chaque user a au plus ~quelques centaines de séances, mais on borne globalement)
     const userIds = (allUsersResult.data ?? []).map(u => u.id)
     const { data: lastWorkouts } = await admin
       .from('workouts')
@@ -91,18 +101,20 @@ export async function GET(req: NextRequest) {
       .in('user_id', userIds)
       .eq('status', 'completed')
       .order('completed_at', { ascending: false })
+      .limit(limit * 5) // borne : 5 séances max par user en moyenne avant dedup
 
     const lastWorkoutMap = new Map<string, string>()
     for (const w of (lastWorkouts ?? [])) {
       if (!lastWorkoutMap.has(w.user_id)) lastWorkoutMap.set(w.user_id, w.completed_at)
     }
 
-    // Dernier check-in par user
+    // Dernier check-in par user — même approche bornée
     const { data: lastCheckins } = await admin
       .from('daily_logs')
       .select('user_id, log_date')
       .in('user_id', userIds)
       .order('log_date', { ascending: false })
+      .limit(limit * 5) // borne : 5 check-ins max par user en moyenne avant dedup
 
     const lastCheckinMap = new Map<string, string>()
     for (const c of (lastCheckins ?? [])) {
