@@ -2683,6 +2683,18 @@ function addDays(dateStr: string, n: number): string {
   return d.toISOString().split('T')[0]
 }
 
+// ── Quick Add modal state ─────────────────────────────────────
+
+type QuickAddState = {
+  meal: string
+  name: string
+  calories: string
+  protein: string
+  carbs: string
+  fat: string
+  adding: boolean
+}
+
 export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 0, waterGoalMl = 2500, isRestDay, workoutKcal, isPro = false }: Props) {
   const pathname = usePathname()
   const [logs, setLogs] = useState<FoodLog[]>(initialLogs)
@@ -2690,6 +2702,26 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
   const [dateLoading, setDateLoading] = useState(false)
   const [modalMeal, setModalMeal] = useState<string | null>(null)
   const [expandedMeals, setExpandedMeals] = useState<Set<string>>(new Set(['breakfast', 'lunch', 'dinner', 'snack']))
+
+  // ── Quick Add inline modal ────────────────────────────────────
+  const [quickAdd, setQuickAdd] = useState<QuickAddState | null>(null)
+  const [quickAddToast, setQuickAddToast] = useState<string | null>(null)
+
+  // ── Top favorites (Feature 2) — chargés au montage pour les pills ──
+  const [topFavorites, setTopFavorites] = useState<Favorite[]>([])
+  const [favPillLogging, setFavPillLogging] = useState<string | null>(null) // id du favori en cours de log
+
+  useEffect(() => {
+    fetch('/api/nutrition/favorites')
+      .then(r => r.json())
+      .then(({ data }) => {
+        if (!data) return
+        // Trier par use_count DESC, prendre les 3 premiers
+        const sorted = [...(data as Favorite[])].sort((a, b) => (b.use_count ?? 0) - (a.use_count ?? 0))
+        setTopFavorites(sorted.slice(0, 3))
+      })
+      .catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [microCollapsed, setMicroCollapsed] = useState(true)
 
@@ -2810,6 +2842,81 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
     // Toast discret "Aliment ajouté" — 2 secondes (fix 3d)
     setAddedToast(true)
     setTimeout(() => setAddedToast(false), 2000)
+  }
+
+  // ── Quick Add : soumettre les calories rapides ────────────────
+
+  async function submitQuickAdd() {
+    if (!quickAdd) return
+    const cal = parseFloat(quickAdd.calories)
+    if (!cal || cal <= 0) return
+    setQuickAdd(prev => prev ? { ...prev, adding: true } : null)
+    try {
+      const name = quickAdd.name.trim() || 'Ajout rapide'
+      // quantity_g = 100 artificiellement ; calories_per_100g = calories totales
+      // → le serveur calcule : calories = calories_per_100g * (100/100) = valeur saisie ✓
+      const payload = {
+        log_date: viewDate,
+        meal_type: quickAdd.meal,
+        food_id: null,
+        food_name: name,
+        quantity_g: 100,
+        calories_per_100g: cal,
+        protein_per_100g:  quickAdd.protein.trim()  ? parseFloat(quickAdd.protein)  : null,
+        carbs_per_100g:    quickAdd.carbs.trim()    ? parseFloat(quickAdd.carbs)    : null,
+        fat_per_100g:      quickAdd.fat.trim()      ? parseFloat(quickAdd.fat)      : null,
+        source: 'manual',
+      }
+      const res = await fetch('/api/nutrition/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const { data } = await res.json()
+      if (data) {
+        setLogs(prev => [...prev, data])
+        setQuickAdd(null)
+        setQuickAddToast('⚡ Ajout rapide enregistré')
+        setTimeout(() => setQuickAddToast(null), 2200)
+      }
+    } finally {
+      setQuickAdd(prev => prev ? { ...prev, adding: false } : null)
+    }
+  }
+
+  // ── Pill favoris : log immédiat depuis la section repas ───────
+
+  async function logFavoritePill(fav: Favorite, meal: string) {
+    if (favPillLogging) return
+    setFavPillLogging(fav.id)
+    try {
+      const payload = {
+        log_date: viewDate,
+        meal_type: meal,
+        food_id: fav.food_id ?? null,
+        food_name: fav.food_name,
+        quantity_g: fav.default_quantity_g,
+        calories_per_100g: fav.calories_per_100g ?? null,
+        protein_per_100g:  fav.protein_per_100g  ?? null,
+        carbs_per_100g:    fav.carbs_per_100g    ?? null,
+        fat_per_100g:      fav.fat_per_100g      ?? null,
+        fiber_per_100g:    fav.fiber_per_100g    ?? null,
+        source: 'favorite',
+      }
+      const res = await fetch('/api/nutrition/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const { data } = await res.json()
+      if (data) {
+        setLogs(prev => [...prev, data])
+        setQuickAddToast(`✓ ${fav.food_name} ajouté`)
+        setTimeout(() => setQuickAddToast(null), 2000)
+      }
+    } finally {
+      setFavPillLogging(null)
+    }
   }
 
   // ── Suggestions IA ───────────────────────────────────────────
@@ -3307,6 +3414,123 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
         </div>
       )}
 
+      {/* Toast Quick Add / Pill favoris */}
+      {quickAddToast && (
+        <div
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[60] px-5 py-2.5 rounded-xl text-sm font-black shadow-lg pointer-events-none"
+          style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}
+        >
+          {quickAddToast}
+        </div>
+      )}
+
+      {/* ── Quick Add mini-modal ─────────────────────────────────── */}
+      {quickAdd !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: 'rgba(0,0,0,0.75)' }}
+          onClick={() => setQuickAdd(null)}
+        >
+          <div
+            className="w-full max-w-[480px] rounded-t-3xl p-5 space-y-4"
+            style={{
+              background: 'var(--fiq-card)',
+              border: '1px solid var(--fiq-border)',
+              marginBottom: 'calc(4rem + env(safe-area-inset-bottom))',
+              paddingBottom: '24px',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <h2 className="font-black text-lg" style={{ color: 'var(--fiq-text)' }}>
+                ⚡ Ajout rapide · {MEAL_LABELS[quickAdd.meal]}
+              </h2>
+              <button onClick={() => setQuickAdd(null)}>
+                <X className="w-5 h-5" style={{ color: 'var(--fiq-muted)' }} />
+              </button>
+            </div>
+
+            {/* Nom (optionnel) */}
+            <div>
+              <label className="fiq-label block mb-1.5">Nom (optionnel)</label>
+              <input
+                type="text"
+                value={quickAdd.name}
+                onChange={e => setQuickAdd(prev => prev ? { ...prev, name: e.target.value } : null)}
+                placeholder="Repas fait maison"
+                className="w-full px-4 py-3 rounded-xl text-sm outline-none"
+                style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+              />
+            </div>
+
+            {/* Calories (requis) */}
+            <div>
+              <label className="fiq-label block mb-1.5">Calories (kcal) *</label>
+              <input
+                autoFocus
+                type="number"
+                inputMode="numeric"
+                value={quickAdd.calories}
+                onChange={e => setQuickAdd(prev => prev ? { ...prev, calories: e.target.value } : null)}
+                placeholder="Ex: 450"
+                className="w-full px-4 py-3 rounded-xl text-sm outline-none font-black text-center"
+                style={{
+                  background: 'var(--fiq-faint)',
+                  border: `1px solid ${quickAdd.calories && parseFloat(quickAdd.calories) > 0 ? 'var(--fiq-accent)' : 'var(--fiq-border)'}`,
+                  color: 'var(--fiq-text)',
+                  fontSize: 22,
+                }}
+                min="1" max="9999"
+                onKeyDown={e => { if (e.key === 'Enter') void submitQuickAdd() }}
+              />
+            </div>
+
+            {/* Macros optionnelles — grid 3 colonnes */}
+            <div>
+              <label className="fiq-label block mb-1.5">Macros (optionnel)</label>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { key: 'protein', label: 'Protéines g', color: 'var(--fiq-blue)' },
+                  { key: 'carbs',   label: 'Glucides g',  color: '#A855F7' },
+                  { key: 'fat',     label: 'Lipides g',   color: 'var(--fiq-orange)' },
+                ] as const).map(({ key, label, color }) => (
+                  <div key={key}>
+                    <p className="text-[10px] mb-1 text-center font-semibold" style={{ color }}>{label}</p>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={quickAdd[key]}
+                      onChange={e => setQuickAdd(prev => prev ? { ...prev, [key]: e.target.value } : null)}
+                      placeholder="0"
+                      className="w-full px-2 py-2.5 rounded-xl text-sm outline-none text-center font-black"
+                      style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-text)' }}
+                      min="0"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Bouton Ajouter */}
+            <button
+              onClick={() => void submitQuickAdd()}
+              disabled={quickAdd.adding || !quickAdd.calories || parseFloat(quickAdd.calories) <= 0}
+              className="w-full py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2"
+              style={{
+                background: quickAdd.calories && parseFloat(quickAdd.calories) > 0 ? 'var(--fiq-accent)' : 'var(--fiq-faint)',
+                color: quickAdd.calories && parseFloat(quickAdd.calories) > 0 ? 'var(--bg)' : 'var(--fiq-muted)',
+                border: '1px solid var(--fiq-border)',
+              }}
+            >
+              {quickAdd.adding
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <><Check className="w-4 h-4" />Ajouter</>}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Journal par repas */}
       <div className="space-y-3">
         {MEAL_ORDER.map(meal => {
@@ -3316,29 +3540,82 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
 
           return (
             <div key={meal} className="fiq-card">
-              <button
-                onClick={() => toggleMeal(meal)}
-                className="w-full flex items-center justify-between"
-              >
-                <div className="flex items-center gap-2">
+              {/* En-tête section repas */}
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => toggleMeal(meal)}
+                  className="flex items-center gap-2 flex-1 text-left"
+                >
                   <span className="text-base">{MEAL_LABELS[meal]}</span>
                   {entries.length > 0 && (
                     <span className="text-xs font-semibold" style={{ color: 'var(--fiq-muted)' }}>
                       {entries.length} aliment{entries.length > 1 ? 's' : ''}
                     </span>
                   )}
-                </div>
+                </button>
                 <div className="flex items-center gap-2">
                   {mealCals > 0 && (
                     <span className="text-xs font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
                       {Math.round(mealCals)} kcal
                     </span>
                   )}
-                  {expanded
-                    ? <ChevronUp className="w-4 h-4" style={{ color: 'var(--fiq-muted)' }} />
-                    : <ChevronDown className="w-4 h-4" style={{ color: 'var(--fiq-muted)' }} />}
+                  {/* Bouton Ajout rapide ⚡ */}
+                  <button
+                    onClick={e => {
+                      e.stopPropagation()
+                      setQuickAdd({ meal, name: '', calories: '', protein: '', carbs: '', fat: '', adding: false })
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-black transition-all"
+                    style={{
+                      background: '#B4FF4A18',
+                      border: '1px solid #B4FF4A33',
+                      color: 'var(--fiq-accent)',
+                    }}
+                    title="Ajout rapide calories"
+                  >
+                    ⚡
+                  </button>
+                  <button onClick={() => toggleMeal(meal)}>
+                    {expanded
+                      ? <ChevronUp className="w-4 h-4" style={{ color: 'var(--fiq-muted)' }} />
+                      : <ChevronDown className="w-4 h-4" style={{ color: 'var(--fiq-muted)' }} />}
+                  </button>
                 </div>
-              </button>
+              </div>
+
+              {/* Pills aliments fréquents — Feature 2 */}
+              {topFavorites.length > 0 && (
+                <div className="flex gap-2 overflow-x-auto pb-1 mt-2 no-scrollbar">
+                  {topFavorites.map(fav => {
+                    const kcal = fav.calories_per_100g != null
+                      ? Math.round(fav.calories_per_100g * fav.default_quantity_g / 100)
+                      : null
+                    const isLogging = favPillLogging === fav.id
+                    return (
+                      <button
+                        key={fav.id}
+                        onClick={() => void logFavoritePill(fav, meal)}
+                        disabled={!!favPillLogging}
+                        className="shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-full text-xs transition-all active:scale-95"
+                        style={{
+                          background: 'var(--fiq-faint)',
+                          border: '1px solid var(--fiq-border)',
+                          color: 'var(--fiq-text)',
+                          opacity: favPillLogging && !isLogging ? 0.5 : 1,
+                        }}
+                      >
+                        {isLogging
+                          ? <Loader2 className="w-3 h-3 animate-spin" style={{ color: 'var(--fiq-accent)' }} />
+                          : <Star className="w-3 h-3 shrink-0" style={{ color: '#F59E0B', fill: '#F59E0B' }} />}
+                        <span className="font-semibold truncate max-w-[90px]">{fav.food_name}</span>
+                        {kcal != null && (
+                          <span style={{ color: 'var(--fiq-accent)', fontWeight: 700 }}>{kcal}kcal</span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
 
               {expanded && (
                 <div className="mt-2">

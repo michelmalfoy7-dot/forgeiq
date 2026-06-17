@@ -130,8 +130,8 @@ export default async function ExerciseDetailPage({ params }: Props) {
 
   if (!ex) notFound()
 
-  // Calcul de la date limite 12 semaines
-  const twelveWeeksAgo = new Date(Date.now() - 84 * 86400000).toISOString()
+  // Calcul de la date limite 52 semaines (1 an)
+  const oneYearAgo = new Date(Date.now() - 364 * 86400000).toISOString()
 
   // Charger PRs + historique + top sets progression en parallèle
   const [{ data: prs }, { data: rawSets }, { data: topSetsRaw }] = await Promise.all([
@@ -151,7 +151,7 @@ export default async function ExerciseDetailPage({ params }: Props) {
       .order('workout_id', { ascending: false })
       .limit(30),
 
-    // Top sets des 12 dernières semaines pour le graphique de progression
+    // Top sets des 52 dernières semaines (1 an) pour le graphique de progression
     supabase
       .from('workout_sets')
       .select('weight_kg, reps, created_at, workouts(completed_at)')
@@ -159,9 +159,9 @@ export default async function ExerciseDetailPage({ params }: Props) {
       .eq('user_id', user.id)
       .eq('set_type', 'top_set')
       .not('workouts', 'is', null)
-      .gte('created_at', twelveWeeksAgo)
+      .gte('created_at', oneYearAgo)
       .order('created_at', { ascending: true })
-      .limit(50),
+      .limit(200),
   ])
 
   // Grouper les sets par séance → max 3 dernières séances
@@ -203,7 +203,8 @@ export default async function ExerciseDetailPage({ params }: Props) {
     const raw = s as unknown as TopSetRaw
     const dateStr = (raw.workouts?.completed_at ?? raw.created_at)
     if (!raw.weight_kg || !dateStr) return acc
-    const label = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(dateStr))
+    // Sur 52 semaines : format MMM AA (ex: "Jan 25") — plus lisible sur un axe long
+    const label = new Intl.DateTimeFormat('fr-FR', { month: 'short', year: '2-digit' }).format(new Date(dateStr))
     acc.push({ date: label, poids: raw.weight_kg })
     return acc
   }, [])
@@ -477,7 +478,7 @@ export default async function ExerciseDetailPage({ params }: Props) {
         </div>
       )}
 
-      {/* ── Graphique progression top sets — 12 semaines ── */}
+      {/* ── Graphique progression top sets — 52 semaines ── */}
       {progressionData.length >= 3 && (
         <ExerciseProgressionChart data={progressionData} />
       )}

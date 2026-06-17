@@ -770,7 +770,29 @@ export default function WorkoutSessionPage() {
   function addWarmupSet(groupIdx: number) {
     setGroups((prev) => {
       const g = prev[groupIdx]
-      const warmup: SetRow = { id: uid(), exercise_id: g.exercise_id, exercise_name: g.exercise_name, set_number: 0, weight_kg: '', reps: '', rpe: '', is_warmup: true }
+      // Compter les warmup sets déjà présents pour déterminer les pourcentages
+      const existingWarmups = g.sets.filter(s => s.is_warmup).length
+      // Pourcentages 1RM : 40% / 60% / 80% selon le rang du warmup
+      const PCT = [0.4, 0.6, 0.8]
+      // Reps par défaut : 8 / 6 / 3
+      const DEFAULT_REPS = [8, 6, 3]
+      const idx = Math.min(existingWarmups, PCT.length - 1)
+      // Pré-remplir poids si PR disponible (arrondi au 2.5 kg le plus proche)
+      let warmupWeight: number | '' = ''
+      let warmupReps: number | '' = DEFAULT_REPS[idx]
+      if (g.pr && g.pr > 0) {
+        warmupWeight = Math.round(g.pr * PCT[idx] / 2.5) * 2.5
+      }
+      const warmup: SetRow = {
+        id: uid(),
+        exercise_id: g.exercise_id,
+        exercise_name: g.exercise_name,
+        set_number: 0,
+        weight_kg: warmupWeight,
+        reps: warmupReps,
+        rpe: '',
+        is_warmup: true,
+      }
       const updated = [...prev]
       updated[groupIdx] = { ...g, sets: [warmup, ...g.sets] }
       return updated

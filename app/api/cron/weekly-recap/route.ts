@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { AI_MODELS } from '@/lib/utils/ai-models'
+import { sendPushToUser } from '@/lib/utils/push'
 
 export const dynamic   = 'force-dynamic'
 export const maxDuration = 60
@@ -394,7 +395,7 @@ export async function GET(req: NextRequest) {
       const weekGoal   = profile.sessions_per_week ?? 3
       const tonnageDiff = totalTonnage - prevTonnage
 
-      // Message IA (1 appel Haiku par user)
+      // Message IA (1 appel Haiku par user) — partagé entre email et push
       const aiMessage = await generateCoachMessage({
         firstName, workoutCount, weekGoal, bestPR, tonnageDiff, avgProtein, proteinGoal,
       })
@@ -404,25 +405,76 @@ export async function GET(req: NextRequest) {
         bestPR, avgProtein, proteinGoal, weightStart, weightEnd, aiMessage,
       })
 
-      // Envoi Resend
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${RESEND_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: 'ForgeIQ <noreply@getforgeiq.com>',
-          to:   [email],
-          subject: `${firstName}, ton recap de la semaine 💪`,
-          html,
+      // Générer le résumé push Haiku + envoi push en parallèle de l'email
+      // Promise.allSettled garantit qu'une erreur push ne bloque pas l'email
+      const [emailResult] = await Promise.allSettled([
+        // Envoi Resend
+        fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${RESEND_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: 'ForgeIQ <noreply@getforgeiq.com>',
+            to:   [email],
+            subject: `${firstName}, ton recap de la semaine 💪`,
+            html,
+          }),
         }),
-      })
 
-      if (res.ok) {
+        // Push Haiku hebdo — résumé court + 1 action concrète
+        (async () => {
+          try {
+            const avgCheckinScore = weekLogs && weekLogs.length > 0
+              ? Math.round(
+                  (weekLogs as Array<{ protein_g: number | null; weight_trend: number | null }>)
+                    .filter(l => l.protein_g !== null).length / weekLogs.length * 10
+                )
+              : null
+
+            const pushPrompt = `Coach fitness — résumé hebdo de ${firstName}.
+Données semaine :
+- Séances : ${workoutCount}/${weekGoal}
+- Tonnage total : ${Math.round(totalTonnage)} kg (${tonnageDiff >= 0 ? '+' : ''}${Math.round(tonnageDiff)} kg vs sem. préc.)
+- Poids EWMA : ${weightEnd ?? 'N/A'} kg (début sem. ${weightStart ?? 'N/A'} kg)
+- Protéines moy : ${Math.round(avgProtein)}g/j (objectif ${Math.round(proteinGoal)}g)
+${avgCheckinScore !== null ? `- Check-ins complétés : ${avgCheckinScore}/10` : ''}
+
+Écris 3 phrases max : bilan factuel + 1 point d'amélioration + 1 action concrète semaine suivante.
+Jamais "Claude", "IA", "Anthropic". En français, tutoyer.`
+
+            const resp = await anthropic.messages.create({
+              model: AI_MODELS.summary,
+              max_tokens: 150,
+              messages: [{ role: 'user', content: pushPrompt }],
+            })
+
+            const pushBody = resp.content[0]?.type === 'text'
+              ? resp.content[0].text.trim()
+              : aiMessage // fallback : réutiliser le message email
+
+            await sendPushToUser(profile.id, {
+              title: 'ForgeIQ — Récap de ta semaine 📊',
+              body:  pushBody,
+              url:   '/dashboard',
+              tag:   'weekly-recap',
+            })
+          } catch (pushErr) {
+            // Non-bloquant — erreur push loggée mais silencieuse
+            console.error(`[weekly-recap] Push failed for ${profile.id}:`, pushErr)
+          }
+        })(),
+      ])
+
+      // Vérification résultat email uniquement (le push est best-effort)
+      if (emailResult.status === 'fulfilled' && emailResult.value.ok) {
         sent++
       } else {
-        console.error(`Recap email failed for ${profile.id}:`, await res.text())
+        const reason = emailResult.status === 'rejected'
+          ? emailResult.reason
+          : await (emailResult.value as Response).text()
+        console.error(`Recap email failed for ${profile.id}:`, reason)
         errors++
       }
 

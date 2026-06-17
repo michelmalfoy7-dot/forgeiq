@@ -41,7 +41,7 @@ export function ExerciseProgressionChart({ data }: { data: DataPoint[] }) {
         className="text-xs font-black uppercase mb-4"
         style={{ color: 'var(--fiq-muted)', letterSpacing: '0.08em' }}
       >
-        Progression sur 12 semaines
+        Progression sur 52 semaines
       </p>
       <ResponsiveContainer width="100%" height={160}>
         <LineChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
