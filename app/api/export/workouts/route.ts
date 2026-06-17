@@ -2,6 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 30
+
+const EXPORT_LIMIT = 2000
 
 function toCSV(rows: Record<string, unknown>[]): string {
   if (!rows.length) return ''
@@ -43,6 +46,7 @@ export async function GET() {
       .eq('user_id', user.id)
       .not('completed_at', 'is', null)
       .order('session_date', { ascending: false })
+      .limit(EXPORT_LIMIT)
 
     if (workoutError) {
       return NextResponse.json({ error: 'Erreur récupération séances' }, { status: 500 })

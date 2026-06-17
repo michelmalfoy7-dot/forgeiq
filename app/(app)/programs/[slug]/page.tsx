@@ -64,7 +64,7 @@ export default async function ProgramDetailPage({ params }: Props) {
       .maybeSingle(),
     supabase.from('profiles')
       .select('current_program_id, gym_id, gym_equipment_profiles(tier, name, logo_emoji, features)')
-      .eq('id', user.id).single(),
+      .eq('id', user.id).maybeSingle(),
   ])
 
   if (!program) notFound()

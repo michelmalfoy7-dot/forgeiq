@@ -15,7 +15,7 @@ export default async function GenerateProgramPage() {
     .from('profiles')
     .select('subscription_status, is_admin, referral_pro_until, gym_id, gym_equipment_profiles(tier, name, logo_emoji, features)')
     .eq('id', user.id)
-    .single()
+    .maybeSingle()
 
   const { isProUser } = await import('@/lib/utils/plan')
   const isPro = isProUser(profile as Parameters<typeof isProUser>[0])

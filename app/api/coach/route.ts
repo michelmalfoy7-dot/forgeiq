@@ -241,7 +241,7 @@ export async function POST(req: NextRequest) {
     ] = await Promise.all([
       supabase.from('profiles')
         .select('display_name, goal, level, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, target_weight_kg')
-        .eq('id', user.id).single(),
+        .eq('id', user.id).maybeSingle(),
       supabase.from('daily_logs')
         .select('weight_kg, weight_trend, sleep_deep_min, sleep_total_min, fatigue_score, protein_g, steps, sys_bp')
         .eq('user_id', user.id).eq('log_date', today).maybeSingle(),
@@ -408,7 +408,7 @@ export async function POST(req: NextRequest) {
     // Poids lissé le plus récent (fallback si pas de check-in aujourd'hui)
     let recentWeightTrend: number | null = todayLog?.weight_trend ?? null
     let recentWeightKg: number | null = todayLog?.weight_kg ?? null
-    if (!recentWeightTrend) {
+    if (recentWeightTrend === null) {
       const { data: lastWeightLog } = await supabase
         .from('daily_logs')
         .select('weight_kg, weight_trend')

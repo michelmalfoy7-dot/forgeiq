@@ -395,7 +395,7 @@ export async function POST(req: NextRequest) {
       data: {
         program:  newProgram,
         rationale: haiku.rationale,
-        generationsLeft: unlimitedGenerations ? 999 : AI_GENERATIONS_PER_MONTH - 1,
+        generationsLeft: unlimitedGenerations ? 999 : Math.max(0, AI_GENERATIONS_PER_MONTH - generationsThisMonth - 1),
       },
       error: null,
     })

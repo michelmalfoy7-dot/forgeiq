@@ -146,6 +146,7 @@ export default async function ExerciseDetailPage({ params }: Props) {
       .from('workout_sets')
       .select('set_number, weight_kg, reps, is_warmup, workout_id, workouts(completed_at, session_name)')
       .eq('exercise_id', ex.id)
+      .eq('user_id', user.id)
       .eq('is_warmup', false)
       .order('workout_id', { ascending: false })
       .limit(30),

@@ -388,7 +388,7 @@ export default async function DashboardPage() {
     pts += ewmaPts
 
     recoveryBreakdown = { deepSleepPts, totalSleepPts, fatiguePts, stepsPts, moodPts, ewmaPts }
-    recoveryScore = Math.min(10, Math.max(0, Math.round(pts)))
+    recoveryScore = Math.min(10, Math.max(0, Math.round((pts / 9) * 10)))
 
     if (recoveryScore >= 7) {
       recoveryLabel = 'Optimale'
@@ -700,7 +700,7 @@ export default async function DashboardPage() {
           </Link>
         )}
 
-        {pausedWorkoutRow && !latestTodayWorkout ? (
+        {pausedWorkoutRow ? (
           /* ── Cas 0 : Séance en pause — non terminée aujourd'hui ── */
           <>
             <div className="flex items-start justify-between">

@@ -53,9 +53,10 @@ export async function POST(req: NextRequest) {
         adopted_count: 0,
       })
       .select('id, name, slug')
-      .single()
+      .maybeSingle()
 
     if (insertError) return NextResponse.json({ data: null, error: insertError.message }, { status: 500 })
+    if (!fork) return NextResponse.json({ data: null, error: 'Fork non créé' }, { status: 500 })
 
     // Adopter la copie comme programme actif
     await supabase

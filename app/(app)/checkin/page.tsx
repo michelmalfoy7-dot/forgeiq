@@ -107,6 +107,11 @@ export default function CheckinPage() {
     }
   }, [isYesterday])
 
+  // Cleanup debounce au unmount
+  useEffect(() => {
+    return () => { if (ewmaDebounceRef.current) clearTimeout(ewmaDebounceRef.current) }
+  }, [])
+
   // Charger le log existant du jour
   useEffect(() => {
     async function loadToday() {
@@ -116,8 +121,8 @@ export default function CheckinPage() {
 
       const [{ data: log }, { data: prof }] = await Promise.all([
         supabase.from('daily_logs').select('*').eq('user_id', user.id)
-          .eq('log_date', getLogDate(isYesterday)).single(),
-        supabase.from('profiles').select('goal, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g').eq('id', user.id).single(),
+          .eq('log_date', getLogDate(isYesterday)).maybeSingle(),
+        supabase.from('profiles').select('goal, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g').eq('id', user.id).maybeSingle(),
       ])
 
       if (prof) setProfile(prof)

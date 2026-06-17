@@ -36,7 +36,7 @@ export default async function ProgramsPage() {
       .order('sessions_per_week', { ascending: true }),
     supabase.from('profiles')
       .select('current_program_id, goal, level, equipment, gym_id, subscription_status, is_admin, referral_pro_until, gym_equipment_profiles(tier, name, logo_emoji, features)')
-      .eq('id', user.id).single(),
+      .eq('id', user.id).maybeSingle(),
     supabase.from('programs')
       .select('id, name, slug, description, level, goal, equipment, sessions_per_week, duration_weeks, structure, is_custom, is_public, adopted_count, community_published_at')
       .eq('created_by', user.id)

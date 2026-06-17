@@ -41,7 +41,7 @@ export async function GET(_req: Request, { params }: RouteParams) {
       .map((m: { id: string }) => m.id)
 
     if (unreadIds.length > 0) {
-      void supabase
+      await supabase
         .from('messages')
         .update({ read_at: new Date().toISOString() })
         .in('id', unreadIds)
