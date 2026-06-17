@@ -131,8 +131,10 @@ export default async function ProgressPage() {
     fourWeeksAgoDate.setDate(fourWeeksAgoDate.getDate() - 28)
     const oldLog = trendLogs.find(l => new Date(l.log_date + 'T12:00:00') >= fourWeeksAgoDate) ?? trendLogs[0]
     const oldTrend = oldLog.weight_trend!
-    const daysDiff = Math.max(7, (new Date(trendLogs[trendLogs.length - 1].log_date + 'T12:00:00').getTime() - new Date(oldLog.log_date + 'T12:00:00').getTime()) / 86400000)
-    weeklyWeightTrend = ((latestTrend - oldTrend) / daysDiff) * 7
+    const daysDiff = (new Date(trendLogs[trendLogs.length - 1].log_date + 'T12:00:00').getTime() - new Date(oldLog.log_date + 'T12:00:00').getTime()) / 86400000
+    if (daysDiff >= 1) {
+      weeklyWeightTrend = ((latestTrend - oldTrend) / Math.max(daysDiff, 7)) * 7
+    }
   }
   const currentEwma = trendLogs.length > 0 ? trendLogs[trendLogs.length - 1].weight_trend! : null
 

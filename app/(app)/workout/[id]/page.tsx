@@ -934,6 +934,7 @@ export default function WorkoutSessionPage() {
 
   // ── TERMINER SÉANCE ──────────────────────────────────────────
   const completeWorkout = useCallback(async (retryPayload?: unknown) => {
+    if (completing || completed) return
     setCompleting(true)
     setCompleteError(null)
 
@@ -1024,7 +1025,7 @@ export default function WorkoutSessionPage() {
     } finally {
       setCompleting(false)
     }
-  }, [groups, workoutId, STORAGE_KEY, sessionName, sessionNote])
+  }, [groups, workoutId, STORAGE_KEY, sessionName, sessionNote, completing, completed])
 
   // Tonnage total séance (travail + échauffement)
   const totalTonnage = groups.reduce((acc, g) => acc + calcTonnageGroup(g), 0)

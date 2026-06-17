@@ -16,7 +16,7 @@ export default async function WorkoutHistoryPage() {
       id, session_name, session_date, total_tonnage_kg, total_sets,
       completed_at, started_at, notes, program_id,
       workout_sets (
-        id, exercise_id, exercise_name, set_number, weight_kg, reps, rpe, is_warmup, set_type
+        id, exercise_id, exercise_name, set_number, weight_kg, reps, rpe, is_warmup, set_type, note
       )
     `)
     .eq('user_id', user.id)

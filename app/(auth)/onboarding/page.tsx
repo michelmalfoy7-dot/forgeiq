@@ -166,6 +166,7 @@ export default function OnboardingPage() {
           gym_id:            data.gym_id ?? null,
           sessions_per_week: data.sessions_per_week ?? 3,
           current_program_id: programId,
+          is_public:         data.is_public ?? true,
           onboarding_done:   true,
           updated_at:        new Date().toISOString(),
         }, { onConflict: 'id' })

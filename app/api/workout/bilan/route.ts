@@ -74,7 +74,6 @@ export async function POST(req: NextRequest) {
         .from('workout_sets')
         .select('exercise_id, exercise_name, weight_kg, reps, is_warmup, set_type')
         .eq('workout_id', workout_id)
-        .eq('user_id', user.id)
         .order('set_number'),
     ])
 

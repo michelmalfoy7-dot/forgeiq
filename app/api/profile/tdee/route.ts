@@ -39,7 +39,7 @@ export async function GET() {
       supabase.from('profiles')
         .select('weight_kg, height_cm, age, gender, sessions_per_week, goal, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g')
         .eq('id', user.id)
-        .single(),
+        .maybeSingle(),
 
       // Journées complètes avec steps > 0 (exclut aujourd'hui partiel + zéros)
       supabase.from('daily_logs')

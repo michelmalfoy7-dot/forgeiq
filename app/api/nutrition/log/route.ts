@@ -70,19 +70,6 @@ export async function POST(req: NextRequest) {
       ai_note,
     }
 
-    // Micros directs (recettes) — priorité sur foods_library
-    if (iron_mg_direct != null || magnesium_mg_direct != null || zinc_mg_direct != null
-      || calcium_mg_direct != null || potassium_mg_direct != null
-      || vitamin_c_mg_direct != null || vitamin_d_mcg_direct != null) {
-      entry.iron_mg       = iron_mg_direct       != null ? Math.round(iron_mg_direct       * 1000) / 1000 : null
-      entry.magnesium_mg  = magnesium_mg_direct  != null ? Math.round(magnesium_mg_direct  * 10)   / 10   : null
-      entry.zinc_mg       = zinc_mg_direct       != null ? Math.round(zinc_mg_direct       * 1000) / 1000 : null
-      entry.calcium_mg    = calcium_mg_direct    != null ? Math.round(calcium_mg_direct    * 10)   / 10   : null
-      entry.potassium_mg  = potassium_mg_direct  != null ? Math.round(potassium_mg_direct  * 10)   / 10   : null
-      entry.vitamin_c_mg  = vitamin_c_mg_direct  != null ? Math.round(vitamin_c_mg_direct  * 100)  / 100  : null
-      entry.vitamin_d_mcg = vitamin_d_mcg_direct != null ? Math.round(vitamin_d_mcg_direct * 100)  / 100  : null
-    }
-
     // Récupérer les micronutriments depuis foods_library si food_id connu
     if (food_id) {
       const { data: lib } = await supabase
@@ -105,8 +92,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { data, error } = await supabase.from('food_logs').insert(entry).select().single()
+    // Micros directs (recettes) — priorité sur foods_library, appliqués en dernier
+    if (iron_mg_direct != null || magnesium_mg_direct != null || zinc_mg_direct != null
+      || calcium_mg_direct != null || potassium_mg_direct != null
+      || vitamin_c_mg_direct != null || vitamin_d_mcg_direct != null) {
+      entry.iron_mg       = iron_mg_direct       != null ? Math.round(iron_mg_direct       * 1000) / 1000 : null
+      entry.magnesium_mg  = magnesium_mg_direct  != null ? Math.round(magnesium_mg_direct  * 10)   / 10   : null
+      entry.zinc_mg       = zinc_mg_direct       != null ? Math.round(zinc_mg_direct       * 1000) / 1000 : null
+      entry.calcium_mg    = calcium_mg_direct    != null ? Math.round(calcium_mg_direct    * 10)   / 10   : null
+      entry.potassium_mg  = potassium_mg_direct  != null ? Math.round(potassium_mg_direct  * 10)   / 10   : null
+      entry.vitamin_c_mg  = vitamin_c_mg_direct  != null ? Math.round(vitamin_c_mg_direct  * 100)  / 100  : null
+      entry.vitamin_d_mcg = vitamin_d_mcg_direct != null ? Math.round(vitamin_d_mcg_direct * 100)  / 100  : null
+    }
+
+    const { data, error } = await supabase.from('food_logs').insert(entry).select().maybeSingle()
     if (error) throw error
+    if (!data) return NextResponse.json({ data: null, error: 'Log non créé' }, { status: 500 })
 
     return NextResponse.json({ data, error: null })
   } catch (err) {
@@ -174,9 +175,10 @@ export async function PATCH(req: NextRequest) {
       .eq('id', id)
       .eq('user_id', user.id)
       .select()
-      .single()
+      .maybeSingle()
 
     if (error) throw error
+    if (!data) return NextResponse.json({ data: null, error: 'Log introuvable' }, { status: 404 })
     return NextResponse.json({ data, error: null })
   } catch (err) {
     console.error('Nutrition log PATCH error:', err)

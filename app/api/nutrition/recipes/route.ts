@@ -133,9 +133,10 @@ export async function POST(req: NextRequest) {
         updated_at: new Date().toISOString(),
       })
       .select()
-      .single()
+      .maybeSingle()
 
     if (recipeErr) throw recipeErr
+    if (!recipe) throw new Error('Recette non créée')
 
     // Insérer les ingrédients
     const ingrRows = ingredients.map((ing, i) => ({
@@ -159,7 +160,7 @@ export async function POST(req: NextRequest) {
       .from('recipes')
       .select('*, recipe_ingredients(*)')
       .eq('id', recipe.id)
-      .single()
+      .maybeSingle()
 
     return NextResponse.json({ data: full, error: null })
   } catch (err) {
@@ -271,7 +272,7 @@ export async function PATCH(req: NextRequest) {
       .from('recipes')
       .select('*, recipe_ingredients(*)')
       .eq('id', id)
-      .single()
+      .maybeSingle()
 
     return NextResponse.json({ data: full, error: null })
   } catch (err) {

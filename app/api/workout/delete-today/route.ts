@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
       .eq('id', workout_id)
       .eq('user_id', user.id)
       .eq('session_date', today)
-      .single()
+      .maybeSingle()
 
     if (!workout) {
       return NextResponse.json({ data: null, error: 'Séance introuvable ou non modifiable' }, { status: 404 })

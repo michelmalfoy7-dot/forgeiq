@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       .from('daily_logs')
       .upsert(body, { onConflict: 'user_id,log_date' })
       .select()
-      .single()
+      .maybeSingle()
 
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
 
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       .from('profiles')
       .select('checkin_streak, last_checkin_date')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
 
     if (prof) {
       const prev = prof.last_checkin_date

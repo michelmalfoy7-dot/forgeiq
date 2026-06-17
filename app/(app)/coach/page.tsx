@@ -255,7 +255,7 @@ export default function CoachPage() {
         supabase.from('profiles')
           .select('goal, weight_kg, subscription_status, subscription_plan, is_admin, referral_pro_until')
           .eq('id', user.id)
-          .single(),
+          .maybeSingle(),
         // Calories + protéines consommées aujourd'hui (food_logs — priorité sur check-in manuel)
         supabase.from('food_logs')
           .select('calories, protein_g')

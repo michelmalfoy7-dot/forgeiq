@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   // 1. Récupérer l'exercice source
   const { data: source, error: sourceErr } = await supabase
     .from('exercises_library')
-    .select('id, name_fr, primary_muscles, secondary_muscles, equipment, category, force_type')
+    .select('id, name_fr, muscle_primary, muscle_secondary, equipment, category, force_type')
     .eq('id', exerciseId)
     .maybeSingle()
 
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data: null, error: 'Exercice source introuvable' }, { status: 404 })
   }
 
-  const primaryMuscles: string[] = source.primary_muscles ?? []
+  const primaryMuscles: string[] = source.muscle_primary ?? []
   const category: string         = source.category ?? ''
   const forceType: string        = source.force_type ?? ''
 
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
   //    On fait une requête large puis on trie côté JS pour prioriser force_type + secondary_muscles
   let query = supabase
     .from('exercises_library')
-    .select('id, name_fr, primary_muscles, secondary_muscles, equipment, category, force_type, difficulty')
+    .select('id, name_fr, muscle_primary, muscle_secondary, equipment, category, force_type, difficulty')
     .eq('category', category)
     .neq('id', exerciseId)
     .in('equipment', compatibleEquipment)
@@ -59,10 +59,10 @@ export async function GET(req: NextRequest) {
 
   // 4. Filtrer : au moins 1 muscle primaire en commun
   const sourcePrimarySet = new Set(primaryMuscles)
-  const sourceSecondarySet = new Set<string>(source.secondary_muscles ?? [])
+  const sourceSecondarySet = new Set<string>(source.muscle_secondary ?? [])
 
   const withOverlap = (candidates ?? []).filter((c) => {
-    const cPrimary: string[] = c.primary_muscles ?? []
+    const cPrimary: string[] = c.muscle_primary ?? []
     return cPrimary.some((m: string) => sourcePrimarySet.has(m))
   })
 
@@ -71,8 +71,8 @@ export async function GET(req: NextRequest) {
   //    - +2 pour chaque muscle primaire en commun (au-delà du premier)
   //    - +1 pour chaque muscle secondaire en commun
   const scored = withOverlap.map((c) => {
-    const cPrimary: string[]   = c.primary_muscles ?? []
-    const cSecondary: string[] = c.secondary_muscles ?? []
+    const cPrimary: string[]   = c.muscle_primary ?? []
+    const cSecondary: string[] = c.muscle_secondary ?? []
 
     const primaryOverlap   = cPrimary.filter((m: string) => sourcePrimarySet.has(m)).length
     const secondaryOverlap = cSecondary.filter((m: string) => sourceSecondarySet.has(m)).length
@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
   const substitutes = scored.slice(0, limit).map(({ _score: _, ...c }) => ({
     id:              c.id,
     name:            c.name_fr,
-    primary_muscles: c.primary_muscles ?? [],
+    primary_muscles: c.muscle_primary ?? [],
     equipment:       c.equipment,
     difficulty:      c.difficulty,
   }))

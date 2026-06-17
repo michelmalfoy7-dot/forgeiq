@@ -56,9 +56,10 @@ export async function POST(req: NextRequest) {
         created_by: user.id,
       })
       .select('id')
-      .single()
+      .maybeSingle()
 
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 500 })
+    if (!program) return NextResponse.json({ data: null, error: 'Programme non créé' }, { status: 500 })
 
     // Adopter le programme immédiatement
     await supabase.from('profiles')

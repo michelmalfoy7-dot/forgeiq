@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
 
         // Ne jamais écraser un statut lifetime avec un événement d'abonnement
         const { data: existing } = await supabase
-          .from('profiles').select('subscription_status').eq('id', userId).single()
+          .from('profiles').select('subscription_status').eq('id', userId).maybeSingle()
         if (existing?.subscription_status === 'lifetime') break
 
         const isActive = sub.status === 'active' || sub.status === 'trialing'
@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
             .from('profiles')
             .select('display_name')
             .eq('id', userId)
-            .single()
+            .maybeSingle()
 
           // Récupérer l'email depuis Stripe customer
           let userEmail = ''
@@ -167,7 +167,7 @@ export async function POST(req: NextRequest) {
 
         // Ne jamais rétrograder un lifetime — il n'a pas d'abonnement récurrent
         const { data: existingDel } = await supabase
-          .from('profiles').select('subscription_status').eq('id', userId).single()
+          .from('profiles').select('subscription_status').eq('id', userId).maybeSingle()
         if (existingDel?.subscription_status === 'lifetime') break
 
         await supabase.from('profiles').update({
@@ -199,7 +199,7 @@ export async function POST(req: NextRequest) {
           .from('profiles')
           .select('display_name')
           .eq('id', userId)
-          .single()
+          .maybeSingle()
 
         const amountLifetime = session.amount_total
           ? `${(session.amount_total / 100).toFixed(2)} ${(session.currency ?? 'eur').toUpperCase()}`

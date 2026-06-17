@@ -122,11 +122,11 @@ export async function GET(req: Request) {
     const adjustmentReasons: string[] = []
 
     if (todayLog) {
-      const deepSleep = todayLog.sleep_deep_min ?? 90
+      const deepSleep = todayLog.sleep_deep_min ?? null
       const fatigue = todayLog.fatigue_score ?? 5
       const weightTrend = todayLog.weight_trend ?? null
 
-      if (deepSleep < 60) adjustmentReasons.push('Sommeil profond insuffisant')
+      if (deepSleep !== null && deepSleep < 60) adjustmentReasons.push('Sommeil profond insuffisant')
       if (fatigue >= 8) adjustmentReasons.push('Fatigue élevée')
       // Perte de poids rapide : EWMA aujourd'hui vs EWMA il y a 7 jours > 2.5kg
       // Comparaison EWMA vs EWMA — fiable et indépendante du poids d'onboarding
