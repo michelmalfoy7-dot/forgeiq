@@ -114,13 +114,24 @@ export default async function PublicProfilePage({ params }: PageProps) {
       .eq('user_id', targetProfile.user_id)
       .not('completed_at', 'is', null)
       .order('session_date', { ascending: false }),
-    // Récupérer streak check-in et code referral depuis profiles
+    // Récupérer streak check-in, code referral et programme actif depuis profiles
     supabase
       .from('profiles')
-      .select('checkin_streak, referral_code')
+      .select('checkin_streak, referral_code, current_program_id')
       .eq('id', targetProfile.user_id)
       .maybeSingle(),
   ])
+
+  // Programme actif — nom uniquement (lecture publique safe)
+  let currentProgramName: string | null = null
+  if (profileStats?.current_program_id) {
+    const { data: prog } = await supabase
+      .from('programs')
+      .select('name')
+      .eq('id', profileStats.current_program_id)
+      .maybeSingle()
+    currentProgramName = prog?.name ?? null
+  }
 
   const totalSessions = (workoutStats ?? []).length
   const totalTonnage  = (workoutStats ?? []).reduce(
@@ -360,6 +371,14 @@ export default async function PublicProfilePage({ params }: PageProps) {
               <p className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--fiq-muted)' }}>
                 {targetProfile.bio}
               </p>
+            )}
+            {currentProgramName && (
+              <span
+                className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                style={{ background: '#3D8BFF18', border: '1px solid #3D8BFF44', color: '#3D8BFF' }}
+              >
+                🏋️ {currentProgramName}
+              </span>
             )}
           </div>
         </div>

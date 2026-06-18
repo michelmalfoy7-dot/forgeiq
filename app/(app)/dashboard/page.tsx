@@ -189,6 +189,7 @@ export default async function DashboardPage() {
     volume_adjustment: string
     adjustment_reason: string
     adaptation_reason: string
+    days: string[]
   } | null = null
 
   if (profile?.current_program_id) {
@@ -234,6 +235,7 @@ export default async function DashboardPage() {
         volume_adjustment: volumeAdj,
         adjustment_reason: adjReason,
         adaptation_reason: adaptReason,
+        days,
       }
     }
   }
@@ -1074,6 +1076,39 @@ export default async function DashboardPage() {
           />
         )}
       </div>
+
+      {/* Vue semaine programme en cours */}
+      {suggestion && suggestion.days.length > 0 && (
+        <div className="fiq-card space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-bold" style={{ color: 'var(--fiq-text)' }}>
+              {suggestion.program_name}
+            </p>
+            <Link href="/programs" className="text-xs font-semibold" style={{ color: 'var(--fiq-muted)' }}>
+              Voir →
+            </Link>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {suggestion.days.map((day, i) => {
+              const isDone = (weekWorkouts ?? []).some(w => w.session_name === day)
+              const isNext = !programDoneToday && day === suggestion!.session_name
+              return (
+                <span
+                  key={i}
+                  className="px-2.5 py-1 rounded-full text-xs font-bold"
+                  style={{
+                    background: isDone ? '#B4FF4A18' : isNext ? '#3D8BFF18' : 'var(--fiq-faint)',
+                    border: `1px solid ${isDone ? '#B4FF4A55' : isNext ? '#3D8BFF55' : 'var(--fiq-border)'}`,
+                    color: isDone ? 'var(--fiq-accent)' : isNext ? 'var(--fiq-blue)' : 'var(--fiq-muted)',
+                  }}
+                >
+                  {isDone ? '✓ ' : isNext ? '→ ' : ''}{day}
+                </span>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Raccourcis */}
       <div className="grid grid-cols-2 gap-3">

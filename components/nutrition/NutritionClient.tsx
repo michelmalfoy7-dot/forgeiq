@@ -3328,6 +3328,16 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
           <Calendar className="w-3.5 h-3.5" />
           Planifier
         </Link>
+        <Link
+          href="/nutrition/weekly"
+          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-black transition-all"
+          style={pathname === '/nutrition/weekly'
+            ? { background: 'var(--fiq-card)', color: 'var(--fiq-blue)', boxShadow: '0 1px 4px rgba(0,0,0,0.3)' }
+            : { color: 'var(--fiq-muted)' }
+          }
+        >
+          Bilan
+        </Link>
       </div>
 
       {/* Navigation date — ← Hier | Aujourd'hui | → */}
