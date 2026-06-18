@@ -2865,6 +2865,7 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
 
   // ── Top favorites (Feature 2) — chargés au montage pour les pills ──
   const [topFavorites, setTopFavorites] = useState<Favorite[]>([])
+  const [favoritesReady, setFavoritesReady] = useState(false)
   const [favPillLogging, setFavPillLogging] = useState<string | null>(null) // id du favori en cours de log
 
   useEffect(() => {
@@ -2877,6 +2878,7 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
         setTopFavorites(sorted.slice(0, 3))
       })
       .catch(() => {})
+      .finally(() => setFavoritesReady(true))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [microCollapsed, setMicroCollapsed] = useState(true)
@@ -2923,10 +2925,15 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
     setViewDate(date)
     try {
       const res = await fetch(`/api/nutrition/log?date=${date}`)
-      const { data } = await res.json()
-      setLogs(data?.logs ?? [])
+      if (!res.ok) return // erreur réseau → garder les logs actuels affichés
+      const json = await res.json()
+      // Remplacer seulement si la réponse contient un tableau valide
+      // (null = erreur serveur silencieuse, ne pas vider l'affichage)
+      if (Array.isArray(json.data?.logs)) {
+        setLogs(json.data.logs)
+      }
     } catch {
-      setLogs([])
+      // Erreur réseau transitoire → ne pas vider les logs déjà affichés
     } finally {
       setDateLoading(false)
     }
@@ -3793,9 +3800,10 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
                 </div>
               </div>
 
-              {/* Pills aliments fréquents — Feature 2 */}
-              {topFavorites.length > 0 && (
-                <div className="flex gap-2 overflow-x-auto pb-1 mt-2 no-scrollbar">
+              {/* Pills aliments fréquents — hauteur toujours réservée pour éviter le saut de layout */}
+              <div className="mt-2" style={{ minHeight: favoritesReady ? undefined : 32 }}>
+              {favoritesReady && topFavorites.length > 0 && (
+                <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
                   {topFavorites.map(fav => {
                     const kcal = fav.calories_per_100g != null
                       ? Math.round(fav.calories_per_100g * fav.default_quantity_g / 100)
@@ -3826,6 +3834,7 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
                   })}
                 </div>
               )}
+              </div>
 
               {expanded && (
                 <div className="mt-2">
