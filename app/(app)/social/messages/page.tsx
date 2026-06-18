@@ -52,14 +52,24 @@ export default async function MessagesPage({
     }
 
     // Créer la conversation
-    const { data: newConv } = await supabase
+    const { data: newConv, error: insertErr } = await supabase
       .from('conversations')
       .insert({ participant_1: p1, participant_2: p2 })
       .select('id')
-      .single()
+      .maybeSingle()
 
     if (newConv) {
       redirect(`/social/messages/${newConv.id}`)
+    }
+    // En cas de conflit (race condition), relire la conv existante
+    if (insertErr?.code === '23505') {
+      const { data: raceConv } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('participant_1', p1)
+        .eq('participant_2', p2)
+        .maybeSingle()
+      if (raceConv) redirect(`/social/messages/${raceConv.id}`)
     }
     // Si erreur création → afficher la liste normalement
   }

@@ -21,7 +21,7 @@ export async function GET() {
       supabase.from('profiles')
         .select('water_goal_ml')
         .eq('id', user.id)
-        .single(),
+        .maybeSingle(),
     ])
 
     return NextResponse.json({

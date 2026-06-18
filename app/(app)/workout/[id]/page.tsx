@@ -953,10 +953,10 @@ export default function WorkoutSessionPage() {
     setDragIndex(fromIdx)
   }
 
-  function handleTouchDragMove(clientY: number) {
+  function handleTouchDragMove(clientX: number, clientY: number) {
     if (!touchDragRef.current) return
-    // Trouver l'élément sous le point de contact
-    const el = document.elementFromPoint(0, clientY)
+    // Trouver l'élément sous le point de contact (utiliser clientX réel, pas 0)
+    const el = document.elementFromPoint(clientX, clientY)
     const card = el?.closest('[data-drag-idx]') as HTMLElement | null
     if (!card) return
     const overIdx = parseInt(card.dataset.dragIdx ?? '-1', 10)
@@ -965,10 +965,10 @@ export default function WorkoutSessionPage() {
     }
   }
 
-  function handleTouchDragEnd(clientY: number) {
+  function handleTouchDragEnd(clientX: number, clientY: number) {
     if (!touchDragRef.current) return
     const { fromIdx } = touchDragRef.current
-    const el = document.elementFromPoint(0, clientY)
+    const el = document.elementFromPoint(clientX, clientY)
     const card = el?.closest('[data-drag-idx]') as HTMLElement | null
     const toIdx = card ? parseInt(card.dataset.dragIdx ?? '-1', 10) : -1
     if (!isNaN(toIdx) && toIdx >= 0 && toIdx !== fromIdx) {
@@ -2443,10 +2443,10 @@ function ExerciseCard({
   isDragging?: boolean
   /** Touch drag — déclenché au touchstart sur le handle */
   onTouchDragStart: (startY: number) => void
-  /** Touch drag — appelé à chaque touchmove avec clientY courant */
-  onTouchDragMove: (clientY: number) => void
-  /** Touch drag — appelé au touchend avec clientY final */
-  onTouchDragEnd: (clientY: number) => void
+  /** Touch drag — appelé à chaque touchmove avec clientX et clientY courants */
+  onTouchDragMove: (clientX: number, clientY: number) => void
+  /** Touch drag — appelé au touchend avec clientX et clientY finals */
+  onTouchDragEnd: (clientX: number, clientY: number) => void
 }) {
   const [showHistory, setShowHistory] = useState(true)
   const [showPlateCalc, setShowPlateCalc] = useState(false)
@@ -2530,11 +2530,11 @@ function ExerciseCard({
           }}
           onTouchMove={(e) => {
             e.stopPropagation()
-            onTouchDragMove(e.touches[0].clientY)
+            onTouchDragMove(e.touches[0].clientX, e.touches[0].clientY)
           }}
           onTouchEnd={(e) => {
             e.stopPropagation()
-            onTouchDragEnd(e.changedTouches[0].clientY)
+            onTouchDragEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY)
           }}
         >
           <GripVertical className="w-4 h-4" />

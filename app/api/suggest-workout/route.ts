@@ -446,7 +446,7 @@ Inclure 4-6 exercices adaptés à la séance "${sessionName}". weight_kg basé s
             const equipmentStr = gymTier === 'premium' ? 'full_gym' : gymTier === 'home' ? 'home' : 'full_gym'
 
             // Trouver le substitut idéal, avec timeout 500ms pour ne pas bloquer la réponse
-            const substitutePromise = findBestSubstitute(supabase, accessorySlug, equipmentStr)
+            const substitutePromise = findBestSubstitute(supabase, accessorySlug, equipmentStr).catch(() => null)
             const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 500))
 
             const substitute = await Promise.race([substitutePromise, timeoutPromise])

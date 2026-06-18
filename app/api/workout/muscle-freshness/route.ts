@@ -14,10 +14,10 @@ export async function GET() {
     // Récupérer les sets de travail des 7 derniers jours (exclut échauffements et back-off)
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
+    // workout_sets n'a pas de colonne user_id — RLS filtre via workouts.user_id
     const { data: recentSets, error } = await supabase
       .from('workout_sets')
       .select('exercise_name, created_at')
-      .eq('user_id', user.id)
       .eq('is_warmup', false)
       .neq('set_type', 'backoff')
       .gte('created_at', since)

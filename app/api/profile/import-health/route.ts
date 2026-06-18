@@ -27,23 +27,25 @@ type DayData = {
 // Parse le XML Apple Health et extrait steps + poids par date
 function parseAppleHealthXML(xml: string): Map<string, DayData> {
   const dayMap = new Map<string, DayData>()
-  const lines = xml.split('\n')
 
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed.startsWith('<Record')) continue
+  // Regex sur le texte complet pour gérer les attributs répartis sur plusieurs lignes (iOS 16+)
+  const recordRegex = /<Record\b([^>]*(?:>[^<]*<\/Record>)?)/g
+  let match: RegExpExecArray | null
 
-    const type = extractAttr(trimmed, 'type')
+  while ((match = recordRegex.exec(xml)) !== null) {
+    const tag = match[1]
+
+    const type = extractAttr(tag, 'type')
     if (!type) continue
 
-    const rawDate = extractAttr(trimmed, 'startDate')
+    const rawDate = extractAttr(tag, 'startDate')
     if (!rawDate) continue
 
     const dateStr = toDateString(rawDate)
     if (!dateStr) continue
 
     if (type === 'HKQuantityTypeIdentifierStepCount') {
-      const rawValue = extractAttr(trimmed, 'value')
+      const rawValue = extractAttr(tag, 'value')
       if (!rawValue) continue
       const steps = Math.round(parseFloat(rawValue))
       if (isNaN(steps) || steps < 0) continue
@@ -54,8 +56,8 @@ function parseAppleHealthXML(xml: string): Map<string, DayData> {
       dayMap.set(dateStr, existing)
 
     } else if (type === 'HKQuantityTypeIdentifierBodyMass') {
-      const rawValue = extractAttr(trimmed, 'value')
-      const unit = extractAttr(trimmed, 'unit')
+      const rawValue = extractAttr(tag, 'value')
+      const unit = extractAttr(tag, 'unit')
       if (!rawValue || !unit) continue
 
       let weightKg = parseFloat(rawValue)
@@ -81,8 +83,8 @@ function parseGoogleFitCSV(csv: string): Map<string, DayData> {
   if (lines.length < 2) return dayMap
 
   const header = lines[0].toLowerCase()
-  const isSteps = header.includes('step')
-  const isWeight = header.includes('weight') || header.includes('mass')
+  const isSteps  = /step|pas\b/i.test(header)
+  const isWeight = /weight|mass|poids|körpergewicht/i.test(header)
 
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim()

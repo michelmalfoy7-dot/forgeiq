@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
       .from('profiles')
       .select('subscription_status, is_admin, goal, level, gym_id, gym_equipment_profiles(tier, name, features)')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
 
     if (profileErr) {
       console.error('[generate] Profile error:', profileErr.message)

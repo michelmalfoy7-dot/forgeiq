@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
       .from('profiles')
       .select('subscription_status, subscription_plan, is_admin')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
 
     const isAdmin = profile?.is_admin ?? false
     const status  = profile?.subscription_status ?? 'free'

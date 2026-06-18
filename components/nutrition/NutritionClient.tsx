@@ -209,7 +209,7 @@ function MacroDoughnut({
   fat_g: number
   targetCalories: number
 }) {
-  const isEmpty = protein_g === 0 && carbs_g === 0 && fat_g === 0
+  const isEmpty = !(protein_g > 0 || carbs_g > 0 || fat_g > 0)
 
   const data = isEmpty
     ? [{ value: 1, color: 'var(--fiq-border)', key: 'empty' }]
@@ -3069,6 +3069,17 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
         setLogs(prev => [...prev, data])
         setQuickAddToast(`✓ ${fav.food_name} ajouté`)
         setTimeout(() => setQuickAddToast(null), 2000)
+        // Incrémenter use_count pour que le tri "Récents" reste cohérent
+        if (fav.id) {
+          fetch('/api/nutrition/favorites', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: fav.id, last_quantity_g: fav.default_quantity_g }),
+          }).catch(() => {})
+          setTopFavorites(prev => prev.map(f =>
+            f.id === fav.id ? { ...f, use_count: (f.use_count ?? 0) + 1 } : f
+          ))
+        }
       }
     } finally {
       setFavPillLogging(null)

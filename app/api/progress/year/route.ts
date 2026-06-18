@@ -193,17 +193,17 @@ export async function GET(request: Request) {
     // ── 6. Check-ins + poids ──────────────────────────────────────────────
     const { data: dailyLogsRaw } = await supabase
       .from('daily_logs')
-      .select('log_date, ewma_weight')
+      .select('log_date, weight_trend')
       .eq('user_id', user.id)
       .gte('log_date', yearStart)
       .lte('log_date', yearEnd)
-      .not('ewma_weight', 'is', null)
+      .not('weight_trend', 'is', null)
       .order('log_date', { ascending: true })
 
     const dailyLogs = dailyLogsRaw ?? []
     const totalCheckins = dailyLogs.length
-    const weightStart = dailyLogs.length > 0 ? dailyLogs[0].ewma_weight : null
-    const weightEnd = dailyLogs.length > 0 ? dailyLogs[dailyLogs.length - 1].ewma_weight : null
+    const weightStart = dailyLogs.length > 0 ? dailyLogs[0].weight_trend : null
+    const weightEnd = dailyLogs.length > 0 ? dailyLogs[dailyLogs.length - 1].weight_trend : null
     const weightDelta =
       weightStart != null && weightEnd != null
         ? Math.round((weightEnd - weightStart) * 10) / 10

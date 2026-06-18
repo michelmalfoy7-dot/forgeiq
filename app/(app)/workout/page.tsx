@@ -214,7 +214,7 @@ export default function WorkoutPage() {
 
   // Démarrer une séance "Refaire" à partir du draft localStorage
   async function startDraftWorkout() {
-    if (starting) return
+    if (starting || activeWorkoutId) return
     setStarting(true)
     try {
       const raw = localStorage.getItem('forgeiq_draft_exercises')

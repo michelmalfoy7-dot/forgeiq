@@ -27,10 +27,10 @@ type SearchResult = {
   id: string
   name_fr: string
   name: string
-  calories_100g: number
-  protein_100g: number
-  carbs_100g: number
-  fat_100g: number
+  calories: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
   source?: string
 }
 
@@ -306,10 +306,10 @@ export default function MealPlannerPage() {
         food_name:  selectedFood.name_fr || selectedFood.name,
         food_id:    selectedFood.id,
         quantity_g: q,
-        calories:   Math.round((selectedFood.calories_100g ?? 0) * ratio),
-        protein_g:  Math.round((selectedFood.protein_100g ?? 0) * ratio * 10) / 10,
-        carbs_g:    Math.round((selectedFood.carbs_100g ?? 0) * ratio * 10) / 10,
-        fat_g:      Math.round((selectedFood.fat_100g ?? 0) * ratio * 10) / 10,
+        calories:   Math.round((selectedFood.calories ?? 0) * ratio),
+        protein_g:  Math.round((selectedFood.protein_g ?? 0) * ratio * 10) / 10,
+        carbs_g:    Math.round((selectedFood.carbs_g ?? 0) * ratio * 10) / 10,
+        fat_g:      Math.round((selectedFood.fat_g ?? 0) * ratio * 10) / 10,
       }
       const res = await fetch('/api/nutrition/planner', {
         method:  'POST',

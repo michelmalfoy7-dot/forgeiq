@@ -121,9 +121,21 @@ export async function POST(request: Request) {
         { onConflict: 'participant_1,participant_2' }
       )
       .select('id')
-      .single()
+      .maybeSingle()
 
-    if (convError || !conv) {
+    // Si upsert retourne null (DO NOTHING sur conflict), relire la conversation existante
+    let convId = conv?.id
+    if (!convId && !convError) {
+      const { data: existing } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('participant_1', p1)
+        .eq('participant_2', p2)
+        .maybeSingle()
+      convId = existing?.id
+    }
+
+    if (convError || !convId) {
       return NextResponse.json({ data: null, error: convError?.message ?? 'Erreur conversation' }, { status: 400 })
     }
 
@@ -131,12 +143,12 @@ export async function POST(request: Request) {
     const { data: message, error: msgError } = await supabase
       .from('messages')
       .insert({
-        conversation_id: conv.id,
+        conversation_id: convId,
         sender_id: user.id,
         content: content.trim(),
       })
       .select()
-      .single()
+      .maybeSingle()
 
     if (msgError) return NextResponse.json({ data: null, error: msgError.message }, { status: 400 })
 
@@ -144,9 +156,9 @@ export async function POST(request: Request) {
     await supabase
       .from('conversations')
       .update({ last_message_at: new Date().toISOString() })
-      .eq('id', conv.id)
+      .eq('id', convId)
 
-    return NextResponse.json({ data: { conversation_id: conv.id, message }, error: null })
+    return NextResponse.json({ data: { conversation_id: convId, message }, error: null })
   } catch {
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
   }

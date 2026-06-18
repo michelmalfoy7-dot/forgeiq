@@ -238,8 +238,8 @@ export default function CoachPage() {
 
       const today = new Date().toISOString().split('T')[0]
       const startOfMonth = new Date()
-      startOfMonth.setDate(1)
-      startOfMonth.setHours(0, 0, 0, 0)
+      startOfMonth.setUTCDate(1)
+      startOfMonth.setUTCHours(0, 0, 0, 0)
 
       const [{ data: history }, { data: log }, { data: profile }, { data: foodLogs }, { data: lastWorkout }, volumeRes] = await Promise.all([
         supabase.from('coach_messages')

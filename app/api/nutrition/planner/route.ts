@@ -70,9 +70,10 @@ export async function POST(request: Request) {
         fat_g:      body.fat_g ?? null,
       })
       .select('*')
-      .single()
+      .maybeSingle()
 
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
+    if (!data) return NextResponse.json({ data: null, error: 'Entrée non créée' }, { status: 400 })
 
     return NextResponse.json({ data, error: null })
   } catch {
@@ -105,9 +106,10 @@ export async function PATCH(request: Request) {
       .eq('id', id)
       .eq('user_id', user.id)
       .select('*')
-      .single()
+      .maybeSingle()
 
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
+    if (!data) return NextResponse.json({ data: null, error: 'Entrée introuvable' }, { status: 404 })
 
     return NextResponse.json({ data, error: null })
   } catch {

@@ -60,14 +60,14 @@ export async function POST(req: NextRequest) {
         .eq('id', existing.id)
         .eq('user_id', user.id)
         .select()
-        .single())
+        .maybeSingle())
     } else {
       // Insertion d'un nouveau favori
       ;({ data, error } = await supabase
         .from('food_favorites')
         .insert({ user_id: user.id, food_name, food_id, brand, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, fiber_per_100g, default_quantity_g })
         .select()
-        .single())
+        .maybeSingle())
     }
 
     if (error) throw error

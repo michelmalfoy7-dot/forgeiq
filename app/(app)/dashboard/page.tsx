@@ -448,7 +448,7 @@ export default async function DashboardPage() {
       const p66Threshold = tonnages[p66Index] ?? 0
 
       const topWorkouts = workoutsWithTime.filter(
-        w => (w.total_tonnage_kg ?? 0) >= p66Threshold
+        w => (w.total_tonnage_kg ?? 0) >= p66Threshold && (w.total_tonnage_kg ?? 0) > 0
       )
 
       if (topWorkouts.length >= 3) {

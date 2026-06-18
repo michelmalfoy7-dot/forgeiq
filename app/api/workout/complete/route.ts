@@ -299,9 +299,9 @@ function isPrevWeek(lastWeekIso: string, currentWeekIso: string): boolean {
 
 /** Retourne le nombre de semaines ISO dans une année (52 ou 53) */
 function getISOWeeksInYear(year: number): number {
-  // La dernière semaine de l'année ISO est celle qui contient le 28 décembre
-  return getISOWeek(new Date(year, 11, 28))
-    .split('-W').map(Number)[1]
+  const parsed = getISOWeek(new Date(year, 11, 28)).split('-W').map(Number)
+  // Si le 28 déc tombe en semaine 1 de l'année suivante (rare), l'année a 52 semaines ISO
+  return parsed[0] === year ? parsed[1] : 52
 }
 
 function groupByExercise(sets: SetInput[]): Record<string, SetInput[]> {
