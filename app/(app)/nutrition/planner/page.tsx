@@ -931,7 +931,7 @@ export default function MealPlannerPage() {
                             {food.name_fr || food.name}
                           </p>
                           <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
-                            {food.calories_100g} kcal · P:{food.protein_100g}g · G:{food.carbs_100g}g · L:{food.fat_100g}g
+                            {food.calories} kcal · P:{food.protein_g}g · G:{food.carbs_g}g · L:{food.fat_g}g
                           </p>
                         </div>
                         <Plus className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--fiq-accent)' }} />
