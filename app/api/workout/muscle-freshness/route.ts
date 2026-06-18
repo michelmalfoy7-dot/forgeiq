@@ -30,9 +30,11 @@ export async function GET() {
     // Récupérer la map exercice → muscle_primary depuis exercises_library
     const { data: exerciseLibrary } = await supabase
       .from('exercises_library')
-      .select('name, muscle_primary')
+      .select('name, name_fr, muscle_primary')
 
     // Map nom d'exercice → muscle_primary (premier muscle du tableau)
+    // Double indexation : name (EN) ET name_fr (FR) pour que le lookup côté client
+    // fonctionne quel que soit le champ utilisé dans exercise_name du groupe.
     const exerciseToMuscle: Record<string, string> = {}
     if (exerciseLibrary) {
       for (const ex of exerciseLibrary) {
@@ -41,6 +43,10 @@ export async function GET() {
           : null
         if (primaryMuscle) {
           exerciseToMuscle[ex.name] = primaryMuscle
+          const exAny = ex as unknown as { name_fr?: string }
+          if (exAny.name_fr) {
+            exerciseToMuscle[exAny.name_fr] = primaryMuscle
+          }
         }
       }
     }

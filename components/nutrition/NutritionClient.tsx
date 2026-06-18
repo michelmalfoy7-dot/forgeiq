@@ -847,25 +847,12 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
       if (fav && fav.default_quantity_g > 0) prefillQty = fav.default_quantity_g
     }
 
-    // 2. Log du jour pour le même food_id
+    // 2. Log du jour pour le même food_id (comparaison par nom — food_id absent de FoodLog)
     if (!prefillQty && selectedFood.id) {
-      const match = [...currentLogs]
+      const matchById = [...currentLogs]
         .reverse() // le plus récent en premier
-        .find(l => {
-          // Correspondance par food_id ou par nom exact (pour aliments sans id)
-          return selectedFood.id
-            ? false // géré ci-dessous via food_id séparé
-            : l.food_name.toLowerCase() === name.toLowerCase()
-        })
-      // Recherche explicite par food_id dans les logs
-      const matchById = selectedFood.id
-        ? [...currentLogs].reverse().find(l => {
-            // food_id n'est pas dans FoodLog ; on compare par nom comme fallback
-            return l.food_name.toLowerCase() === name.toLowerCase()
-          })
-        : null
+        .find(l => l.food_name.toLowerCase() === name.toLowerCase())
       if (matchById && matchById.quantity_g > 0) prefillQty = matchById.quantity_g
-      else if (match && match.quantity_g > 0) prefillQty = match.quantity_g
     }
 
     // 3. localStorage forgeiq_last_qty_${food_id}
@@ -3558,12 +3545,7 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
         )}
       </div>
 
-      {/* Widget hydratation */}
-      {isToday && (
-        <div className="mb-4">
-          <WaterWidget initialWaterMl={initialWaterMl} goalMl={waterGoalMl} />
-        </div>
-      )}
+      {/* Widget hydratation géré inline dans la card résumé — WaterWidget retiré pour éviter 2 états divergents */}
 
       {/* Widget jeûne intermittent */}
       {isToday && (

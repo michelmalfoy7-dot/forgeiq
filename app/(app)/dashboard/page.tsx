@@ -473,7 +473,7 @@ export default async function DashboardPage() {
         const dominantSlot = Object.entries(slotCounts).sort((a, b) => b[1] - a[1])[0]
         if (dominantSlot) {
           const [slot, count] = dominantSlot
-          // Afficher uniquement si ce slot représente >= 30% des séances top
+          // Afficher uniquement si ce slot représente >= 25% des séances top
           if (count / topWorkouts.length >= 0.25) {
             const FR_DAYS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
             const dowMap = slotDays[slot] ?? {}

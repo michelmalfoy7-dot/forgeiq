@@ -92,7 +92,7 @@ export function ChallengesWidget() {
                 className="h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${c.pct}%`,
-                  background: c.pct >= 100 ? 'var(--fiq-accent)' : 'var(--fiq-accent)',
+                  background: 'var(--fiq-accent)',
                   opacity: c.pct >= 100 ? 1 : 0.7,
                 }}
               />

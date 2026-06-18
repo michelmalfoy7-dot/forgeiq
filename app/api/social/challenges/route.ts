@@ -19,14 +19,14 @@ export async function GET() {
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
 
     // 1. Volume collectif — SUM(weight_kg * reps) sur workout_sets du mois
-    // On passe par les workouts complétés ce mois pour filtrer correctement
+    // On sélectionne id + user_id en une seule requête pour éviter un 2e aller-retour DB
     const { data: workoutsThisMonth } = await supabase
       .from('workouts')
-      .select('id')
+      .select('id, user_id')
       .eq('status', 'completed')
       .gte('completed_at', monthStart)
 
-    const workoutIds = (workoutsThisMonth ?? []).map((w: { id: string }) => w.id)
+    const workoutIds = (workoutsThisMonth ?? []).map((w: { id: string; user_id: string }) => w.id)
 
     let volumeKg = 0
     let workoutsCount = workoutIds.length
@@ -46,19 +46,13 @@ export async function GET() {
       }
     }
 
-    // 3. Régularité — users avec ≥ 3 séances ce mois
+    // 3. Régularité — users avec ≥ 3 séances ce mois (calculé à partir des données déjà chargées)
     let regularUsers = 0
     if (workoutIds.length > 0) {
-      // Compter les séances par user_id
-      const { data: userWorkouts } = await supabase
-        .from('workouts')
-        .select('user_id')
-        .eq('status', 'completed')
-        .gte('completed_at', monthStart)
-
       const countByUser = new Map<string, number>()
-      for (const w of userWorkouts ?? []) {
-        countByUser.set(w.user_id, (countByUser.get(w.user_id) ?? 0) + 1)
+      for (const w of workoutsThisMonth ?? []) {
+        const uid = (w as { id: string; user_id: string }).user_id
+        if (uid) countByUser.set(uid, (countByUser.get(uid) ?? 0) + 1)
       }
       for (const count of countByUser.values()) {
         if (count >= 3) regularUsers++
