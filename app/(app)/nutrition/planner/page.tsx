@@ -25,7 +25,7 @@ type PlanEntry = {
 
 type SearchResult = {
   id: string
-  name_fr: string
+  name_fr: string | null
   name: string
   calories: number
   protein_g: number

@@ -180,7 +180,7 @@ export default function ConversationPage() {
     messagesWithSeparators.push({ type: 'message', data: msg })
   }
 
-  const avatarInitial = contact ? contact.display_name[0].toUpperCase() : '?'
+  const avatarInitial = contact ? (contact.display_name?.[0] ?? '?').toUpperCase() : '?'
 
   if (loading) {
     return (

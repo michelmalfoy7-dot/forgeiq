@@ -28,7 +28,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const supabase = await createClient()
 
   const { data: profile } = await supabase
-    .from('profiles')
+    .from('social_profiles')
     .select('display_name, bio, avatar_url')
     .eq('username', username.toLowerCase())
     .eq('is_public', true)

@@ -270,7 +270,7 @@ export default function WorkoutPage() {
 
   // Enregistrer un jour de repos (workout complété immédiatement, 0 tonnage)
   async function logRestDay() {
-    if (loggingRest) return
+    if (loggingRest || activeWorkoutId) return
     setLoggingRest(true)
     try {
       const startRes = await fetch('/api/workout/start', {

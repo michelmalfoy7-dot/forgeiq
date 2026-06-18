@@ -79,7 +79,7 @@ function buildReminderBody(
 export async function GET(req: NextRequest) {
   // Vérification CRON_SECRET (Vercel l'envoie dans Authorization)
   const auth = req.headers.get('authorization')
-  if (CRON_SECRET && auth !== `Bearer ${CRON_SECRET}`) {
+  if (!CRON_SECRET || auth !== `Bearer ${CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

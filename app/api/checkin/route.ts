@@ -109,9 +109,9 @@ export async function GET() {
       .select('*')
       .eq('user_id', user.id)
       .eq('log_date', today)
-      .single()
+      .maybeSingle()
 
-    return NextResponse.json({ data: data ?? null, error: error?.code === 'PGRST116' ? null : error?.message })
+    return NextResponse.json({ data: data ?? null, error: error ? error.message : null })
   } catch (e) {
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })
   }

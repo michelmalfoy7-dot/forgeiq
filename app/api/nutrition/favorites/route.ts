@@ -111,7 +111,7 @@ export async function PATCH(req: NextRequest) {
     if (!id) return NextResponse.json({ data: null, error: 'ID manquant' }, { status: 400 })
 
     // Incrémenter le compteur d'utilisation
-    await supabase.rpc('increment_favorite_count', { fav_id: id }).maybeSingle()
+    await supabase.rpc('increment_favorite_count', { fav_id: id })
 
     // Mémoriser la dose réellement utilisée (mise à jour default_quantity_g)
     const qty = Number(last_quantity_g)

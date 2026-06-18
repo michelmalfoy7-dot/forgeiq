@@ -391,7 +391,7 @@ export default function WorkoutSessionPage() {
         setProgramId(workout.program_id)
         try {
           const { data: prog } = await supabase
-            .from('programs').select('name').eq('id', workout.program_id).single()
+            .from('programs').select('name').eq('id', workout.program_id).maybeSingle()
           if (prog?.name) setProgramName(prog.name)
         } catch { /* silencieux */ }
       }

@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
         .from('foods_library')
         .insert(food)
         .select()
-        .single()
+        .maybeSingle()
       inserted = data
     } catch (insertErr) {
       const code = (insertErr as { code?: string })?.code

@@ -111,7 +111,7 @@ export async function GET(request: Request) {
       const sets = setsRaw ?? []
 
       // Exercice le plus pratiqué (working sets uniquement)
-      const workingSets = sets.filter(s => !s.set_type || s.set_type === 'working' || s.set_type === 'top_set')
+      const workingSets = sets.filter(s => !s.set_type || s.set_type === 'work' || s.set_type === 'top_set')
       const exerciseCount: Record<string, number> = {}
       for (const s of workingSets) {
         if (!s.exercise_name) continue
@@ -132,7 +132,7 @@ export async function GET(request: Request) {
 
         const muscleById: Record<string, string> = {}
         for (const ex of exercisesRaw ?? []) {
-          if (ex.id && ex.muscle_primary) muscleById[ex.id] = ex.muscle_primary
+          if (ex.id && ex.muscle_primary?.[0]) muscleById[ex.id] = ex.muscle_primary[0]
         }
 
         const muscleCount: Record<string, number> = {}

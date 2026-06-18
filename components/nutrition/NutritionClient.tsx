@@ -33,6 +33,7 @@ type FoodLog = {
   vitamin_d_mcg: number | null
   potassium_mg:  number | null
   vitamin_c_mg:  number | null
+  sodium_mg:     number | null
 }
 
 type FoodResult = {
@@ -1241,7 +1242,6 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
   // ── Recettes ─────────────────────────────────────────────────
 
   async function loadRecipes() {
-    if (recipes.length > 0) return
     setRecLoading(true)
     try {
       const res = await fetch('/api/nutrition/recipes')
