@@ -15,7 +15,11 @@ CREATE TABLE IF NOT EXISTS clubs (
 ALTER TABLE clubs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "clubs_public_read" ON clubs FOR SELECT USING (is_public = true);
 CREATE POLICY "clubs_auth_insert" ON clubs FOR INSERT WITH CHECK (auth.uid() = creator_id);
+-- Le créateur peut tout modifier ; tout user authentifié peut mettre à jour member_count
+-- (nécessaire pour join/leave par des non-créateurs)
 CREATE POLICY "clubs_creator_update" ON clubs FOR UPDATE USING (auth.uid() = creator_id);
+CREATE POLICY "clubs_member_count_update" ON clubs FOR UPDATE USING (auth.uid() IS NOT NULL)
+  WITH CHECK (auth.uid() IS NOT NULL);
 
 -- Membres
 CREATE TABLE IF NOT EXISTS club_members (

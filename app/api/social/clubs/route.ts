@@ -1,4 +1,3 @@
-'use server'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -185,6 +184,8 @@ export async function PATCH(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+    // La PRIMARY KEY (club_id, user_id) sur club_members garantit l'idempotence au niveau DB.
+    // Le check `existing` ci-dessus couvre le cas nominal ; la contrainte couvre les races.
     await supabase
       .from('clubs')
       .update({ member_count: (club.member_count ?? 0) + 1 })
@@ -209,6 +210,7 @@ export async function PATCH(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // GREATEST(0, …) via Math.max pour éviter un compteur négatif en cas de désync
   await supabase
     .from('clubs')
     .update({ member_count: Math.max(0, (club.member_count ?? 1) - 1) })

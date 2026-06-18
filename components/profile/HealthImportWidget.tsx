@@ -58,19 +58,28 @@ export function HealthImportWidget() {
     }
   }
 
+  const MAX_SIZE = 5 * 1024 * 1024 // 5MB
+
   function onAppleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    void handleFile(file, 'apple_health', setApple)
-    // Reset input pour permettre de re-sélectionner le même fichier
     e.target.value = ''
+    if (file.size > MAX_SIZE) {
+      setApple({ state: 'error', message: 'Fichier trop volumineux (max 5 MB)' })
+      return
+    }
+    void handleFile(file, 'apple_health', setApple)
   }
 
   function onGoogleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    void handleFile(file, 'google_fit', setGoogle)
     e.target.value = ''
+    if (file.size > MAX_SIZE) {
+      setGoogle({ state: 'error', message: 'Fichier trop volumineux (max 5 MB)' })
+      return
+    }
+    void handleFile(file, 'google_fit', setGoogle)
   }
 
   return (
