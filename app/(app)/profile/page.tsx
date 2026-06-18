@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ProfileClient } from '@/components/profile/ProfileClient'
+import { HealthImportWidget } from '@/components/profile/HealthImportWidget'
 import { Users, ClipboardList } from 'lucide-react'
 import { FiqDumbbell } from '@/components/ui/FiqIcons'
 import { categorizeBig5 } from '@/lib/utils/big5'
@@ -116,6 +117,11 @@ export default async function ProfilePage() {
         </div>
         <span style={{ color: 'var(--fiq-muted)', fontSize: 18 }}>›</span>
       </Link>
+
+      {/* Connecter données wearable */}
+      <div className="mb-6">
+        <HealthImportWidget />
+      </div>
 
       <ProfileClient
         profile={profile}

@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Search, Trophy, MessageCircle } from 'lucide-react'
+import { Search, Trophy, MessageCircle, Users } from 'lucide-react'
 import { SocialProfileSetup } from '@/components/social/SocialProfileSetup'
 import { FeedList } from '@/components/social/FeedList'
 import type { SuggestedAthlete } from '@/components/social/FeedList'
@@ -164,6 +164,14 @@ export default async function SocialPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href="/social/clubs"
+            className="flex items-center justify-center w-9 h-9 rounded-xl"
+            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-blue)' }}
+            title="Clubs"
+          >
+            <Users className="w-4 h-4" />
+          </Link>
           <Link
             href="/social/leaderboard"
             className="flex items-center justify-center w-9 h-9 rounded-xl"
