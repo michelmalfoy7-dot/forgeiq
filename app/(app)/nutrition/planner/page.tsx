@@ -954,7 +954,7 @@ export default function MealPlannerPage() {
                         {selectedFood.name_fr || selectedFood.name}
                       </p>
                       <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>
-                        {selectedFood.calories_100g} kcal pour 100g
+                        {selectedFood.calories} kcal pour 100g
                       </p>
                     </div>
                     <button onClick={() => setSelectedFood(null)} style={{ color: 'var(--fiq-muted)' }}>
@@ -995,10 +995,10 @@ export default function MealPlannerPage() {
                         <div className="mt-3 flex gap-3 px-3 py-2.5 rounded-xl"
                           style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}>
                           {[
-                            { label: 'kcal', val: Math.round((selectedFood.calories_100g ?? 0) * r),          color: 'var(--fiq-accent)' },
-                            { label: 'P',    val: Math.round((selectedFood.protein_100g ?? 0) * r * 10) / 10, color: 'var(--fiq-accent)' },
-                            { label: 'G',    val: Math.round((selectedFood.carbs_100g ?? 0) * r * 10) / 10,   color: 'var(--fiq-blue)' },
-                            { label: 'L',    val: Math.round((selectedFood.fat_100g ?? 0) * r * 10) / 10,     color: 'var(--fiq-orange)' },
+                            { label: 'kcal', val: Math.round((selectedFood.calories ?? 0) * r),          color: 'var(--fiq-accent)' },
+                            { label: 'P',    val: Math.round((selectedFood.protein_g ?? 0) * r * 10) / 10, color: 'var(--fiq-accent)' },
+                            { label: 'G',    val: Math.round((selectedFood.carbs_g ?? 0) * r * 10) / 10,   color: 'var(--fiq-blue)' },
+                            { label: 'L',    val: Math.round((selectedFood.fat_g ?? 0) * r * 10) / 10,     color: 'var(--fiq-orange)' },
                           ].map(({ label, val, color }) => (
                             <div key={label} className="flex-1 text-center">
                               <p className="text-sm font-black tabular-nums" style={{ color }}>{val}</p>
