@@ -34,6 +34,8 @@ export async function POST(request: Request) {
       fatigue_score:      raw.fatigue_score       ?? null,
       motivation_score:   raw.motivation_score    ?? null,
       notes:              raw.notes               ?? null,
+      hrv_ms:             raw.hrv_ms              ?? null,
+      temp_deviation_c:   raw.temp_deviation_c    ?? null,
     }
 
     // Upsert : mise à jour si log du jour existe déjà

@@ -26,6 +26,8 @@ type LogData = {
   fatigue_score: number
   motivation_score: number
   notes: string
+  hrv_ms: string
+  temp_deviation_c: string
 }
 
 const EMPTY: LogData = {
@@ -33,6 +35,7 @@ const EMPTY: LogData = {
   sleep_total_min: '', sleep_deep_min: '', sleep_light_min: '', sleep_rem_min: '',
   calories: '', protein_g: '', carbs_g: '', fat_g: '',
   fatigue_score: 5, motivation_score: 5, notes: '',
+  hrv_ms: '', temp_deviation_c: '',
 }
 
 // Chips preset pour les pas
@@ -143,6 +146,8 @@ export default function CheckinPage() {
           fatigue_score: log.fatigue_score ?? 5,
           motivation_score: log.motivation_score ?? 5,
           notes: log.notes ?? '',
+          hrv_ms: log.hrv_ms?.toString() ?? '',
+          temp_deviation_c: log.temp_deviation_c?.toString() ?? '',
         })
         if (log.weight_kg) fetchEwma(log.weight_kg.toString())
       }
@@ -181,6 +186,8 @@ export default function CheckinPage() {
         fatigue_score: form.fatigue_score,
         motivation_score: form.motivation_score,
         notes: form.notes || null,
+        hrv_ms: toInt(form.hrv_ms),
+        temp_deviation_c: toFloat(form.temp_deviation_c),
       }
 
       const res = await fetch('/api/checkin', {
@@ -635,6 +642,27 @@ export default function CheckinPage() {
                     placeholder="80"
                     value={form.dia_bp}
                     onChange={(e) => set('dia_bp', e.target.value)}
+                    style={fiqInput}
+                  />
+                </Field>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <Field label="HRV (ms)">
+                  <input
+                    type="number"
+                    placeholder="55"
+                    value={form.hrv_ms}
+                    onChange={(e) => set('hrv_ms', e.target.value)}
+                    style={fiqInput}
+                  />
+                </Field>
+                <Field label="Temp. basale (±°C)">
+                  <input
+                    type="number"
+                    step="0.1"
+                    placeholder="+0.2"
+                    value={form.temp_deviation_c}
+                    onChange={(e) => set('temp_deviation_c', e.target.value)}
                     style={fiqInput}
                   />
                 </Field>

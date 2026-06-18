@@ -2838,6 +2838,11 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
   const [inlineWaterMl, setInlineWaterMl] = useState(initialWaterMl)
   const [inlineWaterLoading, setInlineWaterLoading] = useState(false)
 
+  // ── Glucides nets (vs bruts) toggle — local uniquement ──
+  const [netCarbs, setNetCarbs] = useState(() =>
+    typeof window !== 'undefined' && localStorage.getItem('fiq_net_carbs') === '1'
+  )
+
   async function addInlineWater(ml: number) {
     if (inlineWaterLoading) return
     setInlineWaterLoading(true)
@@ -3505,26 +3510,44 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
         {/* Ligne macros restantes */}
         {(() => {
           const restProt = Math.round(targets.protein_g - totals.protein_g)
-          const restCarbs = Math.round(targets.carbs_g - totals.carbs_g)
+          const netCarbsVal = netCarbs ? Math.max(0, totals.carbs_g - (totals.fiber_g ?? 0)) : totals.carbs_g
+          const restCarbs = Math.round(targets.carbs_g - netCarbsVal)
           const restFat = Math.round(targets.fat_g - totals.fat_g)
           return (
-            <p
-              className="text-xs text-center tabular-nums"
-              style={{ color: 'var(--fiq-muted)', fontVariantNumeric: 'tabular-nums' }}
-            >
-              Reste · {' '}
-              <span style={{ color: restProt < 0 ? 'var(--fiq-red)' : undefined }}>
-                Prot: {restProt}g
-              </span>
-              {' · '}
-              <span style={{ color: restCarbs < 0 ? 'var(--fiq-red)' : undefined }}>
-                Gluc: {restCarbs}g
-              </span>
-              {' · '}
-              <span style={{ color: restFat < 0 ? 'var(--fiq-red)' : undefined }}>
-                Lip: {restFat}g
-              </span>
-            </p>
+            <div className="flex flex-col items-center gap-1">
+              <p
+                className="text-xs text-center tabular-nums"
+                style={{ color: 'var(--fiq-muted)', fontVariantNumeric: 'tabular-nums' }}
+              >
+                Reste · {' '}
+                <span style={{ color: restProt < 0 ? 'var(--fiq-red)' : undefined }}>
+                  Prot: {restProt}g
+                </span>
+                {' · '}
+                <span style={{ color: restCarbs < 0 ? 'var(--fiq-red)' : undefined }}>
+                  {netCarbs ? 'Nets' : 'Gluc'}: {restCarbs}g
+                </span>
+                {' · '}
+                <span style={{ color: restFat < 0 ? 'var(--fiq-red)' : undefined }}>
+                  Lip: {restFat}g
+                </span>
+              </p>
+              <button
+                onClick={() => {
+                  const next = !netCarbs
+                  setNetCarbs(next)
+                  localStorage.setItem('fiq_net_carbs', next ? '1' : '0')
+                }}
+                className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                style={{
+                  background: netCarbs ? '#3D8BFF22' : 'var(--fiq-faint)',
+                  border: `1px solid ${netCarbs ? '#3D8BFF66' : 'var(--fiq-border)'}`,
+                  color: netCarbs ? '#3D8BFF' : 'var(--fiq-muted)',
+                }}
+              >
+                {netCarbs ? 'Glucides nets ✓' : 'Glucides nets'}
+              </button>
+            </div>
           )
         })()}
 

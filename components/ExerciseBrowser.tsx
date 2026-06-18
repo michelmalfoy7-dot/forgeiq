@@ -258,9 +258,10 @@ export function ExerciseBrowser({ exercises }: Props) {
   const [equipment, setEquipment] = useState('all')
   const [category, setCategory]   = useState('all')
   const [showMore, setShowMore]   = useState(false) // filtres supplémentaires
+  const [unilateral, setUnilateral] = useState(false)
 
   const resetFilters = useCallback(() => {
-    setMuscle('all'); setEquipment('all'); setCategory('all')
+    setMuscle('all'); setEquipment('all'); setCategory('all'); setUnilateral(false)
   }, [])
 
   // Comptage exercices par muscle (pour badges de comptage)
@@ -282,6 +283,7 @@ export function ExerciseBrowser({ exercises }: Props) {
       if (muscle !== 'all' && !ex.muscle_primary.includes(muscle) && !ex.muscle_secondary.includes(muscle)) continue
       if (equipment !== 'all' && ex.equipment !== equipment) continue
       if (category !== 'all' && ex.category !== category) continue
+      if (unilateral && !ex.is_unilateral) continue
 
       // Score de recherche
       const score = scoreExercise(ex, q)
@@ -297,9 +299,9 @@ export function ExerciseBrowser({ exercises }: Props) {
     })
 
     return results.map(r => r.ex)
-  }, [exercises, search, muscle, equipment, category])
+  }, [exercises, search, muscle, equipment, category, unilateral])
 
-  const activeFilters = [muscle !== 'all', equipment !== 'all', category !== 'all'].filter(Boolean).length
+  const activeFilters = [muscle !== 'all', equipment !== 'all', category !== 'all', unilateral].filter(Boolean).length
 
   return (
     <div className="min-h-screen pb-nav" style={{ background: 'var(--bg)' }}>
@@ -401,6 +403,31 @@ export function ExerciseBrowser({ exercises }: Props) {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Unilatéral */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: 'var(--fiq-muted)' }}>
+                  Unilatéral uniquement
+                </p>
+                <p className="text-[10px] mt-0.5" style={{ color: 'var(--fiq-muted)' }}>1 bras / 1 jambe</p>
+              </div>
+              <button
+                onClick={() => setUnilateral(v => !v)}
+                className="relative flex-shrink-0 w-10 h-6 rounded-full transition-colors"
+                style={{
+                  background: unilateral ? 'var(--fiq-accent)' : 'var(--fiq-border)',
+                }}
+              >
+                <span
+                  className="absolute top-1 w-4 h-4 rounded-full transition-transform"
+                  style={{
+                    background: unilateral ? 'var(--bg)' : 'var(--fiq-muted)',
+                    left: unilateral ? 'calc(100% - 20px)' : '4px',
+                  }}
+                />
+              </button>
             </div>
 
             {activeFilters > 0 && (

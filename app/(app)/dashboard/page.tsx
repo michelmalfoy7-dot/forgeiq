@@ -565,6 +565,15 @@ export default async function DashboardPage() {
         </Link>
       )}
 
+      {/* Alerte récupération faible */}
+      {recoveryScore !== null && recoveryScore < 4 && (
+        <AlertBar
+          type="red"
+          message="Repos recommandé aujourd'hui"
+          sub="Score de récupération faible — privilégie un repos actif ou une séance légère."
+        />
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3">
         <StatCard
