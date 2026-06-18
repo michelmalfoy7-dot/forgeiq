@@ -176,6 +176,10 @@ export default function WorkoutSessionPage() {
   const [sessionNote, setSessionNote] = useState('')
   const [showSessionNote, setShowSessionNote] = useState(false)
 
+  // Muscle Freshness — indicateur récupération musculaire par groupe
+  const [muscleFreshness, setMuscleFreshness] = useState<Record<string, 'fresh' | 'moderate' | 'fatigued'>>({})
+  const [exerciseToMuscle, setExerciseToMuscle] = useState<Record<string, string>>({})
+
   // Programme lié à la séance (pour "sauvegarder la routine")
   const [programId, setProgramId]             = useState<string | null>(null)
   const [programName, setProgramName]         = useState<string>('')
@@ -261,6 +265,23 @@ export default function WorkoutSessionPage() {
       localStorage.setItem('forgeiq_rest_timers', JSON.stringify(exerciseRestDurations))
     } catch { /* quota exceeded */ }
   }, [exerciseRestDurations])
+
+  // ── Muscle Freshness — fetch au montage, silencieux en cas d'erreur ──
+  useEffect(() => {
+    fetch('/api/workout/muscle-freshness')
+      .then(res => res.json() as Promise<{
+        data: { muscleFreshness: Record<string, 'fresh' | 'moderate' | 'fatigued'>; exerciseToMuscle: Record<string, string> } | null
+        error: string | null
+      }>)
+      .then(json => {
+        if (json.data) {
+          setMuscleFreshness(json.data.muscleFreshness)
+          setExerciseToMuscle(json.data.exerciseToMuscle)
+        }
+      })
+      .catch(() => { /* silencieux — cosmétique uniquement */ })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── beforeunload : avertissement si séance en cours ───────
   useEffect(() => {
@@ -1908,6 +1929,8 @@ export default function WorkoutSessionPage() {
                 )}
                 userEquipment={userEquipment}
                 onSubstitute={(sub) => handleSubstitute(gIdx, sub)}
+                muscleFreshness={muscleFreshness}
+                exerciseToMuscle={exerciseToMuscle}
               />
 
               {/* Connecteur entre exercices du même groupe */}
@@ -2300,6 +2323,7 @@ function ExerciseCard({
   circuitBadge, isInCircuit,
   restDurationForExercise, onSetRestDuration, showRestPicker, onToggleRestPicker,
   userEquipment, onSubstitute,
+  muscleFreshness, exerciseToMuscle,
 }: {
   group: ExerciseGroup
   onAddSet: () => void
@@ -2331,6 +2355,10 @@ function ExerciseCard({
   userEquipment: string
   /** Callback appelé quand l'user choisit un substitut */
   onSubstitute: (substitute: SubstituteExercise) => void
+  /** Statut de fraîcheur par groupe musculaire — vide si non chargé */
+  muscleFreshness: Record<string, 'fresh' | 'moderate' | 'fatigued'>
+  /** Map nom d'exercice → muscle_primary pour lookup O(1) */
+  exerciseToMuscle: Record<string, string>
 }) {
   const [showHistory, setShowHistory] = useState(true)
   const [showPlateCalc, setShowPlateCalc] = useState(false)
@@ -2413,6 +2441,29 @@ function ExerciseCard({
               </span>
             )}
             <h3 className="font-bold" style={{ color: 'var(--fiq-text)' }}>{group.exercise_name}</h3>
+            {/* Badge Muscle Freshness — affiché uniquement si la donnée est disponible */}
+            {(() => {
+              const muscle = exerciseToMuscle[group.exercise_name]
+              const status = muscle ? muscleFreshness[muscle] : undefined
+              if (!status) return null
+              const config = {
+                fresh:    { color: '#22c55e', bg: '#22c55e26', label: 'Frais' },
+                moderate: { color: 'var(--fiq-orange)', bg: '#FF6B3526', label: '2j' },
+                fatigued: { color: 'var(--fiq-red)', bg: '#EF444426', label: 'Fatigué' },
+              }[status]
+              return (
+                <span
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full flex-shrink-0"
+                  style={{ color: config.color, background: config.bg }}
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    style={{ background: config.color }}
+                  />
+                  {config.label}
+                </span>
+              )
+            })()}
           </div>
           {tonnage > 0 && (
             <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-accent)' }}>
