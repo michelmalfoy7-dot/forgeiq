@@ -46,6 +46,7 @@ export default async function DashboardPage() {
     { data: todayWorkouts },
     { data: todayFoodLogs },
     { data: pausedWorkoutRow },
+    { data: recentWorkoutsFor60d },
   ] = await Promise.all([
     supabase.from('profiles')
       .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, height_cm, age, gender, macro_mode, custom_protein_g, custom_calories, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, avatar_url, checkin_streak, training_streak_weeks')
@@ -94,6 +95,16 @@ export default async function DashboardPage() {
       .order('started_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+
+    // Séances 60 derniers jours avec started_at — pour le créneau optimal
+    supabase.from('workouts')
+      .select('started_at, total_tonnage_kg')
+      .eq('user_id', user.id)
+      .not('completed_at', 'is', null)
+      .not('started_at', 'is', null)
+      .gte('session_date', new Date(Date.now() - 60 * 86400000).toISOString().split('T')[0])
+      .not('session_name', 'in', '("Jour de repos","Repos actif","Repos complet")')
+      .neq('workout_type', 'cardio'),
   ])
 
   if (profileError) console.error('[Dashboard] profileError:', profileError.code, profileError.message)
@@ -420,6 +431,64 @@ export default async function DashboardPage() {
     : streakCalc
   const trainingStreakWeeks = profile?.training_streak_weeks ?? 0
 
+  // ── Créneau optimal d'entraînement ────────────────────────────────────────
+  // Calcul uniquement si >= 5 séances dans les 60 jours avec started_at
+  let optimalWindow: { slot: string; days: string } | null = null
+  {
+    const workoutsWithTime = (recentWorkoutsFor60d ?? []).filter(
+      (w): w is { started_at: string; total_tonnage_kg: number | null } =>
+        typeof w.started_at === 'string'
+    )
+    if (workoutsWithTime.length >= 5) {
+      // Percentile 66 du tonnage — garder les séances dans le tiers supérieur
+      const tonnages = workoutsWithTime
+        .map(w => w.total_tonnage_kg ?? 0)
+        .sort((a, b) => a - b)
+      const p66Index = Math.floor(tonnages.length * 0.66)
+      const p66Threshold = tonnages[p66Index] ?? 0
+
+      const topWorkouts = workoutsWithTime.filter(
+        w => (w.total_tonnage_kg ?? 0) >= p66Threshold
+      )
+
+      if (topWorkouts.length >= 3) {
+        // Tranches de 2h : comptage par slot
+        const slotCounts: Record<string, number> = {}
+        const slotDays: Record<string, Record<number, number>> = {}
+
+        for (const w of topWorkouts) {
+          const d = new Date(w.started_at)
+          const hour = d.getHours()
+          const slotStart = Math.floor(hour / 2) * 2
+          const slotKey = `${slotStart}h–${slotStart + 2}h`
+          slotCounts[slotKey] = (slotCounts[slotKey] ?? 0) + 1
+
+          // Compter les jours de la semaine (0=dim, 1=lun, …)
+          const dow = d.getDay()
+          if (!slotDays[slotKey]) slotDays[slotKey] = {}
+          slotDays[slotKey][dow] = (slotDays[slotKey][dow] ?? 0) + 1
+        }
+
+        // Slot dominant
+        const dominantSlot = Object.entries(slotCounts).sort((a, b) => b[1] - a[1])[0]
+        if (dominantSlot) {
+          const [slot, count] = dominantSlot
+          // Afficher uniquement si ce slot représente >= 30% des séances top
+          if (count / topWorkouts.length >= 0.25) {
+            const FR_DAYS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
+            const dowMap = slotDays[slot] ?? {}
+            const topDows = Object.entries(dowMap)
+              .sort((a, b) => Number(b[1]) - Number(a[1]))
+              .slice(0, 2)
+              .map(([d]) => FR_DAYS[Number(d)])
+            const daysStr = topDows.length > 0 ? topDows.join('/') : ''
+            optimalWindow = { slot, days: daysStr }
+          }
+        }
+      }
+    }
+  }
+
   const prenom = profile?.display_name?.split(' ')[0] ?? 'Athlete'
   const sessionsThisWeek = weekWorkouts?.length ?? 0
   const sessionsTarget = profile?.sessions_per_week ?? SESSIONS_TARGET
@@ -537,6 +606,32 @@ export default async function DashboardPage() {
 
       {/* Volume hebdomadaire par groupe musculaire */}
       <VolumeHebdoWidget />
+
+      {/* Créneau optimal d'entraînement — masqué si données insuffisantes */}
+      {optimalWindow && (
+        <div
+          className="fiq-card flex items-center gap-3 py-3"
+        >
+          <div
+            className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: '#B4FF4A18', border: '1px solid #B4FF4A33' }}
+          >
+            <Zap className="w-4 h-4" style={{ color: 'var(--fiq-accent)' }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--fiq-muted)' }}>
+              Ton meilleur créneau
+            </p>
+            <p className="text-sm font-black mt-0.5" style={{ color: 'var(--fiq-text)' }}>
+              {optimalWindow.days && <span style={{ color: 'var(--fiq-accent)' }}>{optimalWindow.days} · </span>}
+              {optimalWindow.slot}
+            </p>
+          </div>
+          <p className="text-[10px] text-right flex-shrink-0" style={{ color: 'var(--fiq-muted)' }}>
+            60 derniers jours
+          </p>
+        </div>
+      )}
 
       {/* Widget Nutrition rapide */}
       <Link href="/nutrition" className="fiq-card block space-y-3">

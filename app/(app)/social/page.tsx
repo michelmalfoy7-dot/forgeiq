@@ -8,6 +8,7 @@ import type { SuggestedAthlete } from '@/components/social/FeedList'
 import { NotificationBell } from '@/components/social/NotificationBell'
 import type { FeedPost } from '@/components/social/WorkoutPost'
 import { buildExercisesMap } from '@/lib/utils/social'
+import { ChallengesWidget } from '@/components/social/ChallengesWidget'
 
 export const dynamic = 'force-dynamic'
 
@@ -220,6 +221,9 @@ export default async function SocialPage() {
           </Link>
         </div>
       )}
+
+      {/* ── Défis collectifs du mois ── */}
+      <ChallengesWidget />
 
       {/* ── Feed avec onglets (affiché même sans profil en lecture seule) ── */}
       {(discoverPosts.length > 0 || followingPosts.length > 0 || suggestedAthletes.length > 0) && (

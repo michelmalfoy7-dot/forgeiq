@@ -133,8 +133,8 @@ export default async function ExerciseDetailPage({ params }: Props) {
   // Calcul de la date limite 52 semaines (1 an)
   const oneYearAgo = new Date(Date.now() - 364 * 86400000).toISOString()
 
-  // Charger PRs + historique + top sets progression en parallèle
-  const [{ data: prs }, { data: rawSets }, { data: topSetsRaw }] = await Promise.all([
+  // Charger PRs + historique + top sets progression + sets 52 semaines (stats) en parallèle
+  const [{ data: prs }, { data: rawSets }, { data: topSetsRaw }, { data: statSetsRaw }] = await Promise.all([
     supabase
       .from('personal_records')
       .select('record_type, value, achieved_date')
@@ -162,6 +162,17 @@ export default async function ExerciseDetailPage({ params }: Props) {
       .gte('created_at', oneYearAgo)
       .order('created_at', { ascending: true })
       .limit(200),
+
+    // Tous les working sets 52 semaines pour les statistiques globales
+    supabase
+      .from('workout_sets')
+      .select('workout_id, weight_kg, reps, created_at, workouts(completed_at)')
+      .eq('exercise_id', ex.id)
+      .eq('user_id', user.id)
+      .eq('is_warmup', false)
+      .not('workouts', 'is', null)
+      .gte('created_at', oneYearAgo)
+      .limit(2000),
   ])
 
   // Grouper les sets par séance → max 3 dernières séances
@@ -208,6 +219,84 @@ export default async function ExerciseDetailPage({ params }: Props) {
     acc.push({ date: label, poids: raw.weight_kg })
     return acc
   }, [])
+
+  // ── Calcul statistiques globales 52 semaines ────────────────────────────────────
+  type StatSet = {
+    workout_id: string | null
+    weight_kg: number | null
+    reps: number | null
+    created_at: string
+    workouts: { completed_at: string | null } | null
+  }
+
+  const statSets = (statSetsRaw ?? []) as unknown as StatSet[]
+
+  // 1. Volume total (weight × reps, tous les working sets)
+  const totalVolume = statSets.reduce((sum, s) => {
+    if (!s.weight_kg || !s.reps) return sum
+    return sum + s.weight_kg * s.reps
+  }, 0)
+
+  // 2. Fréquence 30 derniers jours (séances distinctes par workout_id)
+  const thirtyDaysAgo = Date.now() - 30 * 86400000
+  const workoutIds30d = new Set<string>()
+  for (const s of statSets) {
+    if (!s.workout_id) continue
+    const dateMs = new Date(s.workouts?.completed_at ?? s.created_at).getTime()
+    if (dateMs >= thirtyDaysAgo) workoutIds30d.add(s.workout_id)
+  }
+  const freqMonthly = workoutIds30d.size
+
+  // 3. Meilleure séance — tonnage max en une seule séance (SUM weight×reps par workout_id)
+  const tonnageByWorkout = new Map<string, number>()
+  for (const s of statSets) {
+    if (!s.workout_id || !s.weight_kg || !s.reps) continue
+    tonnageByWorkout.set(s.workout_id, (tonnageByWorkout.get(s.workout_id) ?? 0) + s.weight_kg * s.reps)
+  }
+  const bestSession = tonnageByWorkout.size > 0
+    ? Math.max(...tonnageByWorkout.values())
+    : 0
+
+  // 4. Streak — semaines ISO consécutives avec au moins 1 set (depuis aujourd'hui vers le passé)
+  const getISOWeek = (date: Date): string => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+    const day = d.getUTCDay() || 7
+    d.setUTCDate(d.getUTCDate() + 4 - day)
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+    const weekNum = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+    return `${d.getUTCFullYear()}-W${String(weekNum).padStart(2, '0')}`
+  }
+
+  const weeksWithSets = new Set<string>()
+  for (const s of statSets) {
+    const dateStr = s.workouts?.completed_at ?? s.created_at
+    weeksWithSets.add(getISOWeek(new Date(dateStr)))
+  }
+
+  // Compter les semaines consécutives depuis la semaine courante vers le passé
+  let streak = 0
+  const now = new Date()
+  let checkDate = new Date(now)
+  // Si la semaine courante n'a pas de set, commencer à la semaine précédente
+  const currentWeek = getISOWeek(now)
+  if (!weeksWithSets.has(currentWeek)) {
+    checkDate.setDate(checkDate.getDate() - 7)
+  }
+  for (let i = 0; i < 52; i++) {
+    const week = getISOWeek(checkDate)
+    if (!weeksWithSets.has(week)) break
+    streak++
+    checkDate.setDate(checkDate.getDate() - 7)
+  }
+
+  // Formatage des nombres pour l'affichage
+  const fmtVolume = (v: number): string => {
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace('.', ',')} M`
+    if (v >= 1_000) return `${Math.round(v / 1_000)} k`
+    return String(Math.round(v))
+  }
+
+  const hasStats = totalVolume > 0 || freqMonthly > 0 || bestSession > 0 || streak > 0
 
   const name      = ex.name_fr ?? ex.name
   const eqColor   = EQUIPMENT_COLOR[ex.equipment] ?? 'var(--fiq-muted)'
@@ -481,6 +570,60 @@ export default async function ExerciseDetailPage({ params }: Props) {
       {/* ── Graphique progression top sets — 52 semaines ── */}
       {progressionData.length >= 3 && (
         <ExerciseProgressionChart data={progressionData} />
+      )}
+
+      {/* ── Statistiques globales 52 semaines ── */}
+      {hasStats && (
+        <div className="space-y-2">
+          <p className="text-xs font-black uppercase px-1" style={{ color: 'var(--fiq-muted)', letterSpacing: '0.08em' }}>
+            Statistiques
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {/* Volume total */}
+            <div className="fiq-card p-3 space-y-1">
+              <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-text)', lineHeight: 1 }}>
+                {fmtVolume(totalVolume)}{' '}
+                <span className="text-xs font-normal" style={{ color: 'var(--fiq-muted)' }}>kg</span>
+              </p>
+              <p className="text-[11px] font-semibold uppercase" style={{ color: 'var(--fiq-muted)', letterSpacing: '0.08em' }}>
+                Volume total
+              </p>
+            </div>
+
+            {/* Fréquence 30j */}
+            <div className="fiq-card p-3 space-y-1">
+              <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-text)', lineHeight: 1 }}>
+                {freqMonthly}
+                <span className="text-xs font-normal ml-0.5" style={{ color: 'var(--fiq-muted)' }}>×/mois</span>
+              </p>
+              <p className="text-[11px] font-semibold uppercase" style={{ color: 'var(--fiq-muted)', letterSpacing: '0.08em' }}>
+                Fréquence 30j
+              </p>
+            </div>
+
+            {/* Meilleure séance */}
+            <div className="fiq-card p-3 space-y-1">
+              <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-text)', lineHeight: 1 }}>
+                {fmtVolume(bestSession)}{' '}
+                <span className="text-xs font-normal" style={{ color: 'var(--fiq-muted)' }}>kg</span>
+              </p>
+              <p className="text-[11px] font-semibold uppercase" style={{ color: 'var(--fiq-muted)', letterSpacing: '0.08em' }}>
+                Meilleure séance
+              </p>
+            </div>
+
+            {/* Streak semaines */}
+            <div className="fiq-card p-3 space-y-1">
+              <p className="text-lg font-black fiq-data" style={{ color: 'var(--fiq-text)', lineHeight: 1 }}>
+                {streak}
+                <span className="text-xs font-normal ml-0.5" style={{ color: 'var(--fiq-muted)' }}>sem.</span>
+              </p>
+              <p className="text-[11px] font-semibold uppercase" style={{ color: 'var(--fiq-muted)', letterSpacing: '0.08em' }}>
+                Streak actuel
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* État vide */}

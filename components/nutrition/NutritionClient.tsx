@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Plus, Camera, ScanLine, Search, Trash2, Pencil, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, X, Check, Keyboard, Star, ChefHat, Minus, ArrowLeft, Link2, Sparkles, Calendar, Copy } from 'lucide-react'
+import { PieChart, Pie, Cell } from 'recharts'
 import { WaterWidget } from '@/components/nutrition/WaterWidget'
 import { FastingWidget } from '@/components/nutrition/FastingWidget'
 import { MicroNutrientWidget, MicroTotals } from '@/components/nutrition/MicroNutrientWidget'
@@ -193,6 +194,86 @@ function MacroRing({ value, target, color, label }: { value: number; target: num
       </div>
       <span className="text-[10px] font-semibold" style={{ color: 'var(--fiq-muted)' }}>{label}</span>
       <span className="text-[9px]" style={{ color: 'var(--fiq-muted)' }}>/ {target}g</span>
+    </div>
+  )
+}
+
+// ── Doughnut macros ───────────────────────────────────────────
+
+function MacroDoughnut({
+  calories, protein_g, carbs_g, fat_g, targetCalories,
+}: {
+  calories: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+  targetCalories: number
+}) {
+  const isEmpty = protein_g === 0 && carbs_g === 0 && fat_g === 0
+
+  const data = isEmpty
+    ? [{ value: 1, color: 'var(--fiq-border)', key: 'empty' }]
+    : [
+        { value: Math.max(protein_g, 0), color: '#B4FF4A', key: 'p' },
+        { value: Math.max(carbs_g,   0), color: '#3D8BFF', key: 'g' },
+        { value: Math.max(fat_g,     0), color: '#FF6B35', key: 'l' },
+      ].filter(d => d.value > 0)
+
+  return (
+    <div className="flex flex-col items-center">
+      <div style={{ position: 'relative', width: 140, height: 140 }}>
+        <PieChart width={140} height={140}>
+          <Pie
+            data={data}
+            cx={65}
+            cy={65}
+            innerRadius={45}
+            outerRadius={65}
+            startAngle={90}
+            endAngle={-270}
+            dataKey="value"
+            strokeWidth={0}
+          >
+            {data.map((entry) => (
+              <Cell key={entry.key} fill={entry.color} />
+            ))}
+          </Pie>
+        </PieChart>
+        {/* Calories au centre */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+          }}
+        >
+          <span
+            className="font-black tabular-nums"
+            style={{ fontSize: 18, lineHeight: 1, color: isEmpty ? 'var(--fiq-muted)' : 'var(--fiq-text)' }}
+          >
+            {Math.round(calories)}
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--fiq-muted)', marginTop: 1 }}>
+            / {targetCalories} kcal
+          </span>
+        </div>
+      </div>
+      {/* Légende P · G · L */}
+      <div className="flex items-center gap-3 mt-1">
+        <span className="text-[11px] font-bold tabular-nums" style={{ color: '#B4FF4A' }}>
+          P: {Math.round(protein_g)}g
+        </span>
+        <span className="text-[11px] font-bold tabular-nums" style={{ color: '#3D8BFF' }}>
+          G: {Math.round(carbs_g)}g
+        </span>
+        <span className="text-[11px] font-bold tabular-nums" style={{ color: '#FF6B35' }}>
+          L: {Math.round(fat_g)}g
+        </span>
+      </div>
     </div>
   )
 }
@@ -640,11 +721,25 @@ function saveStoredUnitMode(foodName: string, mode: 'g' | 'unit') {
   try { localStorage.setItem(`forgeiq_unit_${normalizeStr(foodName)}`, mode) } catch {}
 }
 
+// ── Dernière quantité utilisée par food_id ────────────────────
+function getLastQty(foodId: string | null): number | null {
+  if (!foodId) return null
+  try {
+    const v = localStorage.getItem(`forgeiq_last_qty_${foodId}`)
+    const n = v ? parseFloat(v) : NaN
+    return Number.isFinite(n) && n > 0 ? n : null
+  } catch { return null }
+}
+function saveLastQty(foodId: string | null, qty: number) {
+  if (!foodId || qty <= 0) return
+  try { localStorage.setItem(`forgeiq_last_qty_${foodId}`, String(qty)) } catch {}
+}
+
 // ── Modale d'ajout ────────────────────────────────────────────
 
 type ModalMode = 'choose' | 'search' | 'scan' | 'photo' | 'confirm' | 'photo-confirm' | 'favorites' | 'recipes' | 'create-recipe' | 'recipe-confirm'
 
-function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', targets, consumedToday, isPro = false, openPaywall = () => {} }: {
+function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', targets, consumedToday, isPro = false, openPaywall = () => {}, currentLogs = [] }: {
   onClose: () => void
   onAdded: (log: FoodLog) => void
   today: string
@@ -653,6 +748,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
   consumedToday?: { calories: number; protein_g: number; carbs_g: number; fat_g: number }
   isPro?: boolean
   openPaywall?: (trigger: 'photo' | 'general') => void
+  currentLogs?: FoodLog[]
 }) {
   const [mode, setMode] = useState<ModalMode>('choose')
   // Recherche aliment
@@ -730,7 +826,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
     }
   }, [])
 
-  // Reset savedFav + restaure préférence unité quand on change d'aliment
+  // Reset savedFav + restaure préférence unité + pré-remplit la quantité quand on change d'aliment
   useEffect(() => {
     setFavError(null)
     if (!selectedFood) { setSavedFav(false); return }
@@ -740,6 +836,48 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
       f => f.food_name.toLowerCase() === name.toLowerCase()
     )
     setSavedFav(alreadySaved)
+
+    // ── Pré-remplissage quantité (Feature 1) ─────────────────────
+    // Priorité : favori default_quantity_g → log du jour → localStorage → défaut
+    let prefillQty: number | null = null
+
+    // 1. Favori avec default_quantity_g mémorisé
+    if (!prefillQty) {
+      const fav = favorites.find(f => f.food_name.toLowerCase() === name.toLowerCase())
+      if (fav && fav.default_quantity_g > 0) prefillQty = fav.default_quantity_g
+    }
+
+    // 2. Log du jour pour le même food_id
+    if (!prefillQty && selectedFood.id) {
+      const match = [...currentLogs]
+        .reverse() // le plus récent en premier
+        .find(l => {
+          // Correspondance par food_id ou par nom exact (pour aliments sans id)
+          return selectedFood.id
+            ? false // géré ci-dessous via food_id séparé
+            : l.food_name.toLowerCase() === name.toLowerCase()
+        })
+      // Recherche explicite par food_id dans les logs
+      const matchById = selectedFood.id
+        ? [...currentLogs].reverse().find(l => {
+            // food_id n'est pas dans FoodLog ; on compare par nom comme fallback
+            return l.food_name.toLowerCase() === name.toLowerCase()
+          })
+        : null
+      if (matchById && matchById.quantity_g > 0) prefillQty = matchById.quantity_g
+      else if (match && match.quantity_g > 0) prefillQty = match.quantity_g
+    }
+
+    // 3. localStorage forgeiq_last_qty_${food_id}
+    if (!prefillQty && selectedFood.id) {
+      prefillQty = getLastQty(selectedFood.id)
+    }
+
+    // Appliquer le pré-remplissage si trouvé (sinon garder la valeur actuelle / 100g)
+    if (prefillQty && prefillQty > 0) {
+      setQuantity(String(prefillQty))
+    }
+
     const serving = getServingInfo(name)
     if (serving) {
       // Par défaut 'unit' pour les aliments avec unité naturelle (oeuf, banane…)
@@ -747,8 +885,11 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
       const pref = getStoredUnitMode(name, 'unit')
       setUnitMode(pref)
       if (pref === 'unit') {
-        setUnitCount(1)
-        setQuantity(String(serving.weightG))
+        // Adapter unitCount à la quantité pré-remplie
+        const baseQty = prefillQty ?? serving.weightG
+        const units = Math.max(0.5, Math.round((baseQty / serving.weightG) * 2) / 2)
+        setUnitCount(units)
+        setQuantity(String(Math.round(units * serving.weightG)))
       }
     } else {
       setUnitMode('g')
@@ -965,9 +1106,12 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
       })
       const { data } = await res.json()
       if (data) {
+        const usedQty = parseFloat(quantity) || 100
+        // Sauvegarder la dernière quantité dans localStorage (Feature 1)
+        if (selectedFood.id) saveLastQty(selectedFood.id, usedQty)
+
         // Si vient d'un favori → mémoriser la dose réellement utilisée
         if (selectedFavId) {
-          const usedQty = parseFloat(quantity) || 100
           fetch('/api/nutrition/favorites', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -2703,6 +2847,31 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
   const [modalMeal, setModalMeal] = useState<string | null>(null)
   const [expandedMeals, setExpandedMeals] = useState<Set<string>>(new Set(['breakfast', 'lunch', 'dinner', 'snack']))
 
+  // ── Inline water (Feature 3) — partagé avec WaterWidget via état remonté ──
+  const [inlineWaterMl, setInlineWaterMl] = useState(initialWaterMl)
+  const [inlineWaterLoading, setInlineWaterLoading] = useState(false)
+
+  async function addInlineWater(ml: number) {
+    if (inlineWaterLoading) return
+    setInlineWaterLoading(true)
+    const prev = inlineWaterMl
+    setInlineWaterMl(v => Math.max(0, v + ml))
+    try {
+      const res = await fetch('/api/water/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ add_ml: ml }),
+      })
+      const { data, error } = await res.json() as { data: { water_ml: number } | null; error: string | null }
+      if (error || !data) { setInlineWaterMl(prev) }
+      else { setInlineWaterMl(data.water_ml) }
+    } catch {
+      setInlineWaterMl(prev)
+    } finally {
+      setInlineWaterLoading(false)
+    }
+  }
+
   // ── Quick Add inline modal ────────────────────────────────────
   const [quickAdd, setQuickAdd] = useState<QuickAddState | null>(null)
   const [quickAddToast, setQuickAddToast] = useState<string | null>(null)
@@ -3307,11 +3476,25 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
           </div>
         )}
 
-        <div className="flex justify-around pt-1">
-          <MacroRing value={totals.protein_g} target={targets.protein_g} color="var(--fiq-blue)" label="Protéines" />
-          <MacroRing value={totals.carbs_g} target={targets.carbs_g} color="var(--fiq-accent)" label="Glucides" />
-          <MacroRing value={totals.fat_g} target={targets.fat_g} color="var(--fiq-orange)" label="Lipides" />
-          <MacroRing value={totals.fiber_g} target={25} color="#A855F7" label="Fibres" />
+        {/* Doughnut + MacroRings côte à côte */}
+        <div className="flex items-center gap-3 pt-1">
+          {/* Doughnut macros — colonne gauche */}
+          <div className="shrink-0">
+            <MacroDoughnut
+              calories={totals.calories}
+              protein_g={totals.protein_g}
+              carbs_g={totals.carbs_g}
+              fat_g={totals.fat_g}
+              targetCalories={targets.calories}
+            />
+          </div>
+          {/* MacroRings — colonne droite, 2×2 */}
+          <div className="flex-1 grid grid-cols-2 gap-x-2 gap-y-3">
+            <MacroRing value={totals.protein_g} target={targets.protein_g} color="var(--fiq-blue)" label="Protéines" />
+            <MacroRing value={totals.carbs_g} target={targets.carbs_g} color="var(--fiq-accent)" label="Glucides" />
+            <MacroRing value={totals.fat_g} target={targets.fat_g} color="var(--fiq-orange)" label="Lipides" />
+            <MacroRing value={totals.fiber_g} target={25} color="#A855F7" label="Fibres" />
+          </div>
         </div>
 
         {/* Ligne macros restantes */}
@@ -3339,6 +3522,40 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
             </p>
           )
         })()}
+
+        {/* Inline eau (Feature 3) — uniquement aujourd'hui */}
+        {isToday && (
+          <div
+            className="flex items-center gap-2 rounded-xl px-3 py-2"
+            style={{ background: 'var(--fiq-faint)', border: '1px solid var(--fiq-border)' }}
+          >
+            <span className="text-sm shrink-0">💧</span>
+            <span className="flex-1 text-xs font-bold tabular-nums" style={{ color: inlineWaterMl >= waterGoalMl ? 'var(--fiq-accent)' : 'var(--fiq-blue)' }}>
+              {inlineWaterMl >= 1000 ? `${(inlineWaterMl / 1000).toFixed(1)}L` : `${inlineWaterMl}ml`}
+              <span className="font-normal" style={{ color: 'var(--fiq-muted)' }}>
+                {' '}/ {waterGoalMl >= 1000 ? `${(waterGoalMl / 1000).toFixed(1)}L` : `${waterGoalMl}ml`}
+              </span>
+            </span>
+            <button
+              onClick={() => void addInlineWater(-250)}
+              disabled={inlineWaterLoading || inlineWaterMl <= 0}
+              className="px-2.5 py-1 rounded-lg text-xs font-black transition-all active:scale-95"
+              style={{ background: 'var(--surface)', border: '1px solid var(--fiq-border)', color: 'var(--fiq-muted)', opacity: inlineWaterMl <= 0 ? 0.4 : 1 }}
+              aria-label="Retirer 250ml"
+            >
+              −250ml
+            </button>
+            <button
+              onClick={() => void addInlineWater(250)}
+              disabled={inlineWaterLoading}
+              className="px-2.5 py-1 rounded-lg text-xs font-black transition-all active:scale-95"
+              style={{ background: '#3D8BFF22', border: '1px solid #3D8BFF44', color: 'var(--fiq-blue)' }}
+              aria-label="Ajouter 250ml"
+            >
+              +250ml
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Widget hydratation */}
@@ -3670,6 +3887,7 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
           }}
           isPro={isPro}
           openPaywall={openPaywall}
+          currentLogs={logs}
         />
       )}
 

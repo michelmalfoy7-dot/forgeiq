@@ -86,7 +86,8 @@ export default function WorkoutPage() {
   const [loggingCardio, setLoggingCardio] = useState(false)
   const [cardioLogged, setCardioLogged] = useState(false)
 
-  const [recentWorkouts, setRecentWorkouts] = useState<{id: string; session_name: string; session_date: string; total_tonnage_kg: number; duration_min?: number; distance_km?: number; workout_type?: string}[]>([])
+  const [recentWorkouts, setRecentWorkouts] = useState<{id: string; session_name: string; session_date: string; total_tonnage_kg: number; duration_min?: number; distance_km?: number; workout_type?: string; program_id?: string | null}[]>([])
+  const [templateSessions, setTemplateSessions] = useState<{session_name: string; session_date: string; program_id: string | null}[]>([])
   const [activeWorkoutId, setActiveWorkoutId] = useState<string | null>(null)
   const [abandoningWorkout, setAbandoningWorkout] = useState(false)
   // Draft "Refaire" : exercices pré-chargés depuis l'historique
@@ -160,12 +161,28 @@ export default function WorkoutPage() {
       if (user) {
         const { data: workouts } = await supabase
           .from('workouts')
-          .select('id, session_name, session_date, total_tonnage_kg, duration_min, distance_km, workout_type')
+          .select('id, session_name, session_date, total_tonnage_kg, duration_min, distance_km, workout_type, program_id')
           .eq('user_id', user.id)
           .not('completed_at', 'is', null)
           .order('session_date', { ascending: false })
-          .limit(5)
-        setRecentWorkouts(workouts ?? [])
+          .limit(10)
+        const all = workouts ?? []
+        setRecentWorkouts(all.slice(0, 5))
+
+        // Dédupliquer par session_name — garder les 3 derniers noms distincts
+        // Exclure les cardio rapides et jours de repos
+        const skipNames = new Set(['Jour de repos', 'Repos actif', 'Repos complet'])
+        const seen = new Set<string>()
+        const templates: {session_name: string; session_date: string; program_id: string | null}[] = []
+        for (const w of all) {
+          if (w.workout_type === 'cardio') continue
+          if (skipNames.has(w.session_name)) continue
+          if (seen.has(w.session_name)) continue
+          seen.add(w.session_name)
+          templates.push({ session_name: w.session_name, session_date: w.session_date, program_id: w.program_id ?? null })
+          if (templates.length === 3) break
+        }
+        setTemplateSessions(templates)
       }
       setLoading(false)
     }
@@ -230,6 +247,25 @@ export default function WorkoutPage() {
       }
     } catch { /* ignore */ }
     finally { setStarting(false) }
+  }
+
+  // Démarrer une séance depuis un template historique (1-tap relancer)
+  async function startFromTemplate(sessionName: string, programId: string | null) {
+    if (starting || activeWorkoutId) return
+    setStarting(true)
+    try {
+      const res = await fetch('/api/workout/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_name: sessionName, program_id: programId }),
+      })
+      const { data } = await res.json()
+      if (data?.id) {
+        router.push(`/workout/${data.id}`)
+      }
+    } finally {
+      setStarting(false)
+    }
   }
 
   // Enregistrer un jour de repos (workout complété immédiatement, 0 tonnage)
@@ -318,7 +354,7 @@ export default function WorkoutPage() {
       if (user) {
         const { data: workouts } = await supabase
           .from('workouts')
-          .select('id, session_name, session_date, total_tonnage_kg, duration_min, distance_km, workout_type')
+          .select('id, session_name, session_date, total_tonnage_kg, duration_min, distance_km, workout_type, program_id')
           .eq('user_id', user.id)
           .not('completed_at', 'is', null)
           .order('session_date', { ascending: false })
@@ -384,6 +420,42 @@ export default function WorkoutPage() {
         </div>
       ) : (
         <div className="space-y-4">
+          {/* Bloc "Relancer" — 3 dernières séances distinctes en pills horizontales */}
+          {templateSessions.length > 0 && !activeWorkoutId && (
+            <div className="space-y-2">
+              <p className="fiq-label">Relancer</p>
+              <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+                {templateSessions.map((t) => {
+                  const daysAgo = Math.round(
+                    (Date.now() - new Date(t.session_date + 'T12:00:00').getTime()) / 86400000
+                  )
+                  const ageLabel = daysAgo === 0 ? "Aujourd'hui" : daysAgo === 1 ? 'Hier' : `il y a ${daysAgo}j`
+                  return (
+                    <button
+                      key={t.session_name}
+                      onClick={() => startFromTemplate(t.session_name, t.program_id)}
+                      disabled={starting}
+                      className="flex items-center gap-3 rounded-xl px-4 py-3 flex-shrink-0 transition-all active:scale-95"
+                      style={{
+                        background: 'var(--fiq-faint)',
+                        border: '1px solid var(--fiq-border)',
+                        minWidth: '180px',
+                      }}
+                    >
+                      <span className="text-base flex-shrink-0">🏋️</span>
+                      <div className="text-left min-w-0">
+                        <p className="text-xs font-black truncate" style={{ color: 'var(--fiq-text)', maxWidth: '130px' }}>
+                          {t.session_name}
+                        </p>
+                        <p className="text-[10px] mt-0.5" style={{ color: 'var(--fiq-muted)' }}>{ageLabel}</p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Bannière "Séance en cours" si localStorage a une séance active */}
           {activeWorkoutId && (
             <div
