@@ -195,13 +195,12 @@ export async function POST(req: NextRequest) {
 
     // ── 3. Quota mensuel (Lifetime + Admin = illimité) ─────────────────────────
     const unlimitedGenerations = isAdmin || status === 'lifetime'
+    let generationsThisMonth = 0
 
     if (!unlimitedGenerations) {
       const startOfMonth = new Date()
       startOfMonth.setDate(1)
       startOfMonth.setHours(0, 0, 0, 0)
-
-      let generationsThisMonth = 0
       try {
         const { count } = await supabase
           .from('programs')

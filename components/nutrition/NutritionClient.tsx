@@ -1123,7 +1123,7 @@ function AddFoodModal({ onClose, onAdded, today, initialMealType = 'breakfast', 
 
   async function deleteRecipe(id: string) {
     const res = await fetch(`/api/nutrition/recipes?id=${id}`, { method: 'DELETE' })
-    if (!res.ok) { toast.error('Erreur lors de la suppression'); return }
+    if (!res.ok) { setRecipeLogError('Erreur lors de la suppression. Réessaie.'); return }
     setRecipes(prev => prev.filter(r => r.id !== id))
   }
 
