@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { ProgressChartsLazy as ProgressCharts } from '@/components/progress/ProgressChartsLazy'
 import { ProgressPhotos } from '@/components/progress/ProgressPhotos'
 import { MeasurementsSection } from '@/components/progress/MeasurementsSection'
@@ -179,12 +180,38 @@ export default async function ProgressPage() {
     globalScore = Math.round(tonnageScore * 0.4 + regularityScore * 0.3 + weightScore * 0.3)
   }
 
+  const thisYear = new Date().getFullYear()
+
   return (
     <div className="p-4 max-w-lg mx-auto">
-      <div className="pt-4 mb-6">
+      <div className="pt-4 mb-4">
         <p className="fiq-label">Progression</p>
         <h1 className="text-2xl fiq-display mt-1" style={{ color: 'var(--fiq-text)' }}>Mes progrès</h1>
       </div>
+
+      {/* Year in Forge CTA */}
+      <Link
+        href={`/progress/year?year=${thisYear}`}
+        className="flex items-center justify-between w-full rounded-2xl px-4 py-3 mb-6"
+        style={{
+          background: 'var(--fiq-faint)',
+          border: '1px solid var(--fiq-border)',
+          textDecoration: 'none',
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🏆</span>
+          <div>
+            <p className="text-sm font-bold" style={{ color: 'var(--fiq-text)' }}>
+              Ton année {thisYear} en chiffres
+            </p>
+            <p className="text-xs" style={{ color: 'var(--fiq-muted)' }}>
+              Récapitulatif annuel
+            </p>
+          </div>
+        </div>
+        <span className="text-sm font-bold" style={{ color: 'var(--fiq-accent)' }}>Voir →</span>
+      </Link>
 
       <ProgressCharts
         weightData={weightData}

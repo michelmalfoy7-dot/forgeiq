@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Dumbbell, Zap, MessageCircle, Share2, MessageSquare } from 'lucide-react'
+import { Loader2, Plus, Trash2, Check, Timer, Trophy, Search, X, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Dumbbell, Zap, MessageCircle, Share2, MessageSquare, GripVertical } from 'lucide-react'
 import { FiqDumbbell, FiqPR, FiqStreak, FiqCircuit, FiqCheck, FiqAlert } from '@/components/ui/FiqIcons'
 import { Confetti } from '@/components/ui/Confetti'
 import { StreakMilestoneModal } from '@/components/ui/StreakMilestoneModal'
@@ -175,6 +175,12 @@ export default function WorkoutSessionPage() {
   // Note de séance globale (affichée en bas du logger, avant "Terminer")
   const [sessionNote, setSessionNote] = useState('')
   const [showSessionNote, setShowSessionNote] = useState(false)
+
+  // ── Drag & drop pour réordonner les exercices ─────────────
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  // Touch drag : stocke l'index source et la position Y de départ
+  const touchDragRef = useRef<{ fromIdx: number; startY: number } | null>(null)
 
   // Muscle Freshness — indicateur récupération musculaire par groupe
   const [muscleFreshness, setMuscleFreshness] = useState<Record<string, 'fresh' | 'moderate' | 'fatigued'>>({})
@@ -939,6 +945,43 @@ export default function WorkoutSessionPage() {
       ;[updated[groupIdx], updated[target]] = [updated[target], updated[groupIdx]]
       return updated
     })
+  }
+
+  // ── Touch drag handlers — utilisés par le handle GripVertical dans ExerciseCard ──
+  function handleTouchDragStart(fromIdx: number, startY: number) {
+    touchDragRef.current = { fromIdx, startY }
+    setDragIndex(fromIdx)
+  }
+
+  function handleTouchDragMove(clientY: number) {
+    if (!touchDragRef.current) return
+    // Trouver l'élément sous le point de contact
+    const el = document.elementFromPoint(0, clientY)
+    const card = el?.closest('[data-drag-idx]') as HTMLElement | null
+    if (!card) return
+    const overIdx = parseInt(card.dataset.dragIdx ?? '-1', 10)
+    if (!isNaN(overIdx) && overIdx !== touchDragRef.current.fromIdx) {
+      setDragOverIndex(overIdx)
+    }
+  }
+
+  function handleTouchDragEnd(clientY: number) {
+    if (!touchDragRef.current) return
+    const { fromIdx } = touchDragRef.current
+    const el = document.elementFromPoint(0, clientY)
+    const card = el?.closest('[data-drag-idx]') as HTMLElement | null
+    const toIdx = card ? parseInt(card.dataset.dragIdx ?? '-1', 10) : -1
+    if (!isNaN(toIdx) && toIdx >= 0 && toIdx !== fromIdx) {
+      setGroups((prev) => {
+        const next = [...prev]
+        const [moved] = next.splice(fromIdx, 1)
+        next.splice(toIdx, 0, moved)
+        return next
+      })
+    }
+    touchDragRef.current = null
+    setDragIndex(null)
+    setDragOverIndex(null)
   }
 
   // ── Substituer un exercice — remplace nom + id, conserve les sets ──
@@ -1889,7 +1932,38 @@ export default function WorkoutSessionPage() {
           const groupBorder = isCircuit ? '#3D8BFF44' : '#FF6B3344'
 
           return (
-            <div key={group.exercise_id + gIdx}>
+            <div
+              key={group.exercise_id + gIdx}
+              data-drag-idx={gIdx}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = 'move'
+                setDragIndex(gIdx)
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDragOverIndex(gIdx)
+              }}
+              onDrop={() => {
+                if (dragIndex === null || dragIndex === gIdx) return
+                const next = [...groups]
+                const [moved] = next.splice(dragIndex, 1)
+                next.splice(gIdx, 0, moved)
+                setGroups(next)
+                setDragIndex(null)
+                setDragOverIndex(null)
+              }}
+              onDragEnd={() => {
+                setDragIndex(null)
+                setDragOverIndex(null)
+              }}
+              style={dragOverIndex === gIdx && dragIndex !== null && dragIndex !== gIdx
+                ? { opacity: 0.6, outline: '2px solid var(--fiq-accent)', borderRadius: 16 }
+                : dragIndex === gIdx
+                  ? { opacity: 0.4 }
+                  : undefined
+              }
+            >
               {/* Label SUPERSET / CIRCUIT au-dessus du premier exercice */}
               {isFirstInGroup && (
                 <div className="flex items-center gap-1.5 mb-1.5 ml-1">
@@ -1931,6 +2005,10 @@ export default function WorkoutSessionPage() {
                 onSubstitute={(sub) => handleSubstitute(gIdx, sub)}
                 muscleFreshness={muscleFreshness}
                 exerciseToMuscle={exerciseToMuscle}
+                isDragging={dragIndex === gIdx}
+                onTouchDragStart={(startY) => handleTouchDragStart(gIdx, startY)}
+                onTouchDragMove={handleTouchDragMove}
+                onTouchDragEnd={handleTouchDragEnd}
               />
 
               {/* Connecteur entre exercices du même groupe */}
@@ -2324,6 +2402,8 @@ function ExerciseCard({
   restDurationForExercise, onSetRestDuration, showRestPicker, onToggleRestPicker,
   userEquipment, onSubstitute,
   muscleFreshness, exerciseToMuscle,
+  isDragging,
+  onTouchDragStart, onTouchDragMove, onTouchDragEnd,
 }: {
   group: ExerciseGroup
   onAddSet: () => void
@@ -2359,6 +2439,14 @@ function ExerciseCard({
   muscleFreshness: Record<string, 'fresh' | 'moderate' | 'fatigued'>
   /** Map nom d'exercice → muscle_primary pour lookup O(1) */
   exerciseToMuscle: Record<string, string>
+  /** true si cette card est actuellement en train d'être déplacée par drag */
+  isDragging?: boolean
+  /** Touch drag — déclenché au touchstart sur le handle */
+  onTouchDragStart: (startY: number) => void
+  /** Touch drag — appelé à chaque touchmove avec clientY courant */
+  onTouchDragMove: (clientY: number) => void
+  /** Touch drag — appelé au touchend avec clientY final */
+  onTouchDragEnd: (clientY: number) => void
 }) {
   const [showHistory, setShowHistory] = useState(true)
   const [showPlateCalc, setShowPlateCalc] = useState(false)
@@ -2430,7 +2518,28 @@ function ExerciseCard({
       )}
 
       <div className="flex items-start justify-between">
-        <div>
+        {/* Handle drag & drop — cursor-grab, touch-none pour éviter le scroll */}
+        <div
+          className="flex-shrink-0 flex items-center justify-center w-6 h-6 mt-0.5 mr-1 rounded cursor-grab active:cursor-grabbing touch-none select-none"
+          style={{ color: isDragging ? 'var(--fiq-accent)' : 'var(--fiq-muted)' }}
+          title="Glisser pour réordonner"
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => {
+            e.stopPropagation()
+            onTouchDragStart(e.touches[0].clientY)
+          }}
+          onTouchMove={(e) => {
+            e.stopPropagation()
+            onTouchDragMove(e.touches[0].clientY)
+          }}
+          onTouchEnd={(e) => {
+            e.stopPropagation()
+            onTouchDragEnd(e.changedTouches[0].clientY)
+          }}
+        >
+          <GripVertical className="w-4 h-4" />
+        </div>
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             {circuitBadge && (
               <span
