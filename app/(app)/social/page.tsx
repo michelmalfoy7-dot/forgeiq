@@ -137,7 +137,7 @@ export default async function SocialPage() {
   }
 
   const suggestedAthletes: SuggestedAthlete[] = (suggestedRaw.data ?? [])
-    .filter((p: { user_id: string }) => (recentShareCounts[p.user_id] ?? 0) > 0 || true) // garder même sans activité récente
+    .filter(Boolean) // garder même sans activité récente
     .slice(0, 8)
     .map((p: { user_id: string; username: string | null; display_name: string | null; avatar_url: string | null; followers_count: number }) => ({
       user_id: p.user_id,

@@ -23,7 +23,7 @@ export async function GET() {
     const { data: workoutsThisMonth } = await supabase
       .from('workouts')
       .select('id, user_id')
-      .eq('status', 'completed')
+      .not('completed_at', 'is', null)
       .gte('completed_at', monthStart)
 
     const workoutIds = (workoutsThisMonth ?? []).map((w: { id: string; user_id: string }) => w.id)

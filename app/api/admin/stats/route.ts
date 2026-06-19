@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
       admin.from('profiles').select('*', { count: 'exact', head: true }),
       admin.from('profiles').select('*', { count: 'exact', head: true }).eq('subscription_status', 'pro'),
       admin.from('profiles').select('*', { count: 'exact', head: true }).eq('subscription_status', 'lifetime'),
-      admin.from('profiles').select('*', { count: 'exact', head: true }).or('subscription_status.is.null,subscription_status.eq.free').is('referral_pro_until', null),
+      admin.from('profiles').select('*', { count: 'exact', head: true }).or('subscription_status.is.null,subscription_status.eq.free').or(`referral_pro_until.is.null,referral_pro_until.lt.${today}`),
       // Trial referral actifs (free + referral_pro_until dans le futur)
       admin.from('profiles').select('*', { count: 'exact', head: true })
         .or('subscription_status.is.null,subscription_status.eq.free')
@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
       admin.from('profiles').select('*', { count: 'exact', head: true }).gte('created_at', d1ago),
       admin.from('profiles').select('*', { count: 'exact', head: true }).gte('created_at', d7ago),
       admin.from('profiles').select('*', { count: 'exact', head: true }).gte('created_at', d30ago),
-      admin.from('daily_logs').select('user_id', { count: 'exact', head: true }).gte('log_date', d7ago.split('T')[0]),
+      admin.from('daily_logs').select('user_id').gte('log_date', d7ago.split('T')[0]).limit(10000),
       // Users paginés avec données utiles
       admin.from('profiles')
         .select('id, display_name, subscription_status, subscription_plan, created_at, checkin_streak, training_streak_weeks, referral_count, referred_by, referral_pro_until')
@@ -99,9 +99,9 @@ export async function GET(req: NextRequest) {
       .from('workouts')
       .select('user_id, completed_at')
       .in('user_id', userIds)
-      .eq('status', 'completed')
+      .not('completed_at', 'is', null)
       .order('completed_at', { ascending: false })
-      .limit(limit * 5) // borne : 5 séances max par user en moyenne avant dedup
+      .limit(limit * 20) // borne : 20 séances max par user en moyenne avant dedup
 
     const lastWorkoutMap = new Map<string, string>()
     for (const w of (lastWorkouts ?? [])) {
@@ -114,7 +114,7 @@ export async function GET(req: NextRequest) {
       .select('user_id, log_date')
       .in('user_id', userIds)
       .order('log_date', { ascending: false })
-      .limit(limit * 5) // borne : 5 check-ins max par user en moyenne avant dedup
+      .limit(limit * 20) // borne : 20 check-ins max par user en moyenne avant dedup
 
     const lastCheckinMap = new Map<string, string>()
     for (const c of (lastCheckins ?? [])) {
@@ -137,7 +137,7 @@ export async function GET(req: NextRequest) {
           new_last_24h:   new24hResult.count  ?? 0,
           new_last_7d:    new7dResult.count   ?? 0,
           new_last_30d:   new30dResult.count  ?? 0,
-          active_last_7d: activeResult.count  ?? 0,
+          active_last_7d: new Set((activeResult.data ?? []).map((r: { user_id: string }) => r.user_id)).size,
         },
         pagination: {
           page,

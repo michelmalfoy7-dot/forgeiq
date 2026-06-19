@@ -21,6 +21,9 @@ export async function POST(request: Request) {
     if (!weight_kg || !log_date) {
       return NextResponse.json({ data: null, error: 'weight_kg et log_date requis' }, { status: 400 })
     }
+    if (typeof weight_kg !== 'number' || weight_kg < 20 || weight_kg > 500) {
+      return NextResponse.json({ data: null, error: 'Poids invalide' }, { status: 400 })
+    }
 
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()

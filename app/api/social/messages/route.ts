@@ -37,7 +37,8 @@ export async function GET() {
         .from('messages')
         .select('conversation_id, content, created_at, sender_id, read_at')
         .in('conversation_id', convIds)
-        .order('created_at', { ascending: false }),
+        .order('created_at', { ascending: false })
+        .limit(500),
     ])
 
     const profileMap = new Map(

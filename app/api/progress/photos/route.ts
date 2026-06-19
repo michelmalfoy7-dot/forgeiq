@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
         is_private: true,
       })
       .select('id, photo_date, storage_path, note, weight_kg, created_at')
-      .single()
+      .maybeSingle()
 
     if (dbError) throw dbError
 
@@ -131,7 +131,7 @@ export async function DELETE(req: NextRequest) {
       .select('storage_path')
       .eq('id', photoId)
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (fetchError || !photo) {
       return NextResponse.json({ data: null, error: 'Photo introuvable' }, { status: 404 })

@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     const { data: shares, error } = await query
 
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
-    if (!shares || shares.length === 0) return NextResponse.json({ data: [], error: null })
+    if (!shares || shares.length === 0) return NextResponse.json({ data: [], hasMore: false, error: null })
 
     const authorIds  = [...new Set(shares.map((s: { user_id: string }) => s.user_id))]
     const shareIds   = shares.map((s: { id: string }) => s.id)

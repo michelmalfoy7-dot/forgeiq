@@ -881,7 +881,8 @@ export default function WorkoutSessionPage() {
               next = { ...s, rpe: norm }
             }
           } else if (key === 'reps') {
-            next = { ...s, reps: value === '' ? '' : parseInt(String(value), 10) }
+            const parsed = parseInt(String(value), 10)
+            next = { ...s, reps: value === '' ? '' : (isNaN(parsed) ? '' : parsed) }
           } else {
             next = { ...s, [key]: value }
           }
@@ -2732,7 +2733,7 @@ function ExerciseCard({
         const maxVolume = workingSetVolumes.length > 0 ? Math.max(...workingSetVolumes) : -1
         const isTopSet = !s.is_warmup && s.weight_kg !== '' && s.reps !== '' && maxVolume > 0 &&
           parseW(s.weight_kg) * Number(s.reps) === maxVolume
-        const isPR = !s.is_warmup && group.pr && s.weight_kg !== '' && parseW(s.weight_kg) > group.pr
+        const isPR = !s.is_warmup && (s.set_type === 'top_set' || s.set_type === 'work' || !s.set_type) && group.pr && s.weight_kg !== '' && parseW(s.weight_kg) > group.pr
         const setType = s.set_type ?? 'work'
         const typeCfg = SET_TYPE_CONFIG[setType]
 
@@ -2754,9 +2755,10 @@ function ExerciseCard({
 
         const noteOpen = openNoteSetId === s.id
 
-        // Données de la dernière séance pour ce set (même index)
-        const setIdx = group.sets.indexOf(s)
-        const lastSetData = group.lastSession && group.lastSession[setIdx]
+        // Données de la dernière séance pour ce set (indexé sur les sets de travail uniquement)
+        const workSets = group.sets.filter(x => !x.is_warmup)
+        const workIdx = !s.is_warmup ? workSets.indexOf(s) : -1
+        const lastSetData = workIdx >= 0 ? group.lastSession?.[workIdx] : null
         const currentW = s.weight_kg !== '' ? parseFloat(String(s.weight_kg).replace(',', '.')) : null
         const currentR = s.reps !== '' ? Number(s.reps) : null
         const lastW = lastSetData?.weight_kg ?? null

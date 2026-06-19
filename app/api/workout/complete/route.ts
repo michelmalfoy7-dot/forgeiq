@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     //  - is_bilateral_dumbbell : haltères 2 bras simultanément (poids max 120kg/côté)
     //  - is_unilateral + unilateral_both_sides : câble/machine fait des 2 côtés (tirage unilatéral, etc.)
     const totalTonnage = setsForTonnage.reduce((acc, s) => {
-      const isBilateralDumbbell = (s.is_bilateral_dumbbell && s.weight_kg <= 120)
+      const isBilateralDumbbell = !!s.is_bilateral_dumbbell
       const isUnilateralDouble  = (s.is_unilateral && (s.unilateral_both_sides ?? true))
       const multiplier = (isBilateralDumbbell || isUnilateralDouble) ? 2 : 1
       return acc + s.weight_kg * s.reps * multiplier
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
     const validSets = workingSets.filter(s => s.weight_kg > 0 && s.reps > 0)
     const exerciseGroups = groupByExercise(validSets)
     const exerciseIds = Object.keys(exerciseGroups)
-    const today = new Date().toISOString().split('T')[0]
+    const today = new Date().toLocaleDateString('sv')
 
     // 1 seule requête pour charger tous les PRs existants
     const { data: existingPRsRows } = await supabase

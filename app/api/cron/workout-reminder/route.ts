@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
     supabase
       .from('workouts')
       .select('user_id')
-      .eq('status', 'completed')
+      .not('completed_at', 'is', null)
       .gte('completed_at', `${today}T00:00:00`)
       .lte('completed_at', `${today}T23:59:59`)
       .in('user_id', userIds),
