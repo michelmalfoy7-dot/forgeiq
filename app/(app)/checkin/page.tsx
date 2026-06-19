@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { AlertBar } from '@/components/ui/AlertBar'
 import { StreakMilestoneModal } from '@/components/ui/StreakMilestoneModal'
-import { Loader2, Save, TrendingDown, TrendingUp, Minus, CheckCircle2, ChevronDown, ChevronUp, Moon, Footprints, Utensils, Brain, Activity, Scale } from 'lucide-react'
+import { Loader2, Save, TrendingDown, TrendingUp, Minus, CheckCircle2, ChevronDown, ChevronUp, Moon, Footprints, Utensils, Brain, Activity, Scale, RefreshCw } from 'lucide-react'
 import { calcTDEESimple } from '@/lib/utils/tdee'
 import { hMinToMinutes, minutesToHMin, formatSleep } from '@/lib/formatSleep'
 
@@ -74,6 +74,8 @@ export default function CheckinPage() {
   const [isYesterday, setIsYesterday] = useState(false)
   const [stepsChip, setStepsChip] = useState<number | null>(null)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [wearableSyncing, setWearableSyncing] = useState(false)
+  const [wearableConnected, setWearableConnected] = useState(false)
   const ewmaDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [profile, setProfile] = useState<{
     goal?: string | null
@@ -155,6 +157,36 @@ export default function CheckinPage() {
     loadToday()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchEwma, isYesterday])
+
+  // Vérifier si Google Fit est connecté
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return
+      supabase.from('wearable_connections')
+        .select('provider')
+        .eq('user_id', user.id)
+        .eq('provider', 'google_fit')
+        .maybeSingle()
+        .then(({ data }) => setWearableConnected(!!data))
+    })
+  }, [])
+
+  async function syncWearable() {
+    setWearableSyncing(true)
+    try {
+      const res = await fetch('/api/integrations/google-fit/sync', { method: 'POST' })
+      const { data, error: syncErr } = await res.json()
+      if (syncErr || !data) return
+      // Pré-remplir le formulaire avec les données wearable
+      if (data.steps != null) set('steps', data.steps.toString())
+      if (data.sleepTotal != null) set('sleep_total_min', data.sleepTotal.toString())
+      if (data.sleepDeep  != null) set('sleep_deep_min',  data.sleepDeep.toString())
+      if (data.sleepRem   != null) set('sleep_rem_min',   data.sleepRem.toString())
+    } finally {
+      setWearableSyncing(false)
+    }
+  }
 
   function set(key: keyof LogData, value: string | number) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -317,9 +349,22 @@ export default function CheckinPage() {
               )
             })}
           </div>
-          <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
-            Tout est optionnel — remplis ce que tu as.
-          </p>
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+              Tout est optionnel — remplis ce que tu as.
+            </p>
+            {wearableConnected && (
+              <button
+                onClick={syncWearable}
+                disabled={wearableSyncing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black disabled:opacity-50"
+                style={{ background: '#3D8BFF22', border: '1px solid #3D8BFF44', color: 'var(--fiq-blue)' }}
+              >
+                <RefreshCw className={`w-3 h-3 ${wearableSyncing ? 'animate-spin' : ''}`} />
+                {wearableSyncing ? 'Sync...' : '⌚ Google Fit'}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Alertes inline */}

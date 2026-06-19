@@ -119,9 +119,28 @@ export default async function ProfilePage() {
       </Link>
 
       {/* Connecter données wearable */}
-      <div className="mb-6">
+      <div className="mb-3">
         <HealthImportWidget />
       </div>
+
+      {/* Intégrations wearable (Google Fit, Garmin…) */}
+      <Link
+        href="/integrations"
+        className="fiq-card flex items-center gap-3 mb-6"
+        style={{ textDecoration: 'none' }}
+      >
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0"
+          style={{ background: '#3D8BFF22', border: '1px solid #3D8BFF44' }}
+        >
+          ⌚
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-black" style={{ color: 'var(--fiq-text)' }}>Intégrations wearable</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--fiq-muted)' }}>Google Fit · Garmin · Samsung · Sync auto check-in</p>
+        </div>
+        <span style={{ color: 'var(--fiq-muted)', fontSize: 18 }}>›</span>
+      </Link>
 
       <ProfileClient
         profile={profile}
