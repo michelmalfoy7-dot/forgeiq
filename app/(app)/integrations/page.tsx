@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Activity, Check, RefreshCw, Unlink, Zap } from 'lucide-react'
@@ -19,7 +19,7 @@ type SyncResult = {
   date: string
 }
 
-export default function IntegrationsPage() {
+function IntegrationsContent() {
   const searchParams = useSearchParams()
   const [connections, setConnections] = useState<Connection[]>([])
   const [syncing, setSyncing] = useState(false)
@@ -251,5 +251,13 @@ export default function IntegrationsPage() {
         </a>
       )}
     </div>
+  )
+}
+
+export default function IntegrationsPage() {
+  return (
+    <Suspense>
+      <IntegrationsContent />
+    </Suspense>
   )
 }
