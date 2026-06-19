@@ -390,7 +390,6 @@ export default async function DashboardPage() {
     const todayTrend = todayLog.weight_trend ?? null
     let ewmaPts = 0
     if (todayTrend !== null) {
-      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
       const prevDayLog = (weekLogs ?? []).find(l => l.log_date === yesterday)
       // Utilise weight_trend (EWMA) du log précédent, pas le poids brut
       const prevDayTrend = (prevDayLog as { weight_trend?: number | null } | undefined)?.weight_trend ?? null

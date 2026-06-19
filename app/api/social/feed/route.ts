@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
       // Uniquement les gens suivis + soi-même
       const feedUserIds = [...followingIds, user.id]
       if (feedUserIds.length === 0) {
-        return NextResponse.json({ data: [], error: null })
+        return NextResponse.json({ data: [], hasMore: false, error: null })
       }
       query = query.in('user_id', feedUserIds)
     }

@@ -383,7 +383,7 @@ export default function WorkoutPage() {
   }
 
   // Séance du jour : vérifier si une séance a déjà été complétée aujourd'hui
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('sv')
   const todayWorkout = recentWorkouts.find(w => w.session_date === today && w.session_name !== 'Jour de repos')
 
   return (

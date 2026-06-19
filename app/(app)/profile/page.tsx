@@ -25,7 +25,7 @@ export default async function ProfilePage() {
   ] = await Promise.all([
     supabase.from('profiles')
       .select('display_name, username, avatar_url, goal, level, equipment, sessions_per_week, age, height_cm, gender, weight_kg, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, created_at, subscription_status, subscription_plan, stripe_customer_id, include_warmup_in_tonnage, gym_id, is_admin, checkin_streak, training_streak_weeks')
-      .eq('id', user.id).single(),
+      .eq('id', user.id).maybeSingle(),
 
     supabase.from('workouts')
       .select('id, total_tonnage_kg')

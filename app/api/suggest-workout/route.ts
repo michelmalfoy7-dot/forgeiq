@@ -244,7 +244,7 @@ export async function GET(req: Request) {
 
       if (adjustmentReasons.length > 0) {
         volumeAdjustment = 'reduce'
-      } else if (deepSleep > 90 && fatigue <= 4) {
+      } else if (deepSleep !== null && deepSleep > 90 && fatigue <= 4) {
         volumeAdjustment = 'increase'
         adjustmentReasons.push('Récupération optimale')
       }

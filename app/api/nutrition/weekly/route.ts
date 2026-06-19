@@ -59,7 +59,7 @@ export async function GET() {
       ? Math.round(loggedDays.reduce((a, d) => a + d.protein_g, 0) / loggedDays.length)
       : 0
     const daysOnTarget = loggedDays.filter(
-      d => Math.abs(d.calories - targetCalories) / targetCalories < 0.1
+      d => targetCalories > 0 && Math.abs(d.calories - targetCalories) / targetCalories < 0.1
     ).length
 
     return NextResponse.json({

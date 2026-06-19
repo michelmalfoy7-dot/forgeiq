@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
       .from('profiles')
       .select('is_admin')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
 
     if (!profile?.is_admin) {
       return NextResponse.json({ data: null, error: 'Accès refusé' }, { status: 403 })

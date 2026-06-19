@@ -13,7 +13,7 @@ import { PlateCalculatorModal } from '@/components/workout/PlateCalculatorModal'
 import { roundWeight, weightDelta } from '@/lib/utils/numbers'
 
 // ── Types ─────────────────────────────────────────────────────
-type SetType = 'work' | 'top_set' | 'backoff' | 'dropset' | 'failure' | 'pause_rep'
+type SetType = 'work' | 'top_set' | 'backoff' | 'drop' | 'failure' | 'pause_rep'
 
 type SetRow = {
   id: string
@@ -746,7 +746,7 @@ export default function WorkoutSessionPage() {
         ...updated[groupIdx],
         sets: updated[groupIdx].sets.map((s) => {
           if (s.id !== setId || s.is_warmup) return s
-          const order: SetType[] = ['work', 'top_set', 'backoff', 'dropset', 'failure', 'pause_rep']
+          const order: SetType[] = ['work', 'top_set', 'backoff', 'drop', 'failure', 'pause_rep']
           const cur = s.set_type ?? 'work'
           const next = order[(order.indexOf(cur) + 1) % order.length]
           return { ...s, set_type: next }
@@ -767,7 +767,7 @@ export default function WorkoutSessionPage() {
         id: uid(), exercise_id: g.exercise_id, exercise_name: g.exercise_name,
         set_number: g.sets.filter(s => !s.is_warmup).length + 1,
         weight_kg: lastWork?.weight_kg ?? '', reps: lastWork?.reps ?? '',
-        rpe: '', is_warmup: false, set_type: 'dropset',
+        rpe: '', is_warmup: false, set_type: 'drop',
       }
       const updated = [...prev]
       updated[groupIdx] = { ...g, sets: [...g.sets, newSet] }
@@ -2380,7 +2380,7 @@ const SET_TYPE_CONFIG: Record<SetType, { label: string; color: string; bg: strin
   work:      { label: '',   color: 'var(--fiq-muted)',   bg: 'transparent' },
   top_set:   { label: '★',  color: '#F59E0B',            bg: '#F59E0B22' },  // Top set — charge maximale
   backoff:   { label: 'B',  color: 'var(--fiq-blue)',    bg: '#3D8BFF22' },  // Back-off — charge réduite, volume
-  dropset:   { label: '⬇', color: 'var(--fiq-orange)',  bg: '#FF6B3522' },  // Drop set — enchaîné sans repos
+  drop:      { label: '⬇', color: 'var(--fiq-orange)',  bg: '#FF6B3522' },  // Drop set — enchaîné sans repos
   failure:   { label: 'X',  color: 'var(--fiq-red)',     bg: '#EF444422' },  // Echec musculaire
   pause_rep: { label: 'PR', color: '#A855F7',            bg: '#A855F722' },  // Pause-rep — pause en bas du mouvement
 }
@@ -2819,7 +2819,7 @@ function ExerciseCard({
                 className="text-center text-base font-bold h-9 min-w-0 w-full"
                 style={{
                   background: 'var(--surface)',
-                  borderColor: isPR ? 'var(--fiq-accent)' : setType === 'top_set' ? '#F59E0B44' : setType === 'backoff' ? '#3D8BFF44' : setType === 'dropset' ? '#FF6B3544' : setType === 'failure' ? '#EF444444' : 'var(--fiq-border)',
+                  borderColor: isPR ? 'var(--fiq-accent)' : setType === 'top_set' ? '#F59E0B44' : setType === 'backoff' ? '#3D8BFF44' : setType === 'drop' ? '#FF6B3544' : setType === 'failure' ? '#EF444444' : 'var(--fiq-border)',
                   color: 'var(--fiq-text)',
                 }}
               />

@@ -78,7 +78,7 @@ export default async function NutritionWeeklyPage() {
   const loggedDays = days.filter(d => d.logged)
   const avgCal = loggedDays.length ? Math.round(loggedDays.reduce((a, d) => a + d.calories, 0) / loggedDays.length) : 0
   const avgProt = loggedDays.length ? Math.round(loggedDays.reduce((a, d) => a + d.protein_g, 0) / loggedDays.length) : 0
-  const daysOnTarget = loggedDays.filter(d => Math.abs(d.calories - targetCal) / targetCal < 0.1).length
+  const daysOnTarget = loggedDays.filter(d => targetCal > 0 && Math.abs(d.calories - targetCal) / targetCal < 0.1).length
   const maxCal = Math.max(targetCal * 1.2, ...days.map(d => d.calories))
 
   return (

@@ -203,7 +203,6 @@ export default function CheckinPage() {
         // Laisser le modal ouvert, puis rediriger après fermeture
         return
       }
-      router.refresh()
       setTimeout(() => router.push('/dashboard'), 1400)
     } finally {
       setSaving(false)
@@ -274,7 +273,7 @@ export default function CheckinPage() {
         <StreakMilestoneModal
           streak={milestone.streak}
           type={milestone.type}
-          onClose={() => { setMilestone(null); router.refresh(); router.push('/dashboard') }}
+          onClose={() => { setMilestone(null); router.push('/dashboard') }}
         />
       )}
       <div className="p-4 max-w-lg mx-auto pb-32">

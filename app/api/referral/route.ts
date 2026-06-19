@@ -32,7 +32,7 @@ export async function GET() {
       .from('profiles')
       .select('referral_code, referral_count')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
 
     if (profile?.referral_code) {
       return NextResponse.json({ data: { code: profile.referral_code, count: profile.referral_count ?? 0, max: MAX_REFERRAL_REWARDS }, error: null })
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
     if (!referrer) return NextResponse.json({ data: null, error: 'Code invalide' }, { status: 404 })
     if (referrer.id === user.id) return NextResponse.json({ data: null, error: 'Tu ne peux pas utiliser ton propre code' }, { status: 400 })
 
-    const { data: myProfile } = await supabase.from('profiles').select('referred_by').eq('id', user.id).single()
+    const { data: myProfile } = await supabase.from('profiles').select('referred_by').eq('id', user.id).maybeSingle()
     if (myProfile?.referred_by) return NextResponse.json({ data: { already_applied: true }, error: null })
 
     // Filleul : 14 jours Pro offerts immédiatement
@@ -111,7 +111,7 @@ export async function grantReferralRewardIfEligible(userId: string): Promise<voi
       .from('profiles')
       .select('referred_by, referral_reward_granted')
       .eq('id', userId)
-      .single()
+      .maybeSingle()
 
     if (!filleul?.referred_by || filleul.referral_reward_granted) return
 
