@@ -108,7 +108,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from('daily_logs')
-      .select('*')
+      .select('id, log_date, weight_kg, weight_trend, sys_bp, dia_bp, steps, sleep_total_min, sleep_deep_min, sleep_light_min, sleep_rem_min, calories, protein_g, carbs_g, fat_g, fatigue_score, motivation_score, water_ml, hrv_ms, temp_deviation_c')
       .eq('user_id', user.id)
       .eq('log_date', today)
       .maybeSingle()

@@ -17,7 +17,7 @@ export async function GET(
 
     const { data: challenge } = await supabase
       .from('challenges')
-      .select('*')
+      .select('id, title, type, target_value, start_date, end_date, created_by, is_public, created_at')
       .eq('id', id)
       .maybeSingle()
 
@@ -81,7 +81,13 @@ export async function GET(
     )
 
     // Tri décroissant par valeur, puis par date d'adhésion (premier inscrit gagne l'égalité)
-    entries.sort((a, b) => b.value - a.value || 0)
+    const joinedAtMap = new Map(participants.map(p => [p.user_id as string, p.joined_at as string]))
+    entries.sort((a, b) => {
+      if (b.value !== a.value) return b.value - a.value
+      const aJoined = joinedAtMap.get(a.user_id) ?? ''
+      const bJoined = joinedAtMap.get(b.user_id) ?? ''
+      return aJoined < bJoined ? -1 : aJoined > bJoined ? 1 : 0
+    })
     const ranked = entries.map((e, i) => ({ ...e, rank: i + 1 }))
 
     // Mise en cache des valeurs en arrière-plan (fire-and-forget)

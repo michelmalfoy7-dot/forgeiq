@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { AI_MODELS } from '@/lib/utils/ai-models'
+import { PLAN_SELECT, isProUser } from '@/lib/utils/plan'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30 // Génération IA bilan — Vercel
@@ -38,12 +39,10 @@ export async function POST(req: NextRequest) {
     // Vérifier le plan — bilan IA réservé aux abonnés Pro/Lifetime
     const { data: sub } = await supabase
       .from('profiles')
-      .select('subscription_status, is_admin, referral_pro_until')
+      .select(PLAN_SELECT)
       .eq('id', user.id)
       .maybeSingle()
-    const { isProUser } = await import('@/lib/utils/plan')
-    const isPro = isProUser(sub)
-    if (!isPro) return NextResponse.json({ data: null, error: 'Bilan IA réservé au plan Pro', paywall: true }, { status: 403 })
+    if (!isProUser(sub)) return NextResponse.json({ data: null, error: 'Bilan IA réservé au plan Pro', paywall: true }, { status: 403 })
 
     // ── 1. Données de la séance actuelle ────────────────────────────────
     const [

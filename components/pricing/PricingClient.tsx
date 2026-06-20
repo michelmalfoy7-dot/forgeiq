@@ -83,11 +83,13 @@ const FREE_FEATURES = [
 ]
 
 export function PricingClient({
-  subscriptionStatus = 'free',
+  isPro = false,
+  isLifetime = false,
   subscriptionPlan = null,
   hasStripeCustomer = false,
 }: {
-  subscriptionStatus?: string
+  isPro?: boolean
+  isLifetime?: boolean
   subscriptionPlan?: string | null
   hasStripeCustomer?: boolean
 }) {
@@ -95,9 +97,6 @@ export function PricingClient({
   const [portalLoading, setPortalLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
-
-  const isPro = subscriptionStatus === 'pro' || subscriptionStatus === 'lifetime'
-  const isLifetime = subscriptionStatus === 'lifetime'
 
   async function handleSubscribe(planId: string) {
     setError(null)

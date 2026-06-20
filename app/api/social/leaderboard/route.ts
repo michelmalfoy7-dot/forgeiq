@@ -86,12 +86,13 @@ export async function GET(request: NextRequest) {
     const authMap = new Map((authProfiles ?? []).map((p: { id: string; display_name: string | null }) => [p.id, p]))
 
     const leaderboard = top10
+      .filter((row) => {
+        const social = socialMap.get(row.user_id)
+        return social?.is_public !== false
+      })
       .map((row, index) => {
         const social = socialMap.get(row.user_id)
         const auth   = authMap.get(row.user_id)
-        // Exclure uniquement les profils explicitement privés (is_public = false)
-        // null ou absent = visible dans le classement
-        if (social?.is_public === false) return null
         return {
           rank: index + 1,
           user_id: row.user_id,
@@ -102,7 +103,6 @@ export async function GET(request: NextRequest) {
           is_me: row.user_id === user.id,
         }
       })
-      .filter(Boolean)
 
     return NextResponse.json({ data: leaderboard, error: null })
   } catch {

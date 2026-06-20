@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { PricingClient } from '@/components/pricing/PricingClient'
+import { PLAN_SELECT, isRealProUser, isLifetimeUser, type ProfileForPlan } from '@/lib/utils/plan'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,13 +26,16 @@ export default async function PricingPage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('subscription_status, subscription_plan, stripe_customer_id')
+    .select(`${PLAN_SELECT}, stripe_customer_id`)
     .eq('id', user.id)
-    .single()
+    .maybeSingle()
+
+  const planProfile = profile as ProfileForPlan
 
   return (
     <PricingClient
-      subscriptionStatus={profile?.subscription_status ?? 'free'}
+      isPro={isRealProUser(planProfile)}
+      isLifetime={isLifetimeUser(planProfile)}
       subscriptionPlan={profile?.subscription_plan ?? null}
       hasStripeCustomer={!!profile?.stripe_customer_id}
     />

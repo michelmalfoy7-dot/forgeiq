@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { AI_MODELS } from '@/lib/utils/ai-models'
-import { isRealProUser } from '@/lib/utils/plan'
+import { PLAN_SELECT, isRealProUser, isLifetimeUser, type ProfileForPlan } from '@/lib/utils/plan'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30 // Vercel — analyse vision peut prendre jusqu'à 30s
@@ -29,31 +29,25 @@ export async function POST(req: NextRequest) {
     // ── Vérification des limites ────────────────────────────────────────
     const { data: profile } = await supabase
       .from('profiles')
-      .select('subscription_status, subscription_plan, is_admin')
+      .select(PLAN_SELECT)
       .eq('id', user.id)
       .maybeSingle()
 
-    const isAdmin = profile?.is_admin ?? false
-    const status  = profile?.subscription_status ?? 'free'
-    const plan    = profile?.subscription_plan ?? 'free'
-
-    // Utilise isRealProUser pour centraliser la logique Pro (admin + abonnés Stripe)
-    const proUser = isRealProUser(profile)
-    const isFree  = !proUser
+    const planProfile = profile as ProfileForPlan
+    const proUser = isRealProUser(planProfile)
 
     let photoLimit: number
-    if (isAdmin || status === 'lifetime' || plan === 'lifetime') {
+    if (planProfile?.is_admin || isLifetimeUser(planProfile)) {
       photoLimit = PHOTO_LIMITS.lifetime
-    } else if (status === 'pro' && plan === 'annual') {
+    } else if (planProfile?.subscription_status === 'pro' && planProfile?.subscription_plan === 'annual') {
       photoLimit = PHOTO_LIMITS.annual
-    } else if (status === 'pro') {
+    } else if (planProfile?.subscription_status === 'pro') {
       photoLimit = PHOTO_LIMITS.monthly
     } else {
       photoLimit = PHOTO_LIMITS.free
     }
 
-    // Free = bloqué immédiatement (photoLimit = 0)
-    if (isFree) {
+    if (!proUser) {
       return NextResponse.json({
         data: null,
         error: 'L\'analyse photo est réservée aux abonnés Pro. Passe en Pro pour scanner tes repas en photo.',
@@ -62,7 +56,7 @@ export async function POST(req: NextRequest) {
       }, { status: 403 })
     }
 
-    if (!isAdmin && photoLimit !== Infinity) {
+    if (!planProfile?.is_admin && photoLimit !== Infinity) {
       // Pro mensuel → compter ce mois-ci
       const startOfMonth = new Date()
       startOfMonth.setDate(1)
@@ -82,7 +76,7 @@ export async function POST(req: NextRequest) {
           limitReached: true,
           count: photoCount,
           limit: photoLimit,
-          isFree,
+          isFree: !proUser,
         }, { status: 429 })
       }
     }

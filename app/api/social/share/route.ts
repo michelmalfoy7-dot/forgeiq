@@ -16,14 +16,14 @@ export async function POST(request: Request) {
     }
 
     // Vérifier que le workout appartient bien à l'utilisateur connecté
-    const { data: workout, error: workoutError } = await supabase
+    const { data: workout } = await supabase
       .from('workouts')
       .select('id, session_name')
       .eq('id', body.workout_id)
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
-    if (workoutError || !workout) {
+    if (!workout) {
       return NextResponse.json({ data: null, error: 'Séance introuvable ou accès refusé' }, { status: 404 })
     }
 

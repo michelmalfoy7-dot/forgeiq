@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { GenerateProgramClient } from '@/components/programs/GenerateProgramClient'
+import { PLAN_SELECT, isProUser, isLifetimeUser, type ProfileForPlan } from '@/lib/utils/plan'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,12 +14,12 @@ export default async function GenerateProgramPage() {
   // Vérification plan + contexte salle
   const { data: profile } = await supabase
     .from('profiles')
-    .select('subscription_status, is_admin, referral_pro_until, gym_id, gym_equipment_profiles(tier, name, logo_emoji, features)')
+    .select(`${PLAN_SELECT}, gym_id, gym_equipment_profiles(tier, name, logo_emoji, features)`)
     .eq('id', user.id)
     .maybeSingle()
 
-  const { isProUser } = await import('@/lib/utils/plan')
-  const isPro = isProUser(profile as Parameters<typeof isProUser>[0])
+  const planProfile = profile as ProfileForPlan
+  const isPro = isProUser(planProfile)
 
   type GymRef = { tier: string; name: string; logo_emoji: string; features: string[] } | null
   const gymRef = (profile as unknown as { gym_equipment_profiles?: GymRef })?.gym_equipment_profiles ?? null
@@ -26,9 +27,7 @@ export default async function GenerateProgramPage() {
   const gymName = gymRef?.name ?? null
   const gymFeatures = gymRef?.features ?? null
 
-  const isAdmin = !!(profile as unknown as { is_admin?: boolean | null })?.is_admin
-  const isLifetime = (profile as unknown as { subscription_status?: string })?.subscription_status === 'lifetime'
-  const unlimitedGenerations = isAdmin || isLifetime
+  const unlimitedGenerations = !!planProfile?.is_admin || isLifetimeUser(planProfile)
 
   // Quota du mois (uniquement pour les non-Lifetime / non-Admin)
   let generationsLeft = 999

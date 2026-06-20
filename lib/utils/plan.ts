@@ -5,6 +5,8 @@ export type ProfileForPlan = {
   referral_pro_until?: string | null
 }
 
+export const PLAN_SELECT = 'subscription_status, subscription_plan, is_admin, referral_pro_until' as const
+
 /** Abonnement payant actif (Stripe Pro/Lifetime) ou admin. */
 export function isRealProUser(profile: ProfileForPlan | null | undefined): boolean {
   if (!profile) return false
@@ -16,10 +18,16 @@ export function isRealProUser(profile: ProfileForPlan | null | undefined): boole
   )
 }
 
+/** Lifetime spécifiquement (pour le styling UI). */
+export function isLifetimeUser(profile: ProfileForPlan | null | undefined): boolean {
+  if (!profile) return false
+  return profile.subscription_status === 'lifetime' || profile.subscription_plan === 'lifetime'
+}
+
 /** Trial referral en cours (pas encore abonné). */
 export function isReferralTrial(profile: ProfileForPlan | null | undefined): boolean {
   if (!profile) return false
-  if (isRealProUser(profile)) return false // abonné réel → pas un trial
+  if (isRealProUser(profile)) return false
   if (!profile.referral_pro_until) return false
   return new Date(profile.referral_pro_until + 'T23:59:59') >= new Date()
 }
@@ -37,4 +45,9 @@ export function referralDaysLeft(profile: ProfileForPlan | null | undefined): nu
  */
 export function isProUser(profile: ProfileForPlan | null | undefined): boolean {
   return isRealProUser(profile) || isReferralTrial(profile)
+}
+
+/** Free pur : aucun accès Pro, aucun trial. */
+export function isFreeUser(profile: ProfileForPlan | null | undefined): boolean {
+  return !isProUser(profile)
 }

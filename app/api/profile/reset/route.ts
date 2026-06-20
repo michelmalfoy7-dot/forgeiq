@@ -17,13 +17,26 @@ export async function POST() {
         .in('workout_id', userWorkouts.map(w => w.id))
     }
 
+    // Supprimer les ingrédients de recettes (FK child de nutrition_recipes)
+    const { data: userRecipes } = await supabase
+      .from('nutrition_recipes').select('id').eq('user_id', user.id)
+    if (userRecipes?.length) {
+      await supabase.from('recipe_ingredients').delete()
+        .in('recipe_id', userRecipes.map(r => r.id))
+    }
+
     // Puis supprimer le reste en parallèle
     await Promise.all([
       supabase.from('workouts').delete().eq('user_id', user.id),
       supabase.from('coach_messages').delete().eq('user_id', user.id),
+      supabase.from('coach_memory').delete().eq('user_id', user.id),
       supabase.from('personal_records').delete().eq('user_id', user.id),
       supabase.from('daily_logs').delete().eq('user_id', user.id),
       supabase.from('food_logs').delete().eq('user_id', user.id),
+      supabase.from('nutrition_favorites').delete().eq('user_id', user.id),
+      supabase.from('nutrition_recipes').delete().eq('user_id', user.id),
+      supabase.from('progress_photos').delete().eq('user_id', user.id),
+      supabase.from('fasting_sessions').delete().eq('user_id', user.id),
     ])
 
     // Reset programme actuel

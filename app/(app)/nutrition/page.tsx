@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { NutritionClient } from '@/components/nutrition/NutritionClient'
 import { calcDailyTarget } from '@/lib/utils/tdee'
+import { PLAN_SELECT, isRealProUser } from '@/lib/utils/plan'
 
 export const dynamic = 'force-dynamic'
 
@@ -109,16 +110,11 @@ export default async function NutritionPage() {
   // si une colonne du SELECT principal n'existe pas en production
   const { data: planRow } = await supabase
     .from('profiles')
-    .select('subscription_status, subscription_plan, is_admin')
+    .select(PLAN_SELECT)
     .eq('id', user.id)
     .maybeSingle()
 
-  const isPro = !!(
-    planRow?.is_admin ||
-    planRow?.subscription_status === 'lifetime' ||
-    planRow?.subscription_status === 'pro' ||
-    planRow?.subscription_plan === 'lifetime'
-  )
+  const isPro = isRealProUser(planRow)
 
   return (
     <NutritionClient

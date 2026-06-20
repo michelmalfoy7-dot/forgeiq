@@ -224,6 +224,7 @@ export default function CoachPage() {
   const [showPaywall, setShowPaywall] = useState(false)
   const [followUps] = useState<string[]>(getFollowUps())
   const [clearing, setClearing] = useState(false)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
   // Volume hebdo + alerte deload
   const [deloadMuscles, setDeloadMuscles] = useState<string[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)

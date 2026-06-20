@@ -74,22 +74,20 @@ export async function POST(request: Request) {
 
     if (insertError) return NextResponse.json({ data: null, error: insertError.message }, { status: 400 })
 
-    // Incrémenter comments_count (fire-and-forget)
-    void (async () => {
-      try {
-        const { data: share } = await supabase
+    // Incrémenter comments_count (awaité — fire-and-forget échoue sur Vercel)
+    try {
+      const { data: share } = await supabase
+        .from('workout_shares')
+        .select('comments_count')
+        .eq('id', body.share_id)
+        .maybeSingle()
+      if (share) {
+        await supabase
           .from('workout_shares')
-          .select('comments_count')
+          .update({ comments_count: Math.max(0, (share.comments_count ?? 0) + 1) })
           .eq('id', body.share_id)
-          .maybeSingle()
-        if (share) {
-          await supabase
-            .from('workout_shares')
-            .update({ comments_count: Math.max(0, (share.comments_count ?? 0) + 1) })
-            .eq('id', body.share_id)
-        }
-      } catch { /* silencieux */ }
-    })()
+      }
+    } catch { /* silencieux */ }
 
     // Notification au propriétaire du post + mentions @username (fire-and-forget)
     void (async () => {
@@ -180,23 +178,21 @@ export async function DELETE(request: Request) {
 
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 400 })
 
-    // Décrémenter comments_count (fire-and-forget)
+    // Décrémenter comments_count (awaité — fire-and-forget échoue sur Vercel)
     if (body.share_id) {
-      void (async () => {
-        try {
-          const { data: share } = await supabase
+      try {
+        const { data: share } = await supabase
+          .from('workout_shares')
+          .select('comments_count')
+          .eq('id', body.share_id)
+          .maybeSingle()
+        if (share) {
+          await supabase
             .from('workout_shares')
-            .select('comments_count')
+            .update({ comments_count: Math.max(0, (share.comments_count ?? 0) - 1) })
             .eq('id', body.share_id)
-            .maybeSingle()
-          if (share) {
-            await supabase
-              .from('workout_shares')
-              .update({ comments_count: Math.max(0, (share.comments_count ?? 0) - 1) })
-              .eq('id', body.share_id)
-          }
-        } catch { /* silencieux */ }
-      })()
+        }
+      } catch { /* silencieux */ }
     }
 
     return NextResponse.json({ data: { deleted: true }, error: null })

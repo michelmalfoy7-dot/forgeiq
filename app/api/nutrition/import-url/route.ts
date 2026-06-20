@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { AI_MODELS } from '@/lib/utils/ai-models'
+import { PLAN_SELECT, isProUser } from '@/lib/utils/plan'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -35,19 +36,11 @@ export async function POST(req: NextRequest) {
     // Vérification plan — feature Pro uniquement
     const { data: profile } = await supabase
       .from('profiles')
-      .select('subscription_status, subscription_plan, is_admin, referral_pro_until')
+      .select(PLAN_SELECT)
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
 
-    const isAdmin    = profile?.is_admin ?? false
-    const status     = profile?.subscription_status ?? 'free'
-    const plan       = profile?.subscription_plan ?? 'free'
-    const isLifetime = status === 'lifetime' || plan === 'lifetime'
-    const proUntil   = profile?.referral_pro_until
-    const isReferral = !!proUntil && new Date(proUntil + 'T23:59:59') >= new Date()
-    const isPro      = isAdmin || isLifetime || status === 'pro' || isReferral
-
-    if (!isPro) {
+    if (!isProUser(profile)) {
       return NextResponse.json({
         data: null,
         error: 'L\'import depuis URL est réservé aux membres Pro.',

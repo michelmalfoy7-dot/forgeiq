@@ -32,90 +32,17 @@ export default async function DashboardPage() {
   if (authError) console.error('[Dashboard] getUser error:', authError)
   if (!user) redirect('/login')
 
-  const today = new Date().toISOString().split('T')[0]
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]
+  // ── Phase 1 : Profil (nécessaire pour le fuseau horaire) ──────────────────
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, height_cm, age, gender, macro_mode, custom_protein_g, custom_calories, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, avatar_url, checkin_streak, training_streak_weeks, timezone')
+    .eq('id', user.id).maybeSingle()
 
-  console.log('[Dashboard] Loading data for user:', user.id)
-
-  const [
-    { data: profile, error: profileError },
-    { data: todayLog },
-    { data: lastWorkout },
-    { data: weekWorkouts },
-    { data: weekLogs },
-    { data: todayWorkouts },
-    { data: todayFoodLogs },
-    { data: pausedWorkoutRow },
-    { data: recentWorkoutsFor60d },
-  ] = await Promise.all([
-    supabase.from('profiles')
-      .select('display_name, goal, level, current_program_id, onboarding_done, sessions_per_week, weight_kg, height_cm, age, gender, macro_mode, custom_protein_g, custom_calories, custom_carbs_g, custom_fat_g, steps_goal, target_weight_kg, avatar_url, checkin_streak, training_streak_weeks')
-      .eq('id', user.id).maybeSingle(),
-
-    supabase.from('daily_logs').select('*')
-      .eq('user_id', user.id).eq('log_date', today).maybeSingle(),
-
-    supabase.from('workouts').select('session_name, session_date, total_tonnage_kg, total_sets')
-      .eq('user_id', user.id).not('completed_at', 'is', null)
-      .order('session_date', { ascending: false }).limit(1).maybeSingle(),
-
-    // Séances réelles de la semaine — jours de repos exclus du compteur
-    supabase.from('workouts').select('id, session_date, session_name')
-      .eq('user_id', user.id).not('completed_at', 'is', null)
-      .gte('session_date', getWeekStart())
-      .not('session_name', 'in', '("Jour de repos","Repos actif","Repos complet")')
-      .order('session_date', { ascending: false }),
-
-    supabase.from('daily_logs')
-      .select('log_date, sleep_deep_min, protein_g, fatigue_score, steps, weight_kg, weight_trend')
-      .eq('user_id', user.id)
-      .gte('log_date', thirtyDaysAgo)
-      .order('log_date', { ascending: false }),
-
-    // Séances complétées aujourd'hui (pour l'état 4 cas)
-    supabase.from('workouts')
-      .select('id, session_name, total_tonnage_kg, total_sets, program_id, completed_at')
-      .eq('user_id', user.id).eq('session_date', today)
-      .not('completed_at', 'is', null)
-      .order('completed_at', { ascending: false }),
-
-    // Macros réelles du jour depuis food_logs (nutrition tracker)
-    supabase.from('food_logs')
-      .select('protein_g, calories, carbs_g, fat_g, meal_type')
-      .eq('user_id', user.id)
-      .eq('log_date', today),
-
-    // Séance en pause : démarrée aujourd'hui, non terminée — mode pause
-    supabase.from('workouts')
-      .select('id, session_name, started_at, draft_state')
-      .eq('user_id', user.id)
-      .eq('session_date', today)
-      .is('completed_at', null)
-      .not('started_at', 'is', null)
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-
-    // Séances 60 derniers jours avec started_at — pour le créneau optimal
-    supabase.from('workouts')
-      .select('started_at, total_tonnage_kg')
-      .eq('user_id', user.id)
-      .not('completed_at', 'is', null)
-      .not('started_at', 'is', null)
-      .gte('session_date', new Date(Date.now() - 60 * 86400000).toISOString().split('T')[0])
-      .not('session_name', 'in', '("Jour de repos","Repos actif","Repos complet")')
-      .neq('workout_type', 'cardio'),
-  ])
-
-  if (profileError) console.error('[Dashboard] profileError:', profileError.code, profileError.message)
-
-  // Erreur DB réelle (pas "ligne introuvable") → déclenche error.tsx avec bouton Réessayer
-  // Évite la boucle dashboard→onboarding→dashboard quand le réseau est lent/coupé
   if (profileError) {
+    console.error('[Dashboard] profileError:', profileError.code, profileError.message)
     throw new Error(`Erreur réseau — impossible de charger ton profil. (${profileError.code ?? profileError.message})`)
   }
 
-  // Profil absent pour de vrai → créer et rediriger vers l'onboarding
   if (!profile) {
     await supabase.from('profiles').upsert({
       id: user.id,
@@ -130,6 +57,76 @@ export default async function DashboardPage() {
   }
 
   if (!profile.onboarding_done) redirect('/onboarding')
+
+  // ── Phase 2 : Dates dans le fuseau horaire de l'utilisateur ──────────────
+  // Cohérent avec le cron weekly-recap qui utilise getWeekBounds(tz)
+  const userTz = (profile as { timezone?: string | null }).timezone ?? 'Europe/Paris'
+  const today = getUserToday(userTz)
+  const yesterday = getUserYesterday(userTz)
+  const thirtyDaysAgo = getUserDaysAgo(userTz, 30)
+  const weekStart = getUserWeekStart(userTz)
+  const sixtyDaysAgo = getUserDaysAgo(userTz, 60)
+
+  // ── Phase 3 : Données parallèles ─────────────────────────────────────────
+  const [
+    { data: todayLog },
+    { data: lastWorkout },
+    { data: weekWorkouts },
+    { data: weekLogs },
+    { data: todayWorkouts },
+    { data: todayFoodLogs },
+    { data: pausedWorkoutRow },
+    { data: recentWorkoutsFor60d },
+  ] = await Promise.all([
+    supabase.from('daily_logs').select('*')
+      .eq('user_id', user.id).eq('log_date', today).maybeSingle(),
+
+    supabase.from('workouts').select('session_name, session_date, total_tonnage_kg, total_sets')
+      .eq('user_id', user.id).not('completed_at', 'is', null)
+      .order('session_date', { ascending: false }).limit(1).maybeSingle(),
+
+    supabase.from('workouts').select('id, session_date, session_name')
+      .eq('user_id', user.id).not('completed_at', 'is', null)
+      .gte('session_date', weekStart)
+      .not('session_name', 'in', '("Jour de repos","Repos actif","Repos complet")')
+      .order('session_date', { ascending: false }),
+
+    supabase.from('daily_logs')
+      .select('log_date, sleep_deep_min, protein_g, fatigue_score, steps, weight_kg, weight_trend')
+      .eq('user_id', user.id)
+      .gte('log_date', thirtyDaysAgo)
+      .order('log_date', { ascending: false }),
+
+    supabase.from('workouts')
+      .select('id, session_name, total_tonnage_kg, total_sets, program_id, completed_at')
+      .eq('user_id', user.id).eq('session_date', today)
+      .not('completed_at', 'is', null)
+      .order('completed_at', { ascending: false }),
+
+    supabase.from('food_logs')
+      .select('protein_g, calories, carbs_g, fat_g, meal_type')
+      .eq('user_id', user.id)
+      .eq('log_date', today),
+
+    supabase.from('workouts')
+      .select('id, session_name, started_at, draft_state')
+      .eq('user_id', user.id)
+      .eq('session_date', today)
+      .is('completed_at', null)
+      .not('started_at', 'is', null)
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+
+    supabase.from('workouts')
+      .select('started_at, total_tonnage_kg')
+      .eq('user_id', user.id)
+      .not('completed_at', 'is', null)
+      .not('started_at', 'is', null)
+      .gte('session_date', sixtyDaysAgo)
+      .not('session_name', 'in', '("Jour de repos","Repos actif","Repos complet")')
+      .neq('workout_type', 'cardio'),
+  ])
 
   // ── Macros réelles depuis food_logs (priorité sur le check-in manuel) ──
   const foodLogTotals = (todayFoodLogs ?? []).reduce(

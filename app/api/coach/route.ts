@@ -5,6 +5,7 @@ import { calcDailyTarget } from '@/lib/utils/tdee'
 import { MUSCLE_GROUPS, VOLUME_TARGETS } from '@/lib/utils/volume'
 import { AI_MODELS } from '@/lib/utils/ai-models'
 import { buildSystemPrompt, type CoachMemoryEntry } from '@/lib/ai/coach-prompt'
+import { PLAN_SELECT, isFreeUser } from '@/lib/utils/plan'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // Streaming Sonnet — peut prendre 30-50s sur longues réponses
@@ -149,14 +150,14 @@ export async function POST(req: NextRequest) {
     // Récupérer statut, plan et flag admin — détermine le type de comptage
     const { data: subProfile } = await supabase
       .from('profiles')
-      .select('subscription_status, subscription_plan, is_admin, referral_pro_until')
+      .select(PLAN_SELECT)
       .eq('id', user.id)
       .maybeSingle()
 
     const status = subProfile?.subscription_status ?? 'free'
     const plan   = subProfile?.subscription_plan ?? 'free'
     const isAdmin = subProfile?.is_admin ?? false
-    const isFree = !isAdmin && status !== 'pro' && status !== 'lifetime'
+    const isFree = isFreeUser(subProfile)
 
     // ── Comptage messages selon le plan ───────────────────────────────────────
     let msgCount = 0

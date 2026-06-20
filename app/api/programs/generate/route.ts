@@ -6,6 +6,7 @@ import {
   resolveSlot, type TierKey,
 } from '@/lib/programs/slots'
 import { AI_MODELS } from '@/lib/utils/ai-models'
+import { PLAN_SELECT, isProUser, isLifetimeUser, type ProfileForPlan } from '@/lib/utils/plan'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60   // génération Haiku peut prendre 20-30s
@@ -173,7 +174,7 @@ export async function POST(req: NextRequest) {
     // ── 2. Plan check ───────────────────────────────────────────────────────────
     const { data: profile, error: profileErr } = await supabase
       .from('profiles')
-      .select('subscription_status, is_admin, goal, level, gym_id, gym_equipment_profiles(tier, name, features)')
+      .select(`${PLAN_SELECT}, goal, level, gym_id, gym_equipment_profiles(tier, name, features)`)
       .eq('id', user.id)
       .maybeSingle()
 
@@ -182,9 +183,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ data: null, error: 'Erreur profil.' }, { status: 500 })
     }
 
-    const status  = profile?.subscription_status ?? 'free'
-    const isAdmin = (profile as unknown as { is_admin?: boolean })?.is_admin ?? false
-    const isPro   = isAdmin || status === 'pro' || status === 'lifetime'
+    const isPro = isProUser(profile as ProfileForPlan)
 
     if (!isPro) {
       return NextResponse.json(
@@ -194,7 +193,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 3. Quota mensuel (Lifetime + Admin = illimité) ─────────────────────────
-    const unlimitedGenerations = isAdmin || status === 'lifetime'
+    const unlimitedGenerations = !!(profile as ProfileForPlan)?.is_admin || isLifetimeUser(profile as ProfileForPlan)
     let generationsThisMonth = 0
 
     if (!unlimitedGenerations) {
