@@ -199,6 +199,11 @@ ${ctx.tonnageDelta.length > 0
       return `${d.muscle} ${label}`
     }).join(' | ')
   : 'Données insuffisantes'}
+${ctx.tonnageDelta.length > 0 && (() => {
+  const strongMuscles = ctx.tonnageDelta.filter(d => d.delta >= 10).map(d => d.muscle)
+  if (strongMuscles.length === 0) return ''
+  return `→ Groupes en forte progression (>+10%) : ${strongMuscles.join(', ')} — fenêtre favorable pour battre des PRs sur ces exercices`
+})()}
 ${ctx.sessionTonnageContext ? `
 ## Tonnage en contexte — séance du jour
 ${ctx.sessionTonnageContext}

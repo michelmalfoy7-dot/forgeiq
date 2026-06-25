@@ -115,6 +115,14 @@ type MealSuggestion = {
   prep_time?: string
 }
 
+// Heures typiques par type de repas (pour badges Pré/Post séance)
+const MEAL_TYPICAL_HOUR: Record<string, number> = {
+  breakfast: 7,
+  lunch: 12,
+  snack: 16,
+  dinner: 19,
+}
+
 type Props = {
   initialLogs: FoodLog[]
   targets: Targets
@@ -124,6 +132,7 @@ type Props = {
   isRestDay?: boolean    // jour de repos (pas de séance complétée)
   workoutKcal?: number   // calories séance d'aujourd'hui (+0 si repos)
   isPro?: boolean        // statut Pro — déterminé côté serveur
+  workoutHour?: number | null // heure (locale) de fin de séance, pour badges Pré/Post
 }
 
 // ── Types analyse photo ────────────────────────────────────────
@@ -2826,7 +2835,7 @@ type QuickAddState = {
   adding: boolean
 }
 
-export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 0, waterGoalMl = 2500, isRestDay, workoutKcal, isPro = false }: Props) {
+export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 0, waterGoalMl = 2500, isRestDay, workoutKcal, isPro = false, workoutHour = null }: Props) {
   const pathname = usePathname()
   const [logs, setLogs] = useState<FoodLog[]>(initialLogs)
   const [viewDate, setViewDate] = useState(today)       // date affichée (peut être ≠ today)
@@ -3802,6 +3811,18 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
                       {entries.length} aliment{entries.length > 1 ? 's' : ''}
                     </span>
                   )}
+                  {/* Badge Pré/Post séance — uniquement si séance aujourd'hui */}
+                  {workoutHour !== null && viewDate === today && (() => {
+                    const mealH = MEAL_TYPICAL_HOUR[meal] ?? null
+                    if (mealH === null) return null
+                    if (mealH >= workoutHour - 2 && mealH < workoutHour) {
+                      return <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: '#FF6B3522', color: 'var(--fiq-orange)' }}>Pré-séance 🔥</span>
+                    }
+                    if (mealH >= workoutHour && mealH <= workoutHour + 3) {
+                      return <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: '#B4FF4A22', color: 'var(--fiq-accent)' }}>Post-séance ⚡</span>
+                    }
+                    return null
+                  })()}
                 </button>
                 <div className="flex items-center gap-2">
                   {mealCals > 0 && (

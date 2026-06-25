@@ -52,7 +52,7 @@ export default async function NutritionPage() {
     // Séance complétée aujourd'hui — tonnage + séries + nom pour TDEE précis
     supabase
       .from('workouts')
-      .select('total_tonnage_kg, total_sets, session_name')
+      .select('total_tonnage_kg, total_sets, session_name, completed_at')
       .eq('user_id', user.id)
       .eq('session_date', today)
       .not('completed_at', 'is', null)
@@ -116,6 +116,11 @@ export default async function NutritionPage() {
 
   const isPro = isRealProUser(planRow)
 
+  // Heure de fin de séance (locale) — pour les badges Pré/Post séance en nutrition
+  const workoutHour = todayWorkout?.completed_at
+    ? new Date(todayWorkout.completed_at as string).getHours()
+    : null
+
   return (
     <NutritionClient
       initialLogs={logs ?? []}
@@ -126,6 +131,7 @@ export default async function NutritionPage() {
       isRestDay={isRestDay}
       workoutKcal={dailyTarget.workoutKcal > 0 ? dailyTarget.workoutKcal : undefined}
       isPro={isPro}
+      workoutHour={workoutHour}
     />
   )
 }

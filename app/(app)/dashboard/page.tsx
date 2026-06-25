@@ -14,6 +14,7 @@ import { FiqBreakfast, FiqLunch, FiqDinner, FiqSnack, FiqStreak, FiqAlert, FiqCh
 import { calcDailyTarget } from '@/lib/utils/tdee'
 import { VolumeHebdoWidget } from '@/components/dashboard/VolumeHebdoWidget'
 import { RecoveryScoreCard } from '@/components/dashboard/RecoveryScoreCard'
+import { MuscleFreshnessWidget } from '@/components/dashboard/MuscleFreshnessWidget'
 
 export const dynamic = 'force-dynamic'
 
@@ -579,6 +580,9 @@ export default async function DashboardPage() {
           </div>
         </Link>
       )}
+
+      {/* Récupération musculaire par groupe */}
+      <MuscleFreshnessWidget />
 
       {/* Alerte récupération faible */}
       {recoveryScore !== null && recoveryScore < 4 && (

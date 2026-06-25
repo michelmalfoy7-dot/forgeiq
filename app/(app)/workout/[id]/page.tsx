@@ -26,6 +26,7 @@ type SetRow = {
   is_warmup: boolean
   set_type?: SetType           // type de série : travail / drop set / échec
   note?: string | null         // note libre par série
+  tempo?: string | null        // tempo notation (ex: "3-1-2", stocké localement)
 }
 
 /** Normalise virgule → point et parse un poids flottant sans NaN */
@@ -2451,6 +2452,7 @@ function ExerciseCard({
 }) {
   const [showHistory, setShowHistory] = useState(true)
   const [showPlateCalc, setShowPlateCalc] = useState(false)
+  const [show1RM, setShow1RM] = useState(false)
   // ID du set dont la note inline est ouverte (null = aucune)
   const [openNoteSetId, setOpenNoteSetId] = useState<string | null>(null)
   // États du bottomsheet substitutions
@@ -2605,6 +2607,20 @@ function ExerciseCard({
               PR {group.pr}kg
             </span>
           )}
+          {group.pr && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setShow1RM(v => !v) }}
+              className="flex items-center justify-center w-7 h-7 rounded-lg text-xs font-black"
+              title="Auto-remplir poids par % du 1RM"
+              style={{
+                background: show1RM ? '#B4FF4A22' : 'var(--fiq-faint)',
+                border: `1px solid ${show1RM ? '#B4FF4A44' : 'var(--fiq-border)'}`,
+                color: show1RM ? 'var(--fiq-accent)' : 'var(--fiq-muted)',
+              }}
+            >
+              %
+            </button>
+          )}
           {/* Bouton substituer l'exercice */}
           {!group.exercise_id.startsWith('suggested-') && (
             <button
@@ -2651,6 +2667,34 @@ function ExerciseCard({
           )}
         </div>
       </div>
+
+      {/* % 1RM quick picker — auto-remplit le poids de tous les sets de travail */}
+      {show1RM && group.pr && (
+        <div className="flex flex-wrap gap-1.5">
+          {[50, 60, 70, 75, 80, 85, 90, 95].map(pct => {
+            const weight = Math.round(group.pr! * pct / 100 / 2.5) * 2.5
+            return (
+              <button
+                key={pct}
+                onClick={() => {
+                  group.sets
+                    .filter(s => !s.is_warmup)
+                    .forEach(s => onUpdateSet(s.id, 'weight_kg', String(weight)))
+                  setShow1RM(false)
+                }}
+                className="px-2 py-1 rounded-lg text-xs font-black"
+                style={{
+                  background: 'var(--fiq-faint)',
+                  border: '1px solid var(--fiq-border)',
+                  color: 'var(--fiq-muted)',
+                }}
+              >
+                {pct}% · {weight}kg
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {showHistory && group.lastSession && group.lastSession.length > 0 && (
         <div className="rounded-lg p-3 space-y-1" style={{ background: 'var(--fiq-faint)' }}>
@@ -2918,6 +2962,26 @@ function ExerciseCard({
                   aria-label="+1 rep"
                 >+</button>
               </div>
+              {/* Tempo — notation ex: 3-1-2, visible uniquement sur sets de travail */}
+              {!s.is_warmup && (
+                <input
+                  type="text"
+                  inputMode="text"
+                  maxLength={7}
+                  placeholder="tempo"
+                  value={s.tempo ?? ''}
+                  onChange={(e) => onUpdateSet(s.id, 'tempo', e.target.value)}
+                  className="text-center text-[10px] h-[22px] rounded-lg"
+                  style={{
+                    width: 46,
+                    background: s.tempo ? '#A855F718' : 'var(--fiq-faint)',
+                    border: `1px solid ${s.tempo ? '#A855F744' : 'var(--fiq-border)'}`,
+                    color: s.tempo ? '#A855F7' : 'var(--fiq-muted)',
+                    fontFamily: 'monospace',
+                    flexShrink: 0,
+                  }}
+                />
+              )}
               <div className="flex-1" />
               {/* Note */}
               <button
