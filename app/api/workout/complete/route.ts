@@ -13,7 +13,7 @@ type SetInput = {
   reps: number
   rpe?: number | null
   is_warmup?: boolean
-  set_type?: string   // work | top_set | backoff | dropset | failure | warmup
+  set_type?: string   // work | top_set | backoff | drop | failure | pause_rep | warmup
   is_bilateral_dumbbell?: boolean
   is_unilateral?: boolean
   unilateral_both_sides?: boolean
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     //  - is_unilateral + unilateral_both_sides : câble/machine fait des 2 côtés (tirage unilatéral, etc.)
     const totalTonnage = setsForTonnage.reduce((acc, s) => {
       const isBilateralDumbbell = !!s.is_bilateral_dumbbell
-      const isUnilateralDouble  = (s.is_unilateral && (s.unilateral_both_sides ?? true))
+      const isUnilateralDouble  = (s.is_unilateral && (s.unilateral_both_sides ?? false))
       const multiplier = (isBilateralDumbbell || isUnilateralDouble) ? 2 : 1
       return acc + s.weight_kg * s.reps * multiplier
     }, 0)
@@ -120,7 +120,7 @@ export async function POST(request: Request) {
       // PR = charge la plus lourde du top set explicite, sinon de tous les sets (à égalité → plus de reps)
       // Les back-off sets et drop sets sont des sets de volume, pas des PRs — priorité au top_set tagué
       const taggedTopSets = exSets.filter(s => s.set_type === 'top_set')
-      const prCandidates = taggedTopSets.length > 0 ? taggedTopSets : exSets.filter(s => s.set_type !== 'backoff' && s.set_type !== 'drop')
+      const prCandidates = taggedTopSets.length > 0 ? taggedTopSets : exSets.filter(s => !['backoff', 'drop', 'failure', 'pause_rep'].includes(s.set_type ?? ''))
       const heaviestSet = prCandidates.reduce((best, s) =>
         s.weight_kg > best.weight_kg
           ? s

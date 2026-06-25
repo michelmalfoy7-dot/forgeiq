@@ -277,11 +277,18 @@ export async function PATCH(req: NextRequest) {
 
       if (existingIngr && existingIngr.length > 0) {
         const allMacros = calcPerServing(existingIngr as Ingredient[], servings)
-        updates.calories_per_serving = allMacros.calories_per_serving
-        updates.protein_per_serving  = allMacros.protein_per_serving
-        updates.carbs_per_serving    = allMacros.carbs_per_serving
-        updates.fat_per_serving      = allMacros.fat_per_serving
-        updates.fiber_per_serving    = allMacros.fiber_per_serving
+        updates.calories_per_serving      = allMacros.calories_per_serving
+        updates.protein_per_serving       = allMacros.protein_per_serving
+        updates.carbs_per_serving         = allMacros.carbs_per_serving
+        updates.fat_per_serving           = allMacros.fat_per_serving
+        updates.fiber_per_serving         = allMacros.fiber_per_serving
+        updates.iron_mg_per_serving       = allMacros.iron_mg_per_serving
+        updates.magnesium_mg_per_serving  = allMacros.magnesium_mg_per_serving
+        updates.zinc_mg_per_serving       = allMacros.zinc_mg_per_serving
+        updates.calcium_mg_per_serving    = allMacros.calcium_mg_per_serving
+        updates.potassium_mg_per_serving  = allMacros.potassium_mg_per_serving
+        updates.vitamin_c_mg_per_serving  = allMacros.vitamin_c_mg_per_serving
+        updates.vitamin_d_mcg_per_serving = allMacros.vitamin_d_mcg_per_serving
       }
     }
 
