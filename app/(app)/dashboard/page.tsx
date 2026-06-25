@@ -19,6 +19,23 @@ export const dynamic = 'force-dynamic'
 
 const SESSIONS_TARGET = 4
 
+// Retourne la date locale YYYY-MM-DD dans le fuseau de l'utilisateur
+function getUserToday(tz: string): string {
+  return new Date().toLocaleDateString('sv', { timeZone: tz })
+}
+function getUserYesterday(tz: string): string {
+  return new Date(Date.now() - 86400000).toLocaleDateString('sv', { timeZone: tz })
+}
+function getUserDaysAgo(tz: string, n: number): string {
+  return new Date(Date.now() - n * 86400000).toLocaleDateString('sv', { timeZone: tz })
+}
+function getUserWeekStart(tz: string): string {
+  const now = new Date()
+  const local = new Date(now.toLocaleString('en-US', { timeZone: tz }))
+  const day = local.getDay() === 0 ? 6 : local.getDay() - 1 // lundi = 0
+  return new Date(Date.now() - day * 86400000).toLocaleDateString('sv', { timeZone: tz })
+}
+
 export default async function DashboardPage() {
   let supabase
   try {
@@ -238,7 +255,6 @@ export default async function DashboardPage() {
   }
 
   // ── Cible calorique dynamique du jour — source unique via calcDailyTarget ──
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
   const yesterdaySteps = (weekLogs ?? []).find(l => l.log_date === yesterday)?.steps ?? null
 
   // Moyenne steps 30 derniers jours (journées COMPLÈTES = exclut aujourd'hui, exclut 0)
