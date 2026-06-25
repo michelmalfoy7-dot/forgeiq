@@ -120,7 +120,7 @@ export async function POST(request: Request) {
       // PR = charge la plus lourde du top set explicite, sinon de tous les sets (à égalité → plus de reps)
       // Les back-off sets et drop sets sont des sets de volume, pas des PRs — priorité au top_set tagué
       const taggedTopSets = exSets.filter(s => s.set_type === 'top_set')
-      const prCandidates = taggedTopSets.length > 0 ? taggedTopSets : exSets.filter(s => s.set_type !== 'backoff')
+      const prCandidates = taggedTopSets.length > 0 ? taggedTopSets : exSets.filter(s => s.set_type !== 'backoff' && s.set_type !== 'drop')
       const heaviestSet = prCandidates.reduce((best, s) =>
         s.weight_kg > best.weight_kg
           ? s

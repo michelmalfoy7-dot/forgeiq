@@ -105,13 +105,11 @@ export async function POST() {
     // Parser FC repos (min sur la journée)
     let restingHr: number | null = null
     try {
-      const points = stepsData?.bucket?.[0]?.dataset?.[0]?.point ?? []
       const hrPoints = hrData?.bucket?.[0]?.dataset?.[0]?.point ?? []
       if (hrPoints.length > 0) {
         const values = hrPoints.map((p: { value: { fpVal?: number }[] }) => p.value?.[0]?.fpVal ?? 0).filter((v: number) => v > 30)
         if (values.length > 0) restingHr = Math.round(Math.min(...values))
       }
-      void points
     } catch { /* données absentes */ }
 
     // Parser sommeil (minutes par stade)

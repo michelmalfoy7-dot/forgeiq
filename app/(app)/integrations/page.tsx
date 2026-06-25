@@ -25,6 +25,7 @@ function IntegrationsContent() {
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null)
   const [disconnecting, setDisconnecting] = useState(false)
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
 
   const showToast = (msg: string, ok = true) => {
@@ -69,7 +70,8 @@ function IntegrationsContent() {
   }
 
   async function handleDisconnect() {
-    if (!confirm('Déconnecter Google Fit ?')) return
+    if (!confirmDisconnect) { setConfirmDisconnect(true); return }
+    setConfirmDisconnect(false)
     setDisconnecting(true)
     try {
       await fetch('/api/integrations/google-fit/sync', { method: 'DELETE' })
@@ -177,14 +179,34 @@ function IntegrationsContent() {
                 <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
                 {syncing ? 'Sync...' : 'Sync maintenant'}
               </button>
-              <button
-                onClick={handleDisconnect}
-                disabled={disconnecting}
-                className="px-4 py-3 rounded-xl font-black text-sm flex items-center gap-1 disabled:opacity-50"
-                style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)' }}
-              >
-                <Unlink className="w-4 h-4" />
-              </button>
+              {confirmDisconnect ? (
+                <div className="flex gap-1">
+                  <button
+                    onClick={handleDisconnect}
+                    disabled={disconnecting}
+                    className="px-3 py-3 rounded-xl font-black text-xs disabled:opacity-50"
+                    style={{ background: 'var(--fiq-red)', color: '#fff' }}
+                  >
+                    Confirmer
+                  </button>
+                  <button
+                    onClick={() => setConfirmDisconnect(false)}
+                    className="px-3 py-3 rounded-xl font-black text-xs"
+                    style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)' }}
+                  >
+                    Annuler
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleDisconnect}
+                  disabled={disconnecting}
+                  className="px-4 py-3 rounded-xl font-black text-sm flex items-center gap-1 disabled:opacity-50"
+                  style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-muted)' }}
+                >
+                  <Unlink className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </div>
         ) : (

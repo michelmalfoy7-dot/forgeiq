@@ -1,13 +1,20 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { X, Share, Download } from 'lucide-react'
 
 type Platform = 'ios' | 'android' | null
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+}
+
 function detectPlatform(): Platform {
   const ua = navigator.userAgent
-  const isIOS = /iPhone|iPad|iPod/.test(ua)
+  // iPad sur iPadOS 13+ se présente comme "Macintosh" — détecter via touch
+  const isIOS = /iPhone|iPod/.test(ua) ||
+    (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
   const isSafari = /Safari/.test(ua) && !/Chrome|CriOS|FxiOS|EdgiOS/.test(ua)
   const isAndroid = /Android/.test(ua)
   const isChrome = /Chrome/.test(ua) && !/Edg|OPR/.test(ua)
@@ -20,6 +27,7 @@ function detectPlatform(): Platform {
 export function InstallBanner() {
   const [platform, setPlatform] = useState<Platform>(null)
   const [show, setShow] = useState(false)
+  const deferredPrompt = useRef<BeforeInstallPromptEvent | null>(null)
 
   useEffect(() => {
     // Déjà installée en mode standalone → rien afficher
@@ -35,9 +43,19 @@ export function InstallBanner() {
     const p = detectPlatform()
     if (!p) return
 
+    // Capturer le prompt natif Android (beforeinstallprompt)
+    const handler = (e: Event) => {
+      e.preventDefault()
+      deferredPrompt.current = e as BeforeInstallPromptEvent
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+
     setPlatform(p)
     const timer = setTimeout(() => setShow(true), 3000)
-    return () => clearTimeout(timer)
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('beforeinstallprompt', handler)
+    }
   }, [])
 
   function dismiss() {
@@ -199,10 +217,15 @@ export function InstallBanner() {
       </div>
 
       <button
-        onClick={() => {
-          dismiss()
-          // Le prompt natif Android est géré par le navigateur via beforeinstallprompt
-          // L'utilisateur voit la modal système d'installation Chrome
+        onClick={async () => {
+          if (deferredPrompt.current) {
+            await deferredPrompt.current.prompt()
+            const { outcome } = await deferredPrompt.current.userChoice
+            if (outcome === 'accepted') dismiss()
+            deferredPrompt.current = null
+          } else {
+            dismiss()
+          }
         }}
         className="text-xs font-black px-3 py-1.5 rounded-xl shrink-0 flex items-center gap-1"
         style={{ background: 'var(--fiq-accent)', color: 'var(--bg)' }}

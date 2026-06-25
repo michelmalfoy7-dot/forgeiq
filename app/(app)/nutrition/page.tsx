@@ -34,7 +34,7 @@ export default async function NutritionPage() {
       .from('profiles')
       .select('goal, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, water_goal_ml, subscription_status, subscription_plan, is_admin, referral_pro_until')
       .eq('id', user.id)
-      .single(),
+      .maybeSingle(),
     // Steps + eau du jour
     supabase
       .from('daily_logs')

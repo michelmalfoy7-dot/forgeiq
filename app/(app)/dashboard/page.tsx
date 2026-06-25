@@ -33,7 +33,8 @@ function getUserWeekStart(tz: string): string {
   const now = new Date()
   const local = new Date(now.toLocaleString('en-US', { timeZone: tz }))
   const day = local.getDay() === 0 ? 6 : local.getDay() - 1 // lundi = 0
-  return new Date(Date.now() - day * 86400000).toLocaleDateString('sv', { timeZone: tz })
+  local.setDate(local.getDate() - day)
+  return local.toLocaleDateString('sv') // YYYY-MM-DD en heure locale
 }
 
 export default async function DashboardPage() {

@@ -110,15 +110,20 @@ export async function POST(req: NextRequest) {
     if (!name) return NextResponse.json({ data: null, error: 'Nom de recette manquant' }, { status: 400 })
     if (ingredients.length === 0) return NextResponse.json({ data: null, error: 'Ajoute au moins 1 ingrédient' }, { status: 400 })
 
-    // calcPerServing retourne aussi 7 colonnes micro (Sprint 6) absentes de la table
-    // recipes — ne prendre que les 5 macros existantes (voir migration_recipes_micro.sql)
     const allMacros = calcPerServing(ingredients, total_servings)
     const macroFields = {
-      calories_per_serving: allMacros.calories_per_serving,
-      protein_per_serving:  allMacros.protein_per_serving,
-      carbs_per_serving:    allMacros.carbs_per_serving,
-      fat_per_serving:      allMacros.fat_per_serving,
-      fiber_per_serving:    allMacros.fiber_per_serving,
+      calories_per_serving:      allMacros.calories_per_serving,
+      protein_per_serving:       allMacros.protein_per_serving,
+      carbs_per_serving:         allMacros.carbs_per_serving,
+      fat_per_serving:           allMacros.fat_per_serving,
+      fiber_per_serving:         allMacros.fiber_per_serving,
+      iron_mg_per_serving:       allMacros.iron_mg_per_serving,
+      magnesium_mg_per_serving:  allMacros.magnesium_mg_per_serving,
+      zinc_mg_per_serving:       allMacros.zinc_mg_per_serving,
+      calcium_mg_per_serving:    allMacros.calcium_mg_per_serving,
+      potassium_mg_per_serving:  allMacros.potassium_mg_per_serving,
+      vitamin_c_mg_per_serving:  allMacros.vitamin_c_mg_per_serving,
+      vitamin_d_mcg_per_serving: allMacros.vitamin_d_mcg_per_serving,
     }
 
     // Créer la recette
@@ -144,11 +149,18 @@ export async function POST(req: NextRequest) {
       food_name: ing.food_name,
       food_id: ing.food_id ?? null,
       quantity_g: ing.quantity_g,
-      calories_per_100g: ing.calories_per_100g ?? null,
-      protein_per_100g: ing.protein_per_100g ?? null,
-      carbs_per_100g: ing.carbs_per_100g ?? null,
-      fat_per_100g: ing.fat_per_100g ?? null,
-      fiber_per_100g: ing.fiber_per_100g ?? null,
+      calories_per_100g:      ing.calories_per_100g      ?? null,
+      protein_per_100g:       ing.protein_per_100g       ?? null,
+      carbs_per_100g:         ing.carbs_per_100g         ?? null,
+      fat_per_100g:           ing.fat_per_100g           ?? null,
+      fiber_per_100g:         ing.fiber_per_100g         ?? null,
+      iron_mg_per_100g:       ing.iron_mg_per_100g       ?? null,
+      magnesium_mg_per_100g:  ing.magnesium_mg_per_100g  ?? null,
+      zinc_mg_per_100g:       ing.zinc_mg_per_100g       ?? null,
+      calcium_mg_per_100g:    ing.calcium_mg_per_100g    ?? null,
+      potassium_mg_per_100g:  ing.potassium_mg_per_100g  ?? null,
+      vitamin_c_mg_per_100g:  ing.vitamin_c_mg_per_100g  ?? null,
+      vitamin_d_mcg_per_100g: ing.vitamin_d_mcg_per_100g ?? null,
       sort_order: ing.sort_order ?? i,
     }))
 
@@ -213,11 +225,18 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json({ data: null, error: 'Ajoute au moins 1 ingrédient' }, { status: 400 })
       }
       const allMacros = calcPerServing(ingredients, servings)
-      updates.calories_per_serving = allMacros.calories_per_serving
-      updates.protein_per_serving  = allMacros.protein_per_serving
-      updates.carbs_per_serving    = allMacros.carbs_per_serving
-      updates.fat_per_serving      = allMacros.fat_per_serving
-      updates.fiber_per_serving    = allMacros.fiber_per_serving
+      updates.calories_per_serving      = allMacros.calories_per_serving
+      updates.protein_per_serving       = allMacros.protein_per_serving
+      updates.carbs_per_serving         = allMacros.carbs_per_serving
+      updates.fat_per_serving           = allMacros.fat_per_serving
+      updates.fiber_per_serving         = allMacros.fiber_per_serving
+      updates.iron_mg_per_serving       = allMacros.iron_mg_per_serving
+      updates.magnesium_mg_per_serving  = allMacros.magnesium_mg_per_serving
+      updates.zinc_mg_per_serving       = allMacros.zinc_mg_per_serving
+      updates.calcium_mg_per_serving    = allMacros.calcium_mg_per_serving
+      updates.potassium_mg_per_serving  = allMacros.potassium_mg_per_serving
+      updates.vitamin_c_mg_per_serving  = allMacros.vitamin_c_mg_per_serving
+      updates.vitamin_d_mcg_per_serving = allMacros.vitamin_d_mcg_per_serving
 
       // Remplacer les ingrédients : supprimer les anciens et insérer les nouveaux
       const { error: delErr } = await supabase
@@ -231,11 +250,18 @@ export async function PATCH(req: NextRequest) {
         food_name: ing.food_name,
         food_id: ing.food_id ?? null,
         quantity_g: ing.quantity_g,
-        calories_per_100g: ing.calories_per_100g ?? null,
-        protein_per_100g: ing.protein_per_100g ?? null,
-        carbs_per_100g: ing.carbs_per_100g ?? null,
-        fat_per_100g: ing.fat_per_100g ?? null,
-        fiber_per_100g: ing.fiber_per_100g ?? null,
+        calories_per_100g:      ing.calories_per_100g      ?? null,
+        protein_per_100g:       ing.protein_per_100g       ?? null,
+        carbs_per_100g:         ing.carbs_per_100g         ?? null,
+        fat_per_100g:           ing.fat_per_100g           ?? null,
+        fiber_per_100g:         ing.fiber_per_100g         ?? null,
+        iron_mg_per_100g:       ing.iron_mg_per_100g       ?? null,
+        magnesium_mg_per_100g:  ing.magnesium_mg_per_100g  ?? null,
+        zinc_mg_per_100g:       ing.zinc_mg_per_100g       ?? null,
+        calcium_mg_per_100g:    ing.calcium_mg_per_100g    ?? null,
+        potassium_mg_per_100g:  ing.potassium_mg_per_100g  ?? null,
+        vitamin_c_mg_per_100g:  ing.vitamin_c_mg_per_100g  ?? null,
+        vitamin_d_mcg_per_100g: ing.vitamin_d_mcg_per_100g ?? null,
         sort_order: ing.sort_order ?? i,
       }))
 

@@ -20,7 +20,7 @@ export async function POST(request: Request) {
         user_id: user.id,
         program_id: program_id ?? null,
         session_name: safeName,
-        session_date: new Date().toISOString().split('T')[0],
+        session_date: new Date().toLocaleDateString('sv'),
         started_at: new Date().toISOString(),
       })
       .select()

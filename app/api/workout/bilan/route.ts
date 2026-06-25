@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
         .select('exercise_id, exercise_name, weight_kg, reps, workout_id, set_type')
         .in('exercise_id', exerciseIds)
         .in('workout_id', recentWIds)
-        .not('is_warmup', 'eq', true)
+        .eq('is_warmup', false)
         .order('weight_kg', { ascending: false })
 
       for (const s of historySets ?? []) {
