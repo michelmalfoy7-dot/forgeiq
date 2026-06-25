@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 import { Loader2, ChevronRight, ChevronLeft, Check, Globe, Lock } from 'lucide-react'
 
 const TOTAL_STEPS = 7
@@ -101,12 +100,53 @@ function toUsername(name: string): string {
   return base
 }
 
+/* ============================================================
+   CONFETTI — pure CSS, 0 dépendance
+   ============================================================ */
+const CONFETTI_COLORS = ['#B4FF4A', '#3D8BFF', '#FF6B35', '#F59E0B', '#A855F7', '#EC4899']
+
+function Confetti({ active }: { active: boolean }) {
+  const particles = useRef(
+    Array.from({ length: 24 }, (_, i) => ({
+      id: i,
+      x: 5 + (i / 24) * 90 + (Math.sin(i * 1.7) * 4),
+      delay: (i * 0.04) % 0.5,
+      duration: 0.9 + (i % 4) * 0.15,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      size: 5 + (i % 3) * 3,
+      isCircle: i % 3 === 0,
+    }))
+  )
+  if (!active) return null
+  return (
+    <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+      {particles.current.map((p) => (
+        <div
+          key={p.id}
+          style={{
+            position: 'absolute',
+            top: '-12px',
+            left: `${p.x}%`,
+            width: p.size,
+            height: p.size,
+            borderRadius: p.isCircle ? '50%' : '2px',
+            background: p.color,
+            animation: `fiq-confetti-fall ${p.duration}s ${p.delay}s ease-in forwards`,
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
 // ── Page principale ──────────────────────────────────────────────────────────
 export default function OnboardingPage() {
   const [step, setStep] = useState(1)
+  const [animDir, setAnimDir] = useState<'fwd' | 'back'>('fwd')
   const [data, setData] = useState<Partial<OnboardingData>>({ is_public: true })
   const [loading, setLoading] = useState(false)
   const [finishError, setFinishError] = useState<string | null>(null)
+  const [showConfetti, setShowConfetti] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
@@ -133,8 +173,8 @@ export default function OnboardingPage() {
     setData((prev) => ({ ...prev, [key]: value }))
   }
 
-  function next() { if (step < TOTAL_STEPS) setStep((s) => s + 1) }
-  function back() { if (step > 1) setStep((s) => s - 1) }
+  function next() { if (step < TOTAL_STEPS) { setAnimDir('fwd'); setStep((s) => s + 1) } }
+  function back() { if (step > 1) { setAnimDir('back'); setStep((s) => s - 1) } }
 
   async function finish() {
     setFinishError(null)
@@ -189,6 +229,8 @@ export default function OnboardingPage() {
       }).catch(() => null)
 
       fetch('/api/auth/welcome', { method: 'POST' }).catch(() => {})
+      setShowConfetti(true)
+      await new Promise(r => setTimeout(r, 700))
       router.push('/dashboard')
     } catch {
       setFinishError('Une erreur est survenue. Vérifie ta connexion et réessaie.')
@@ -197,24 +239,59 @@ export default function OnboardingPage() {
     }
   }
 
-  const progressPercent = (step / TOTAL_STEPS) * 100
-
   return (
+    <>
+      {/* CSS animations */}
+      <style>{`
+        @keyframes fiq-slide-fwd {
+          from { transform: translateX(32px); opacity: 0; }
+          to   { transform: translateX(0);    opacity: 1; }
+        }
+        @keyframes fiq-slide-back {
+          from { transform: translateX(-32px); opacity: 0; }
+          to   { transform: translateX(0);     opacity: 1; }
+        }
+        @keyframes fiq-confetti-fall {
+          0%   { transform: translateY(0)    rotate(0deg);   opacity: 1; }
+          100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+        }
+        .fiq-step-fwd  { animation: fiq-slide-fwd  0.22s ease-out both; }
+        .fiq-step-back { animation: fiq-slide-back 0.22s ease-out both; }
+      `}</style>
+
+      <Confetti active={showConfetti} />
+
     <div className="min-h-screen flex flex-col p-6" style={{ background: 'var(--bg)' }}>
-      {/* Header */}
+      {/* Header — dots progress */}
       <div className="flex items-center gap-3 mb-8">
         <span className="text-2xl">⚗️</span>
         <div className="flex-1">
-          <div className="flex justify-between mb-1">
+          <div className="flex justify-between mb-2">
             <span className="fiq-label">Étape {step}/{TOTAL_STEPS}</span>
-            <span className="fiq-label">{Math.round(progressPercent)}%</span>
+            <span className="fiq-label" style={{ color: 'var(--fiq-accent)' }}>{Math.round((step / TOTAL_STEPS) * 100)}%</span>
           </div>
-          <Progress value={progressPercent} className="h-1.5" />
+          {/* Dots */}
+          <div className="flex items-center gap-1.5">
+            {Array.from({ length: TOTAL_STEPS }, (_, i) => (
+              <div
+                key={i}
+                style={{
+                  height: '5px',
+                  borderRadius: '3px',
+                  transition: 'all 0.3s cubic-bezier(0.34,1.56,0.64,1)',
+                  width: i + 1 === step ? '22px' : '5px',
+                  background: i + 1 <= step ? 'var(--fiq-accent)' : 'var(--fiq-border)',
+                  opacity: i + 1 > step ? 0.35 : 1,
+                }}
+              />
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Step content */}
+      {/* Step content — key triggers remount + animation */}
       <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full">
+        <div key={step} className={animDir === 'fwd' ? 'fiq-step-fwd' : 'fiq-step-back'}>
         {step === 1 && (
           <StepIdentite
             displayName={data.display_name ?? ''}
@@ -261,6 +338,7 @@ export default function OnboardingPage() {
             error={finishError}
           />
         )}
+        </div>{/* end animated wrapper */}
       </div>
 
       {/* Navigation */}
@@ -272,6 +350,7 @@ export default function OnboardingPage() {
         </div>
       )}
     </div>
+    </>
   )
 }
 
