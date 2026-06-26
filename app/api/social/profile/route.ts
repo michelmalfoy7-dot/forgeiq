@@ -65,7 +65,7 @@ export async function POST(request: Request) {
         { onConflict: 'user_id' }
       )
       .select()
-      .single()
+      .maybeSingle()
 
     if (error) {
       // Erreur de contrainte unicité sur username

@@ -53,6 +53,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ data: null, error: 'URL invalide' }, { status: 400 })
     }
 
+    // Blocage SSRF — rejeter les IPs privées, localhost et métadonnées cloud
+    try {
+      const parsed = new URL(url)
+      const host = parsed.hostname.toLowerCase()
+      const isPrivate =
+        host === 'localhost' ||
+        host === '::1' ||
+        /^127\./.test(host) ||
+        /^10\./.test(host) ||
+        /^192\.168\./.test(host) ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+        /^169\.254\./.test(host) ||   // AWS metadata & link-local
+        /^fc00:/i.test(host) ||        // IPv6 unique local
+        /^fe80:/i.test(host) ||        // IPv6 link-local
+        !host.includes('.') ||         // pas de TLD (ex: "server", "internal")
+        host.endsWith('.local') ||
+        host.endsWith('.internal') ||
+        host.endsWith('.localhost')
+      if (isPrivate) {
+        return NextResponse.json({ data: null, error: 'URL non autorisée' }, { status: 400 })
+      }
+    } catch {
+      return NextResponse.json({ data: null, error: 'URL invalide' }, { status: 400 })
+    }
+
     // Télécharger la page web
     let pageText: string
     try {

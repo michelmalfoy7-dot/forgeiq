@@ -212,8 +212,6 @@ Règles :
     })
   } catch (err) {
     console.error('Nutrition photo error:', err)
-    // Exposer le message réel pour faciliter le debug (à retirer en prod stable)
-    const detail = err instanceof Error ? err.message : String(err)
-    return NextResponse.json({ data: null, error: `Erreur analyse photo: ${detail}` }, { status: 500 })
+    return NextResponse.json({ data: null, error: 'Erreur analyse photo — réessaie dans quelques instants' }, { status: 500 })
   }
 }
