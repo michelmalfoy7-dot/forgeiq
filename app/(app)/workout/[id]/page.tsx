@@ -404,6 +404,15 @@ export default function WorkoutSessionPage() {
           const parsed = JSON.parse(stored) as { groups: ExerciseGroup[]; sessionName: string; savedAt: number }
           if (parsed.groups?.length > 0 && Date.now() - parsed.savedAt < 86400000) {
             setGroups(parsed.groups)
+            // Peupler autoStartedSetsRef — évite le timer auto sur les sets déjà remplis
+            for (const g of parsed.groups) {
+              for (const s of g.sets) {
+                const w = parseFloat(String(s.weight_kg).replace(',', '.')) || 0
+                if (!s.is_warmup && w > 0 && Number(s.reps) > 0) {
+                  autoStartedSetsRef.current.add(s.id)
+                }
+              }
+            }
             if (parsed.sessionName) setSessionName(parsed.sessionName)
             loadedRef.current = true
             setRestoredFromStorage(true)
@@ -425,6 +434,15 @@ export default function WorkoutSessionPage() {
             // Draft trop ancien — ignorer et laisser la séance partir vide
           } else {
             setGroups(draft.groups)
+            // Peupler autoStartedSetsRef — évite le timer auto sur les sets déjà remplis
+            for (const g of draft.groups) {
+              for (const s of g.sets) {
+                const w = parseFloat(String(s.weight_kg).replace(',', '.')) || 0
+                if (!s.is_warmup && w > 0 && Number(s.reps) > 0) {
+                  autoStartedSetsRef.current.add(s.id)
+                }
+              }
+            }
             if (draft.session_name) setSessionName(draft.session_name)
             // Ré-hydrater localStorage pour les prochains accès
             localStorage.setItem(STORAGE_KEY, JSON.stringify({

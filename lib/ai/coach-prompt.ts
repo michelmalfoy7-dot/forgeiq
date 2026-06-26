@@ -43,6 +43,8 @@ export type CoachPromptCtx = {
   proteinG: number | null
   steps: number | null
   sysBp: number | null
+  hrv_ms?: number | null
+  temp_deviation_c?: number | null
   recentWorkouts: { session_name: string; session_date: string; total_tonnage_kg: number | null; total_sets: number | null }[]
   topPRs: { exercise_name: string; value: number; unit: string; record_type: string }[]
   weeklyVolume: { muscle: string; sets: number; mev: number; mav: number; status: 'low' | 'optimal' | 'high' }[]
@@ -161,7 +163,9 @@ export function buildSystemPrompt(ctx: CoachPromptCtx): string {
 - Sommeil total : ${ctx.sleepTotalMin ? Math.round(ctx.sleepTotalMin / 60) + 'h' : 'non renseigné'}
 - Fatigue (1-10) : ${ctx.fatigueScore ?? 'non renseigné'}
 - Pas : ${ctx.steps ?? 'non renseigné'}
-- Tension systolique : ${ctx.sysBp ?? 'non renseigné'}
+- Tension systolique : ${ctx.sysBp ?? 'non renseigné'}${ctx.hrv_ms != null ? `
+- HRV : ${ctx.hrv_ms}ms${ctx.hrv_ms >= 70 ? ' (excellente)' : ctx.hrv_ms >= 50 ? ' (bonne)' : ' (faible — récupération limitée)'}` : ''}${ctx.temp_deviation_c != null ? `
+- Température basale : ${ctx.temp_deviation_c > 0 ? '+' : ''}${ctx.temp_deviation_c}°C${Math.abs(ctx.temp_deviation_c) > 0.3 ? ' ⚠️ écart significatif' : ''}` : ''}
 
 ## TDEE dynamique du jour (calculé selon activité réelle)
 ${ctx.tdeeBreakdown.usedFallback

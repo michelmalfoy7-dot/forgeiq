@@ -349,7 +349,7 @@ export default async function DashboardPage() {
   let recoveryLabel = ''
   let recoveryLimitingFactor = ''
   // Points de détail pour la modale breakdown
-  let recoveryBreakdown = { deepSleepPts: 0, totalSleepPts: 0, fatiguePts: 0, stepsPts: 0, moodPts: 0, ewmaPts: 0 }
+  let recoveryBreakdown = { deepSleepPts: 0, totalSleepPts: 0, fatiguePts: 0, stepsPts: 0, moodPts: 0, ewmaPts: 0, hrvPts: 0 }
 
   if (todayLog) {
     let pts = 0
@@ -414,7 +414,16 @@ export default async function DashboardPage() {
     }
     pts += ewmaPts
 
-    recoveryBreakdown = { deepSleepPts, totalSleepPts, fatiguePts, stepsPts, moodPts, ewmaPts }
+    // HRV (bonus optionnel, max 1 pt) — variabilité cardiaque en ms
+    const hrv = (todayLog as { hrv_ms?: number | null }).hrv_ms ?? null
+    let hrvPts = 0
+    if (hrv !== null) {
+      if (hrv >= 70) hrvPts = 1
+      else if (hrv >= 50) hrvPts = 0.5
+    }
+    pts += hrvPts
+
+    recoveryBreakdown = { deepSleepPts, totalSleepPts, fatiguePts, stepsPts, moodPts, ewmaPts, hrvPts }
     recoveryScore = Math.min(10, Math.max(0, Math.round((pts / 9) * 10)))
 
     if (recoveryScore >= 7) {
@@ -436,6 +445,10 @@ export default async function DashboardPage() {
       recoveryLimitingFactor = 'Activité physique faible'
     } else if (mood !== null && mood < 5) {
       recoveryLimitingFactor = 'Humeur basse'
+    }
+    const tempDev = (todayLog as { temp_deviation_c?: number | null }).temp_deviation_c ?? null
+    if (!recoveryLimitingFactor && tempDev !== null && Math.abs(tempDev) > 0.3) {
+      recoveryLimitingFactor = `Température basale ${tempDev > 0 ? '+' : ''}${tempDev}°C`
     }
   }
 

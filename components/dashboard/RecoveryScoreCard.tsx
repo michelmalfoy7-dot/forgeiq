@@ -9,6 +9,7 @@ type RecoveryBreakdown = {
   stepsPts: number
   moodPts: number
   ewmaPts: number
+  hrvPts?: number
 }
 
 type Props = {
@@ -45,7 +46,7 @@ export function RecoveryScoreCard({ score, label, limitingFactor, breakdown }: P
   const scoreBg    = score >= 7 ? '#B4FF4A18' : score >= 5 ? '#F59E0B18' : '#EF444418'
   const scoreBorder = score >= 7 ? '#B4FF4A44' : score >= 5 ? '#F59E0B44' : '#EF444444'
 
-  const maxByCategory = { deepSleep: 1.5, totalSleep: 2, fatigue: 2, steps: 1.5, mood: 1, ewma: 1 }
+  const maxByCategory = { deepSleep: 1.5, totalSleep: 2, fatigue: 2, steps: 1.5, mood: 1, ewma: 1, hrv: 1 }
 
   return (
     <>
@@ -161,11 +162,19 @@ export function RecoveryScoreCard({ score, label, limitingFactor, breakdown }: P
                 max={maxByCategory.ewma}
                 color={breakdown.ewmaPts >= maxByCategory.ewma ? 'var(--fiq-accent)' : breakdown.ewmaPts > 0 ? 'var(--fiq-yellow)' : 'var(--fiq-red)'}
               />
+              {(breakdown.hrvPts ?? 0) > 0 && (
+                <BreakdownBar
+                  label="HRV (variabilité cardiaque)"
+                  value={breakdown.hrvPts ?? 0}
+                  max={maxByCategory.hrv}
+                  color={(breakdown.hrvPts ?? 0) >= maxByCategory.hrv ? 'var(--fiq-blue)' : 'var(--fiq-yellow)'}
+                />
+              )}
             </div>
 
             {/* Légende */}
             <p className="text-[10px] text-center" style={{ color: 'var(--fiq-muted)' }}>
-              Total : {breakdown.deepSleepPts + breakdown.totalSleepPts + breakdown.fatiguePts + breakdown.stepsPts + breakdown.moodPts + breakdown.ewmaPts} / 9 pts → Score {score}/10
+              Total : {(breakdown.deepSleepPts + breakdown.totalSleepPts + breakdown.fatiguePts + breakdown.stepsPts + breakdown.moodPts + breakdown.ewmaPts + (breakdown.hrvPts ?? 0)).toFixed(1)} / 9+ pts → Score {score}/10
             </p>
 
             <button

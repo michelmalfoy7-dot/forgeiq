@@ -244,7 +244,7 @@ export async function POST(req: NextRequest) {
         .select('display_name, goal, level, weight_kg, height_cm, age, gender, sessions_per_week, macro_mode, custom_calories, custom_protein_g, custom_carbs_g, custom_fat_g, target_weight_kg')
         .eq('id', user.id).maybeSingle(),
       supabase.from('daily_logs')
-        .select('weight_kg, weight_trend, sleep_deep_min, sleep_total_min, fatigue_score, protein_g, steps, sys_bp')
+        .select('weight_kg, weight_trend, sleep_deep_min, sleep_total_min, fatigue_score, protein_g, steps, sys_bp, hrv_ms, temp_deviation_c')
         .eq('user_id', user.id).eq('log_date', today).maybeSingle(),
       // Steps d'hier — fallback si pas assez de données 30j
       supabase.from('daily_logs')
@@ -549,6 +549,8 @@ export async function POST(req: NextRequest) {
       proteinG: hasFoodLogs ? Math.round(foodTotals.protein_g) : (todayLog?.protein_g ?? null),
       steps: todayLog?.steps ?? null,
       sysBp: todayLog?.sys_bp ?? null,
+      hrv_ms: (todayLog as { hrv_ms?: number | null } | null)?.hrv_ms ?? null,
+      temp_deviation_c: (todayLog as { temp_deviation_c?: number | null } | null)?.temp_deviation_c ?? null,
       recentWorkouts: recentWorkouts ?? [],
       topPRs: topPRs ?? [],
       weeklyVolume: weeklyVolumeData,

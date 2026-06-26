@@ -21,6 +21,7 @@ type Ingredient = {
   potassium_mg_per_100g?:  number | null
   vitamin_c_mg_per_100g?:  number | null
   vitamin_d_mcg_per_100g?: number | null
+  sodium_mg_per_100g?:     number | null
 }
 
 function calcPerServing(ingredients: Ingredient[], servings: number) {
@@ -44,13 +45,14 @@ function calcPerServing(ingredients: Ingredient[], servings: number) {
       potassium_mg:  addMicro(acc.potassium_mg,   micro(ing.potassium_mg_per_100g)),
       vitamin_c_mg:  addMicro(acc.vitamin_c_mg,   micro(ing.vitamin_c_mg_per_100g)),
       vitamin_d_mcg: addMicro(acc.vitamin_d_mcg,  micro(ing.vitamin_d_mcg_per_100g)),
+      sodium_mg:     addMicro(acc.sodium_mg,      micro(ing.sodium_mg_per_100g)),
     }
   }, {
     calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0,
     iron_mg: null as number | null, magnesium_mg: null as number | null,
     zinc_mg: null as number | null, calcium_mg: null as number | null,
     potassium_mg: null as number | null, vitamin_c_mg: null as number | null,
-    vitamin_d_mcg: null as number | null,
+    vitamin_d_mcg: null as number | null, sodium_mg: null as number | null,
   })
 
   const s = Math.max(1, servings)
@@ -68,6 +70,7 @@ function calcPerServing(ingredients: Ingredient[], servings: number) {
     potassium_mg_per_serving: r(total.potassium_mg),
     vitamin_c_mg_per_serving: r(total.vitamin_c_mg),
     vitamin_d_mcg_per_serving: r(total.vitamin_d_mcg),
+    sodium_mg_per_serving:   r(total.sodium_mg),
   }
 }
 
@@ -124,6 +127,7 @@ export async function POST(req: NextRequest) {
       potassium_mg_per_serving:  allMacros.potassium_mg_per_serving,
       vitamin_c_mg_per_serving:  allMacros.vitamin_c_mg_per_serving,
       vitamin_d_mcg_per_serving: allMacros.vitamin_d_mcg_per_serving,
+      sodium_mg_per_serving:     allMacros.sodium_mg_per_serving,
     }
 
     // Créer la recette
@@ -161,6 +165,7 @@ export async function POST(req: NextRequest) {
       potassium_mg_per_100g:  ing.potassium_mg_per_100g  ?? null,
       vitamin_c_mg_per_100g:  ing.vitamin_c_mg_per_100g  ?? null,
       vitamin_d_mcg_per_100g: ing.vitamin_d_mcg_per_100g ?? null,
+      sodium_mg_per_100g:     ing.sodium_mg_per_100g     ?? null,
       sort_order: ing.sort_order ?? i,
     }))
 
@@ -237,6 +242,7 @@ export async function PATCH(req: NextRequest) {
       updates.potassium_mg_per_serving  = allMacros.potassium_mg_per_serving
       updates.vitamin_c_mg_per_serving  = allMacros.vitamin_c_mg_per_serving
       updates.vitamin_d_mcg_per_serving = allMacros.vitamin_d_mcg_per_serving
+      updates.sodium_mg_per_serving     = allMacros.sodium_mg_per_serving
 
       // Remplacer les ingrédients : supprimer les anciens et insérer les nouveaux
       const { error: delErr } = await supabase
@@ -262,6 +268,7 @@ export async function PATCH(req: NextRequest) {
         potassium_mg_per_100g:  ing.potassium_mg_per_100g  ?? null,
         vitamin_c_mg_per_100g:  ing.vitamin_c_mg_per_100g  ?? null,
         vitamin_d_mcg_per_100g: ing.vitamin_d_mcg_per_100g ?? null,
+        sodium_mg_per_100g:     ing.sodium_mg_per_100g     ?? null,
         sort_order: ing.sort_order ?? i,
       }))
 
@@ -289,6 +296,7 @@ export async function PATCH(req: NextRequest) {
         updates.potassium_mg_per_serving  = allMacros.potassium_mg_per_serving
         updates.vitamin_c_mg_per_serving  = allMacros.vitamin_c_mg_per_serving
         updates.vitamin_d_mcg_per_serving = allMacros.vitamin_d_mcg_per_serving
+        updates.sodium_mg_per_serving     = allMacros.sodium_mg_per_serving
       }
     }
 
