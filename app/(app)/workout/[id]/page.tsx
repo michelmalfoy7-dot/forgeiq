@@ -1044,6 +1044,7 @@ export default function WorkoutSessionPage() {
         unilateral_both_sides: g.unilateral_both_sides ?? true,
         superset_id: g.superset_id ?? null,
         note: s.note?.trim() || null,
+        tempo: s.tempo?.trim() || null,
       }))),
       notes: sessionNote.trim() || null,
       rpe_overall: null,

@@ -18,6 +18,7 @@ type SetInput = {
   is_unilateral?: boolean
   unilateral_both_sides?: boolean
   note?: string | null  // note libre par série (colonne workout_sets.note TEXT)
+  tempo?: string | null // tempo notation ex: "3-1-2" (colonne workout_sets.tempo TEXT)
 }
 
 export async function POST(request: Request) {
