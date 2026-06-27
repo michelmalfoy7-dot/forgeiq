@@ -126,6 +126,7 @@ export async function GET(req: Request) {
     const skipOffset = parseInt(new URL(req.url).searchParams.get('skip') ?? '0') || 0
 
     const today = new Date().toISOString().split('T')[0]
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
 
     // Charger profil + programme + log du jour + PRs en parallèle
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
@@ -133,6 +134,7 @@ export async function GET(req: Request) {
     const [
       { data: profile },
       { data: todayLog },
+      { data: yesterdayLog },
       { data: topPRs },
       { data: last7DaysLogs },
     ] = await Promise.all([
@@ -142,6 +144,10 @@ export async function GET(req: Request) {
       supabase.from('daily_logs')
         .select('sleep_deep_min, fatigue_score, weight_trend')
         .eq('user_id', user.id).eq('log_date', today).maybeSingle(),
+      // Fallback J-1 — si pas de check-in aujourd'hui, on adapte sur les données d'hier
+      supabase.from('daily_logs')
+        .select('sleep_deep_min, fatigue_score, weight_trend')
+        .eq('user_id', user.id).eq('log_date', yesterday).maybeSingle(),
       supabase.from('personal_records')
         .select('exercise_name, value, unit, record_type')
         .eq('user_id', user.id).eq('record_type', 'top_set')
@@ -223,13 +229,16 @@ export async function GET(req: Request) {
     }
 
     // Volume adaptation — sommeil, fatigue ET tendance poids (perte rapide = récupération diminuée)
+    // Fallback J-1 : si pas de check-in aujourd'hui, on adapte sur les données d'hier
     let volumeAdjustment: 'reduce' | 'normal' | 'increase' = 'normal'
     const adjustmentReasons: string[] = []
+    const recoveryLog = todayLog ?? yesterdayLog
+    const usedYesterdayData = !todayLog && !!yesterdayLog
 
-    if (todayLog) {
-      const deepSleep = todayLog.sleep_deep_min ?? null
-      const fatigue = todayLog.fatigue_score ?? 5
-      const weightTrend = todayLog.weight_trend ?? null
+    if (recoveryLog) {
+      const deepSleep = recoveryLog.sleep_deep_min ?? null
+      const fatigue = recoveryLog.fatigue_score ?? 5
+      const weightTrend = recoveryLog.weight_trend ?? null
 
       if (deepSleep !== null && deepSleep < 60) adjustmentReasons.push('Sommeil profond insuffisant')
       if (fatigue >= 8) adjustmentReasons.push('Fatigue élevée')
@@ -250,6 +259,7 @@ export async function GET(req: Request) {
       }
     }
     const adjustmentReason = adjustmentReasons.join(' · ')
+      + (usedYesterdayData && adjustmentReasons.length > 0 ? ' (données d\'hier)' : '')
 
     // Raison narrative distincte du badge d'ajustement (évite la duplication)
     const adaptationDefaults: Record<string, string> = {
@@ -337,8 +347,8 @@ Contexte:
 - Programme: ${programName || 'Libre'}
 - Objectif: ${profile?.goal ?? 'force'}
 - Niveau: ${profile?.level ?? 'intermédiaire'}
-- Sommeil profond: ${todayLog?.sleep_deep_min ?? 'inconnu'}min
-- Fatigue: ${todayLog?.fatigue_score ?? 'inconnue'}/10
+- Sommeil profond: ${recoveryLog?.sleep_deep_min ?? 'inconnu'}min
+- Fatigue: ${recoveryLog?.fatigue_score ?? 'inconnue'}/10
 - Ajustement volume: ${volumeAdjustment}
 - PRs actuels: ${prSummary || 'aucun'}
 

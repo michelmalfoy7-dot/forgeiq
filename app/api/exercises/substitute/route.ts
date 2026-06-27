@@ -39,32 +39,38 @@ export async function GET(req: NextRequest) {
   const compatibleEquipment = buildCompatibleEquipment(equipment)
 
   // 3. Chercher des substituts :
-  //    - Même category
-  //    - Au moins 1 muscle primaire en commun (overlap via @> sur chaque muscle)
+  //    - Au moins 1 muscle primaire en commun (overlap)
   //    - Équipement compatible
   //    - Exclure l'exercice source
   //    On fait une requête large puis on trie côté JS pour prioriser force_type + secondary_muscles
-  let query = supabase
-    .from('exercises_library')
-    .select('id, name_fr, muscle_primary, muscle_secondary, equipment, category, force_type, difficulty')
-    .eq('category', category)
-    .neq('id', exerciseId)
-    .in('equipment', compatibleEquipment)
-
-  const { data: candidates, error: candidatesErr } = await query.limit(100)
-
-  if (candidatesErr) {
-    return NextResponse.json({ data: null, error: candidatesErr.message }, { status: 500 })
-  }
-
-  // 4. Filtrer : au moins 1 muscle primaire en commun
   const sourcePrimarySet = new Set(primaryMuscles)
   const sourceSecondarySet = new Set<string>(source.muscle_secondary ?? [])
 
-  const withOverlap = (candidates ?? []).filter((c) => {
-    const cPrimary: string[] = c.muscle_primary ?? []
-    return cPrimary.some((m: string) => sourcePrimarySet.has(m))
-  })
+  // Requête candidats avec overlap muscle primaire — avec ou sans contrainte de catégorie
+  async function fetchOverlap(useCategory: boolean) {
+    let q = supabase
+      .from('exercises_library')
+      .select('id, name_fr, muscle_primary, muscle_secondary, equipment, category, force_type, difficulty')
+      .neq('id', exerciseId)
+      .in('equipment', compatibleEquipment)
+    if (useCategory && category) q = q.eq('category', category)
+    const { data, error } = await q.limit(100)
+    if (error) throw new Error(error.message)
+    return (data ?? []).filter((c) => {
+      const cPrimary: string[] = c.muscle_primary ?? []
+      return cPrimary.some((m: string) => sourcePrimarySet.has(m))
+    })
+  }
+
+  // 4. Première passe (même catégorie), fallback cross-catégorie si aucun résultat
+  //    Corrige le cas des exercices isolés/machines sans équivalent dans leur catégorie
+  let withOverlap: Awaited<ReturnType<typeof fetchOverlap>>
+  try {
+    withOverlap = await fetchOverlap(true)
+    if (withOverlap.length === 0) withOverlap = await fetchOverlap(false)
+  } catch (e) {
+    return NextResponse.json({ data: null, error: e instanceof Error ? e.message : 'Erreur substitution' }, { status: 500 })
+  }
 
   // 5. Scorer et trier :
   //    - +3 si même force_type
