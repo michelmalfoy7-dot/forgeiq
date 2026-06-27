@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { track } from '@/lib/analytics'
 import { Loader2, Send, Bot, User, Sparkles, Trash2, Crown, AlertTriangle, Utensils, Beef, Moon } from 'lucide-react'
 import { FiqDumbbell } from '@/components/ui/FiqIcons'
 import Link from 'next/link'
@@ -406,6 +407,9 @@ export default function CoachPage() {
         return
       }
       if (!res.ok || !res.body) throw new Error('Erreur réseau')
+
+      // North-star event — activation coach (le fossé produit)
+      track('coach_message_sent')
 
       // Lire le compteur depuis les headers de réponse
       const headerCount = res.headers.get('X-Coach-Count')

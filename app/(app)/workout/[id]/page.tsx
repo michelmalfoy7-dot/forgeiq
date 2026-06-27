@@ -11,6 +11,7 @@ import { Confetti } from '@/components/ui/Confetti'
 import { StreakMilestoneModal } from '@/components/ui/StreakMilestoneModal'
 import { PlateCalculatorModal } from '@/components/workout/PlateCalculatorModal'
 import { roundWeight, weightDelta } from '@/lib/utils/numbers'
+import { track } from '@/lib/analytics'
 
 // ── Types ─────────────────────────────────────────────────────
 type SetType = 'work' | 'top_set' | 'backoff' | 'drop' | 'failure' | 'pause_rep'
@@ -1115,6 +1116,12 @@ export default function WorkoutSessionPage() {
         }).catch(() => { /* silencieux */ })
         setSummary({ tonnage: data.totalTonnage ?? 0, sets: data.totalSets ?? 0, newPRs: data.newPRs ?? [] })
         setCompleted(true)
+        // North-star event — activation training (1ère occurrence calculée côté PostHog)
+        track('workout_completed', {
+          tonnage: data.totalTonnage ?? 0,
+          sets: data.totalSets ?? 0,
+          prs: (data.newPRs ?? []).length,
+        })
         if (data.milestone) setTrainingMilestone(data.milestone)
         if (timerRef.current) clearInterval(timerRef.current)
         // Vérifier si c'est la première séance terminée (viral loop — premier partage guidé)

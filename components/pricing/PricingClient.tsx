@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, Zap, Crown, Infinity, ArrowLeft, Loader2, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
+import { track } from '@/lib/analytics'
 
 // ── Toggle promo ───────────────────────────────────────────────
 // true  → Prix Fondateur : 4,99€/mois · 39,99€/an · 99€ à vie
@@ -98,9 +99,16 @@ export function PricingClient({
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
+  // Funnel conversion — entrée dans la page pricing
+  useEffect(() => {
+    track('pricing_viewed', { isPro, isLifetime })
+  }, [isPro, isLifetime])
+
   async function handleSubscribe(planId: string) {
     setError(null)
     setLoading(planId)
+    // Funnel conversion — clic sur un plan (avant redirection Stripe)
+    track('checkout_started', { plan: planId })
     try {
       const res = await fetch('/api/stripe/checkout', {
         method: 'POST',

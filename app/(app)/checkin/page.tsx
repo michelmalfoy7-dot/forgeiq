@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { track } from '@/lib/analytics'
 import { AlertBar } from '@/components/ui/AlertBar'
 import { StreakMilestoneModal } from '@/components/ui/StreakMilestoneModal'
 import { Loader2, Save, TrendingDown, TrendingUp, Minus, CheckCircle2, ChevronDown, ChevronUp, Moon, Footprints, Utensils, Brain, Activity, Scale, RefreshCw } from 'lucide-react'
@@ -230,6 +231,8 @@ export default function CheckinPage() {
       const { error: err, milestone: ms } = await res.json()
       if (err) { setError(err); return }
       setSaved(true)
+      // North-star event — activation recovery (1ère occurrence calculée côté PostHog)
+      track('checkin_completed')
       if (ms) {
         setMilestone(ms)
         // Laisser le modal ouvert, puis rediriger après fermeture
