@@ -1022,9 +1022,13 @@ export default function WorkoutSessionPage() {
 
   // ── Substituer un exercice — remplace nom + id, conserve les sets ──
   function handleSubstitute(groupIdx: number, substitute: SubstituteExercise) {
+    // Ancre stable : ID du 1er set (unique) — permet de re-cibler le bon groupe
+    // dans le .then() même si le même exercice existe en double ou si l'ordre change
+    let anchorSetId: string | undefined
     setGroups((prev) => {
       const updated = [...prev]
       const g = updated[groupIdx]
+      anchorSetId = g.sets[0]?.id
       updated[groupIdx] = {
         ...g,
         exercise_id:   substitute.id,
@@ -1045,7 +1049,10 @@ export default function WorkoutSessionPage() {
     // Charger les données de performance du nouvel exercice en arrière-plan
     fetchExerciseData(substitute.id).then(({ lastSession, sessionHistory, pr }) => {
       setGroups((prev) => {
-        const idx = prev.findIndex((g) => g.exercise_id === substitute.id)
+        // Cibler par l'ID de set unique (robuste aux doublons d'exercice), fallback sur exercise_id
+        const idx = anchorSetId
+          ? prev.findIndex((g) => g.sets.some((s) => s.id === anchorSetId))
+          : prev.findIndex((g) => g.exercise_id === substitute.id)
         if (idx < 0) return prev
         const updated = [...prev]
         updated[idx] = { ...updated[idx], lastSession, sessionHistory, pr }
