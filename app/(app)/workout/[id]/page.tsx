@@ -60,6 +60,8 @@ type ExerciseGroup = {
   is_unilateral?: boolean
   // Toggle × 2 côtés pour exercices unilatéraux (défaut true = on fait les 2 côtés)
   unilateral_both_sides?: boolean
+  // Exercice au poids du corps (tractions, dips, pompes) — poids pré-rempli avec le PdC
+  is_bodyweight?: boolean
   sets: SetRow[]
   lastSession?: { weight_kg: number; reps: number }[]
   // Historique des 3 dernières séances distinctes (groupées par workout_id)
@@ -131,6 +133,8 @@ export default function WorkoutSessionPage() {
   const [exercises, setExercises] = useState<Exercise[]>([])
   // Équipement de l'utilisateur — chargé depuis le profil, utilisé pour les substituts
   const [userEquipment, setUserEquipment] = useState<string>('full_gym')
+  // Poids du corps de l'utilisateur — pré-remplit les exercices bodyweight (tonnage + PR)
+  const [userBodyweight, setUserBodyweight] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
   const [equipmentFilter, setEquipmentFilter] = useState<string>('all')
@@ -361,11 +365,15 @@ export default function WorkoutSessionPage() {
         supabase.from('exercises_library').select('id,name,name_fr,slug,muscle_primary,equipment,is_bilateral_dumbbell,is_unilateral').order('name_fr'),
         supabase.from('workouts').select('session_name, completed_at, program_id').eq('id', workoutId).maybeSingle(),
         supabase.from('exercise_aliases').select('exercise_id, alias'),
-        supabase.from('profiles').select('equipment').eq('id', user?.id ?? '').maybeSingle(),
+        supabase.from('profiles').select('equipment, weight_kg').eq('id', user?.id ?? '').maybeSingle(),
       ])
 
       // Charger l'équipement utilisateur pour les substitutions
       if (profileData?.equipment) setUserEquipment(profileData.equipment as string)
+      // Poids du corps — pour pré-remplir les exercices au poids du corps
+      const bw = profileData?.weight_kg ? Number(profileData.weight_kg) : null
+      const validBw = bw && bw > 20 && bw < 300 ? bw : null
+      if (validBw) setUserBodyweight(validBw)
 
       // Séance déjà terminée en base → rediriger immédiatement (évite le retour via back button)
       if (workout?.completed_at) {
@@ -529,7 +537,9 @@ export default function WorkoutSessionPage() {
               const lastSession = lastSetsByEx[match.id] ?? []
               const pr = prByEx[match.id]
               const count = s.sets ?? 3
-              const initWeight: number | '' = s.weight_kg ?? lastSession[0]?.weight_kg ?? ''
+              const isBW = match.equipment === 'bodyweight'
+              // Poids du corps : pré-remplir avec le PdC si aucun historique
+              const initWeight: number | '' = s.weight_kg ?? lastSession[0]?.weight_kg ?? (isBW && validBw ? validBw : '')
               const initReps: number | '' = lastSession[0]?.reps ?? ''
               const sets: SetRow[] = Array.from({ length: count }, (_, i) => ({
                 id: uid(), exercise_id: match.id, exercise_name: match.name_fr ?? match.name,
@@ -542,6 +552,7 @@ export default function WorkoutSessionPage() {
                 is_bilateral_dumbbell: match.is_bilateral_dumbbell ?? false,
                 is_unilateral: match.is_unilateral ?? false,
                 unilateral_both_sides: true,
+                is_bodyweight: isBW,
                 sets, lastSession, pr,
               }
             } else {
@@ -711,9 +722,12 @@ export default function WorkoutSessionPage() {
   async function addExercise(ex: Exercise) {
     const { lastSession, sessionHistory, pr } = await fetchExerciseData(ex.id)
 
+    const isBodyweight = ex.equipment === 'bodyweight'
+    // Poids du corps : pré-remplir avec le PdC si aucun historique → tonnage + PR fonctionnent
+    const bwDefault = isBodyweight && userBodyweight ? userBodyweight : ''
     const firstSet: SetRow = {
       id: uid(), exercise_id: ex.id, exercise_name: ex.name_fr ?? ex.name,
-      set_number: 1, weight_kg: lastSession[0]?.weight_kg ?? '', reps: lastSession[0]?.reps ?? '',
+      set_number: 1, weight_kg: lastSession[0]?.weight_kg ?? bwDefault, reps: lastSession[0]?.reps ?? '',
       rpe: '', is_warmup: false, set_type: 'work',
     }
 
@@ -750,6 +764,7 @@ export default function WorkoutSessionPage() {
         is_bilateral_dumbbell: ex.is_bilateral_dumbbell ?? false,
         is_unilateral: ex.is_unilateral ?? false,
         unilateral_both_sides: true,
+        is_bodyweight: isBodyweight,
         sets: [firstSet], lastSession, sessionHistory, pr,
       }])
     }
@@ -2620,6 +2635,13 @@ function ExerciseCard({
           )}
         </div>
         <div className="flex items-center gap-1.5">
+          {group.is_bodyweight && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+              title="Poids du corps — le poids est pré-rempli avec ton poids de corps (ajoute du lest ou réduis pour l'assistance)"
+              style={{ background: '#3D8BFF22', color: 'var(--fiq-blue)', border: '1px solid #3D8BFF44' }}>
+              PdC
+            </span>
+          )}
           {group.pr && (
             <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
               style={{ background: '#B4FF4A22', color: 'var(--fiq-accent)', border: '1px solid #B4FF4A44' }}>
