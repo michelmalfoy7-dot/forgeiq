@@ -366,9 +366,8 @@ export default function CoachPage() {
     }
   }, [])
 
-  async function clearHistory() {
+  async function confirmClearHistory() {
     if (clearing) return
-    if (!window.confirm('Effacer toute la conversation ? Cette action est irréversible.')) return
     setClearing(true)
     try {
       const supabase = createClient()
@@ -379,6 +378,7 @@ export default function CoachPage() {
       }
     } finally {
       setClearing(false)
+      setShowClearConfirm(false)
     }
   }
 
@@ -474,6 +474,34 @@ export default function CoachPage() {
   return (
     <>
     {showPaywall && <PaywallModal onClose={() => setShowPaywall(false)} trigger="coach" />}
+    {showClearConfirm && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => !clearing && setShowClearConfirm(false)}>
+        <div className="w-full max-w-sm rounded-2xl p-5 space-y-4" style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }} onClick={e => e.stopPropagation()}>
+          <div>
+            <h2 className="text-lg font-black" style={{ color: 'var(--fiq-text)' }}>Effacer la conversation ?</h2>
+            <p className="text-sm mt-1" style={{ color: 'var(--fiq-muted)' }}>Tout l&apos;historique avec le coach sera supprimé. Cette action est irréversible.</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowClearConfirm(false)}
+              disabled={clearing}
+              className="flex-1 py-2.5 rounded-xl font-bold text-sm"
+              style={{ background: 'var(--fiq-faint)', color: 'var(--fiq-text)', border: '1px solid var(--fiq-border)' }}
+            >
+              Annuler
+            </button>
+            <button
+              onClick={confirmClearHistory}
+              disabled={clearing}
+              className="flex-1 py-2.5 rounded-xl font-black text-sm flex items-center justify-center gap-2"
+              style={{ background: 'var(--fiq-red)', color: '#fff' }}
+            >
+              {clearing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Effacer'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     <div className="flex flex-col max-w-lg mx-auto" style={{ height: 'calc(100dvh - 4rem - env(safe-area-inset-bottom))' }}>
       {/* Header */}
       <div className="px-4 pt-4 pb-3 flex-shrink-0 flex items-start justify-between">
@@ -483,7 +511,7 @@ export default function CoachPage() {
         </div>
         {messages.length > 0 && (
           <button
-            onClick={clearHistory}
+            onClick={() => setShowClearConfirm(true)}
             disabled={clearing}
             className="mt-2 p-2 rounded-xl transition-all"
             title="Effacer la conversation"
