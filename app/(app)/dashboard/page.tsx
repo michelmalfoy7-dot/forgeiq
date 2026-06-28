@@ -15,6 +15,7 @@ import { calcDailyTarget } from '@/lib/utils/tdee'
 import { VolumeHebdoWidget } from '@/components/dashboard/VolumeHebdoWidget'
 import { RecoveryScoreCard } from '@/components/dashboard/RecoveryScoreCard'
 import { MuscleFreshnessWidget } from '@/components/dashboard/MuscleFreshnessWidget'
+import { calcRecoveryScore } from '@/lib/utils/recovery'
 
 export const dynamic = 'force-dynamic'
 
@@ -352,104 +353,24 @@ export default async function DashboardPage() {
   let recoveryBreakdown = { deepSleepPts: 0, totalSleepPts: 0, fatiguePts: 0, stepsPts: 0, moodPts: 0, ewmaPts: 0, hrvPts: 0 }
 
   if (todayLog) {
-    let pts = 0
-
-    // Sommeil profond (max 1.5 pts)
-    const deepSleepMin = todayLog.sleep_deep_min ?? null
-    let deepSleepPts = 0
-    if (deepSleepMin !== null) {
-      if (deepSleepMin >= 90) deepSleepPts = 1.5
-      else if (deepSleepMin >= 60) deepSleepPts = 1
-    }
-    pts += deepSleepPts
-
-    // Sommeil total (max 2 pts)
-    const sleepTotal = todayLog.sleep_total_min ?? null
-    let totalSleepPts = 0
-    if (sleepTotal !== null) {
-      if (sleepTotal >= 420) totalSleepPts = 2
-      else if (sleepTotal >= 360) totalSleepPts = 1
-    }
-    pts += totalSleepPts
-
-    // Fatigue inversée (max 2 pts) — fatigue_score 1-10, 1=plein d'énergie, 10=épuisé
-    const fatigue = todayLog.fatigue_score ?? null
-    let fatiguePts = 0
-    if (fatigue !== null) {
-      if (fatigue <= 2) fatiguePts = 2
-      else if (fatigue <= 5) fatiguePts = 1
-    }
-    pts += fatiguePts
-
-    // Pas vs objectif (max 1.5 pts)
-    const steps = todayLog.steps ?? null
-    const stepsGoal = profile?.steps_goal ?? 8000
-    let stepsPts = 0
-    if (steps !== null && stepsGoal > 0) {
-      const ratio = steps / stepsGoal
-      if (ratio >= 1) stepsPts = 1.5
-      else if (ratio >= 0.7) stepsPts = 1
-    }
-    pts += stepsPts
-
-    // Humeur (max 1 pt)
-    const mood = (todayLog as { motivation_score?: number | null }).motivation_score ?? null
-    let moodPts = 0
-    if (mood !== null) {
-      if (mood >= 7) moodPts = 1
-      else if (mood >= 5) moodPts = 0.5
-    }
-    pts += moodPts
-
-    // Poids EWMA stable vs veille (max 1 pt) — compare EWMA J vs EWMA J-1
-    const todayTrend = todayLog.weight_trend ?? null
-    let ewmaPts = 0
-    if (todayTrend !== null) {
-      const prevDayLog = (weekLogs ?? []).find(l => l.log_date === yesterday)
-      // Utilise weight_trend (EWMA) du log précédent, pas le poids brut
-      const prevDayTrend = (prevDayLog as { weight_trend?: number | null } | undefined)?.weight_trend ?? null
-      if (prevDayTrend !== null && Math.abs(todayTrend - prevDayTrend) < 0.5) ewmaPts = 1
-    } else if ((todayLog.weight_kg ?? null) !== null) {
-      ewmaPts = 0.5 // Données partielles → bonus partiel
-    }
-    pts += ewmaPts
-
-    // HRV (bonus optionnel, max 1 pt) — variabilité cardiaque en ms
-    const hrv = (todayLog as { hrv_ms?: number | null }).hrv_ms ?? null
-    let hrvPts = 0
-    if (hrv !== null) {
-      if (hrv >= 70) hrvPts = 1
-      else if (hrv >= 50) hrvPts = 0.5
-    }
-    pts += hrvPts
-
-    recoveryBreakdown = { deepSleepPts, totalSleepPts, fatiguePts, stepsPts, moodPts, ewmaPts, hrvPts }
-    recoveryScore = Math.min(10, Math.max(0, Math.round((pts / 9) * 10)))
-
-    if (recoveryScore >= 7) {
-      recoveryLabel = 'Optimale'
-    } else if (recoveryScore >= 5) {
-      recoveryLabel = 'Correcte'
-    } else {
-      recoveryLabel = 'Limitée'
-    }
-
-    // Facteur limitant principal
-    if (deepSleepMin !== null && deepSleepMin < 60) {
-      recoveryLimitingFactor = 'Sommeil profond insuffisant'
-    } else if (sleepTotal !== null && sleepTotal < 360) {
-      recoveryLimitingFactor = 'Durée de sommeil insuffisante'
-    } else if (fatigue !== null && fatigue > 7) {
-      recoveryLimitingFactor = 'Fatigue élevée'
-    } else if (steps !== null && steps < (stepsGoal ?? 8000) * 0.5) {
-      recoveryLimitingFactor = 'Activité physique faible'
-    } else if (mood !== null && mood < 5) {
-      recoveryLimitingFactor = 'Humeur basse'
-    }
-    const tempDev = (todayLog as { temp_deviation_c?: number | null }).temp_deviation_c ?? null
-    if (!recoveryLimitingFactor && tempDev !== null && Math.abs(tempDev) > 0.3) {
-      recoveryLimitingFactor = `Température basale ${tempDev > 0 ? '+' : ''}${tempDev}°C`
-    }
+    const prevDayLog = (weekLogs ?? []).find(l => l.log_date === yesterday)
+    const recovery = calcRecoveryScore({
+      sleepDeepMin:    todayLog.sleep_deep_min ?? null,
+      sleepTotalMin:   todayLog.sleep_total_min ?? null,
+      fatigueScore:    todayLog.fatigue_score ?? null,
+      steps:           todayLog.steps ?? null,
+      stepsGoal:       profile?.steps_goal ?? 8000,
+      motivationScore: (todayLog as { motivation_score?: number | null }).motivation_score ?? null,
+      weightTrend:     todayLog.weight_trend ?? null,
+      prevWeightTrend: (prevDayLog as { weight_trend?: number | null } | undefined)?.weight_trend ?? null,
+      weightKg:        todayLog.weight_kg ?? null,
+      hrvMs:           (todayLog as { hrv_ms?: number | null }).hrv_ms ?? null,
+      tempDeviationC:  (todayLog as { temp_deviation_c?: number | null }).temp_deviation_c ?? null,
+    })
+    recoveryScore           = recovery.score
+    recoveryLabel           = recovery.label
+    recoveryLimitingFactor  = recovery.limitingFactor
+    recoveryBreakdown       = recovery.breakdown
   }
 
   // ── Streak check-in — valeur persistante (profiles) en priorité, fallback calcul 30j
