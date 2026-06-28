@@ -211,6 +211,21 @@ function getFollowUps(): string[] {
   return [...FOLLOW_UP_POOL].sort(() => Math.random() - 0.5).slice(0, 3)
 }
 
+// Message d'accueil proactif — le coach ouvre la conversation selon la récup du jour.
+// Purement présentationnel : non persisté, non compté dans les limites, $0.
+function buildCoachWelcome(ctx: DailyCtx | null): string | null {
+  if (!ctx) return null
+  if (ctx.fatigue_score !== null && ctx.fatigue_score >= 8)
+    return "Tu étais bien fatigué récemment. Comment tu te sens aujourd'hui ? On peut alléger ta séance si besoin."
+  if (ctx.sleep_deep_min !== null && ctx.sleep_deep_min < 60)
+    return "Ton sommeil profond était un peu court. Si tu veux, on adapte la séance du jour pour mieux récupérer — dis-moi ton objectif."
+  if (ctx.sleep_deep_min !== null && ctx.sleep_deep_min > 90 && (ctx.fatigue_score === null || ctx.fatigue_score <= 3))
+    return "Belle récup' — sommeil profond au top et peu de fatigue. C'est le jour idéal pour pousser. On vise quoi ?"
+  if (ctx.last_session_name)
+    return `Dernière séance : ${ctx.last_session_name}. Sur quoi tu veux qu'on bosse aujourd'hui ?`
+  return null
+}
+
 export default function CoachPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -464,6 +479,7 @@ export default function CoachPage() {
 
   const suggestions = getQuickSuggestions(dailyCtx, proteinTarget, deloadMuscles.length >= 2)
   const isEmpty = !historyLoading && messages.length === 0
+  const welcome = buildCoachWelcome(dailyCtx)
   const lastIsAssistant =
     messages.length > 0 &&
     messages[messages.length - 1].role === 'assistant' &&
@@ -605,6 +621,14 @@ export default function CoachPage() {
             <p className="text-sm mt-1" style={{ color: 'var(--fiq-muted)' }}>
               Je connais tes données — poids, sommeil, séances, PRs.
             </p>
+            {welcome && (
+              <div
+                className="mt-5 mx-auto max-w-[85%] text-left rounded-2xl px-4 py-3"
+                style={{ background: 'var(--fiq-card)', border: '1px solid var(--fiq-border)' }}
+              >
+                <p className="text-sm" style={{ color: 'var(--fiq-text)', lineHeight: 1.6 }}>{welcome}</p>
+              </div>
+            )}
           </div>
         )}
 
