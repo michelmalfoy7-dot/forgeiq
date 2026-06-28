@@ -8,6 +8,14 @@ function sanitizeLike(raw: string): string {
   return raw.trim().slice(0, 100).replace(/[,()]/g, ' ').trim()
 }
 
+// USDA (SR Legacy) renvoie des descriptions en MAJUSCULES ("CHICKEN, BROILERS…").
+// Sentence case pour la lisibilité côté FR. Ne touche pas aux noms déjà en casse mixte.
+function cleanUsdaName(desc: string): string {
+  const t = desc.trim()
+  if (t !== t.toUpperCase()) return t // déjà en casse mixte → laisser
+  return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()
+}
+
 type FoodResult = {
   id: string | null
   name: string | null
@@ -128,7 +136,7 @@ export async function GET(req: NextRequest) {
 
           remote.push({
             id: null,
-            name: food.description,
+            name: cleanUsdaName(food.description),
             name_fr: null,
             brand: food.brandOwner ?? null,
             calories: kcal,
