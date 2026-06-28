@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { grantReferralRewardIfEligible } from '@/app/api/referral/route'
 import { sendPushToUser } from '@/lib/utils/push'
+import { estimate1RM, tonnageMultiplier, setTonnage, pickPRCandidate } from '@/lib/utils/strength'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,10 +45,11 @@ export async function POST(request: Request) {
     //  - is_bilateral_dumbbell : haltères 2 bras simultanément (poids max 120kg/côté)
     //  - is_unilateral + unilateral_both_sides : câble/machine fait des 2 côtés (tirage unilatéral, etc.)
     const totalTonnage = setsForTonnage.reduce((acc, s) => {
-      const isBilateralDumbbell = !!s.is_bilateral_dumbbell
-      const isUnilateralDouble  = (s.is_unilateral && (s.unilateral_both_sides ?? false))
-      const multiplier = (isBilateralDumbbell || isUnilateralDouble) ? 2 : 1
-      return acc + s.weight_kg * s.reps * multiplier
+      const multiplier = tonnageMultiplier({
+        isBilateralDumbbell: !!s.is_bilateral_dumbbell,
+        isUnilateralDouble:  !!(s.is_unilateral && (s.unilateral_both_sides ?? false)),
+      })
+      return acc + setTonnage(s.weight_kg, s.reps, multiplier)
     }, 0)
     const totalSets = workingSets.length
     const totalReps = workingSets.reduce((acc, s) => acc + s.reps, 0)
@@ -120,17 +122,9 @@ export async function POST(request: Request) {
 
       // PR = charge la plus lourde du top set explicite, sinon de tous les sets (à égalité → plus de reps)
       // Les back-off sets et drop sets sont des sets de volume, pas des PRs — priorité au top_set tagué
-      const taggedTopSets = exSets.filter(s => s.set_type === 'top_set')
-      const prCandidates = taggedTopSets.length > 0 ? taggedTopSets : exSets.filter(s => !['backoff', 'drop', 'failure', 'pause_rep'].includes(s.set_type ?? ''))
-      const heaviestSet = prCandidates.reduce((best, s) =>
-        s.weight_kg > best.weight_kg
-          ? s
-          : s.weight_kg === best.weight_kg && s.reps > best.reps
-          ? s
-          : best
-      )
+      const heaviestSet = pickPRCandidate(exSets)
 
-      // Guard : skip si le set candidat n'a pas de poids/reps valides (évite NaN ou Infinity dans Epley)
+      // Guard : skip si aucune série éligible (ex: que des drop sets) ou poids/reps invalides
       if (!heaviestSet || heaviestSet.reps < 1 || heaviestSet.weight_kg <= 0) continue
 
       const prWeight = heaviestSet.weight_kg
@@ -146,7 +140,7 @@ export async function POST(request: Request) {
       }
 
       // 1RM estimé (formule Epley) basé sur le set le plus lourd
-      const estimatedRM = Math.round((heaviestSet.weight_kg * (1 + heaviestSet.reps / 30)) * 10) / 10
+      const estimatedRM = estimate1RM(heaviestSet.weight_kg, heaviestSet.reps)
       if (!existing['1rm_estimated'] || estimatedRM > existing['1rm_estimated']) {
         upserts.push({
           user_id: user.id, exercise_id: exerciseId, exercise_name: exerciseName,
