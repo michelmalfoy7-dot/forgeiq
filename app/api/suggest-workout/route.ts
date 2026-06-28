@@ -142,11 +142,11 @@ export async function GET(req: Request) {
         .select('current_program_id, sessions_per_week, goal, level, weight_kg, gym_id, gym_equipment_profiles(tier)')
         .eq('id', user.id).maybeSingle(),
       supabase.from('daily_logs')
-        .select('sleep_deep_min, fatigue_score, weight_trend')
+        .select('sleep_deep_min, fatigue_score, weight_trend, hrv_ms')
         .eq('user_id', user.id).eq('log_date', today).maybeSingle(),
       // Fallback J-1 — si pas de check-in aujourd'hui, on adapte sur les données d'hier
       supabase.from('daily_logs')
-        .select('sleep_deep_min, fatigue_score, weight_trend')
+        .select('sleep_deep_min, fatigue_score, weight_trend, hrv_ms')
         .eq('user_id', user.id).eq('log_date', yesterday).maybeSingle(),
       supabase.from('personal_records')
         .select('exercise_name, value, unit, record_type')
@@ -239,9 +239,12 @@ export async function GET(req: Request) {
       const deepSleep = recoveryLog.sleep_deep_min ?? null
       const fatigue = recoveryLog.fatigue_score ?? 5
       const weightTrend = recoveryLog.weight_trend ?? null
+      const hrv = (recoveryLog as { hrv_ms?: number | null }).hrv_ms ?? null
 
       if (deepSleep !== null && deepSleep < 60) adjustmentReasons.push('Sommeil profond insuffisant')
       if (fatigue >= 8) adjustmentReasons.push('Fatigue élevée')
+      // HRV basse → système nerveux pas récupéré : on allège (boucle HRV→reco)
+      if (hrv !== null && hrv < 50) adjustmentReasons.push('HRV basse')
       // Perte de poids rapide : EWMA aujourd'hui vs EWMA il y a 7 jours > 2.5kg
       // Comparaison EWMA vs EWMA — fiable et indépendante du poids d'onboarding
       if (weightTrend !== null && (last7DaysLogs ?? []).length > 0) {
@@ -253,7 +256,8 @@ export async function GET(req: Request) {
 
       if (adjustmentReasons.length > 0) {
         volumeAdjustment = 'reduce'
-      } else if (deepSleep !== null && deepSleep > 90 && fatigue <= 4) {
+      } else if (deepSleep !== null && deepSleep > 90 && fatigue <= 4 && (hrv === null || hrv >= 60)) {
+        // Pas d'augmentation de volume si la HRV est présente mais médiocre (50-59)
         volumeAdjustment = 'increase'
         adjustmentReasons.push('Récupération optimale')
       }
@@ -266,6 +270,7 @@ export async function GET(req: Request) {
       'Récupération optimale': 'Conditions idéales — repousse tes limites aujourd\'hui',
       'Sommeil profond insuffisant': 'Privilégie la technique sur le volume',
       'Fatigue élevée': 'Séance allégée pour ne pas s\'épuiser',
+      'HRV basse': 'Variabilité cardiaque basse — allège et privilégie la récupération',
       'Perte de poids rapide': 'Préserve la masse musculaire en déficit',
     }
     let adaptationReason = adaptationDefaults[adjustmentReason] ?? adjustmentReason ?? 'Séance adaptée à tes données du jour'
