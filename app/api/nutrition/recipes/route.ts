@@ -112,6 +112,7 @@ export async function POST(req: NextRequest) {
 
     if (!name) return NextResponse.json({ data: null, error: 'Nom de recette manquant' }, { status: 400 })
     if (ingredients.length === 0) return NextResponse.json({ data: null, error: 'Ajoute au moins 1 ingrédient' }, { status: 400 })
+    if (ingredients.length > 50) return NextResponse.json({ data: null, error: 'Trop d\'ingrédients (max 50 par recette)' }, { status: 400 })
 
     const allMacros = calcPerServing(ingredients, total_servings)
     const macroFields = {
@@ -228,6 +229,9 @@ export async function PATCH(req: NextRequest) {
     if (ingredients !== undefined) {
       if (ingredients.length === 0) {
         return NextResponse.json({ data: null, error: 'Ajoute au moins 1 ingrédient' }, { status: 400 })
+      }
+      if (ingredients.length > 50) {
+        return NextResponse.json({ data: null, error: 'Trop d\'ingrédients (max 50 par recette)' }, { status: 400 })
       }
       const allMacros = calcPerServing(ingredients, servings)
       updates.calories_per_serving      = allMacros.calories_per_serving

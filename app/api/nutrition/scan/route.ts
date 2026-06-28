@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { rateLimit } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,6 +10,11 @@ export async function GET(req: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
+
+    // Rate-limit — empêche l'énumération scriptée des barcodes OpenFoodFacts (60/min/user, large pour un usage réel)
+    if (!rateLimit(`scan:${user.id}`, 60, 60 * 1000)) {
+      return NextResponse.json({ data: null, error: 'Trop de scans — réessaie dans une minute.' }, { status: 429 })
+    }
 
     const barcode = req.nextUrl.searchParams.get('barcode')
     if (!barcode) return NextResponse.json({ data: null, error: 'Barcode manquant' }, { status: 400 })
