@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { grantReferralRewardIfEligible } from '@/app/api/referral/route'
 import { sendPushToUser } from '@/lib/utils/push'
 import { estimate1RM, tonnageMultiplier, setTonnage, pickPRCandidate } from '@/lib/utils/strength'
+import { getISOWeek, isPrevWeek } from '@/lib/utils/dates'
 
 export const dynamic = 'force-dynamic'
 
@@ -270,33 +271,6 @@ async function notifyFollowersOfPRs(
       })
     )
   )
-}
-
-function getISOWeek(date: Date): string {
-  const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
-  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7))
-  const week1 = new Date(d.getFullYear(), 0, 4)
-  const weekNum = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7)
-  return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`
-}
-
-function isPrevWeek(lastWeekIso: string, currentWeekIso: string): boolean {
-  const [ly, lw] = lastWeekIso.split('-W').map(Number)
-  const [cy, cw] = currentWeekIso.split('-W').map(Number)
-  // Passage d'année : certaines années ont 53 semaines ISO (ex: 2020), pas seulement 52
-  if (cy === ly + 1 && cw === 1) {
-    const lastWeekOfLastYear = getISOWeeksInYear(ly)
-    return lw === lastWeekOfLastYear
-  }
-  return cy === ly && cw === lw + 1
-}
-
-/** Retourne le nombre de semaines ISO dans une année (52 ou 53) */
-function getISOWeeksInYear(year: number): number {
-  const parsed = getISOWeek(new Date(year, 11, 28)).split('-W').map(Number)
-  // Si le 28 déc tombe en semaine 1 de l'année suivante (rare), l'année a 52 semaines ISO
-  return parsed[0] === year ? parsed[1] : 52
 }
 
 function groupByExercise(sets: SetInput[]): Record<string, SetInput[]> {
