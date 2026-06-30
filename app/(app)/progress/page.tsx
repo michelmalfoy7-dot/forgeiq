@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { ProgressChartsLazy as ProgressCharts } from '@/components/progress/ProgressChartsLazy'
 import { ProgressPhotos } from '@/components/progress/ProgressPhotos'
 import { MeasurementsSection } from '@/components/progress/MeasurementsSection'
+import { getISOWeek } from '@/lib/utils/dates'
 
 export const dynamic = 'force-dynamic'
 
@@ -241,15 +242,6 @@ export default async function ProgressPage() {
       <div className="pb-8" />
     </div>
   )
-}
-
-function getISOWeek(date: Date): string {
-  const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
-  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7))
-  const week1 = new Date(d.getFullYear(), 0, 4)
-  const weekNum = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7)
-  return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`
 }
 
 function formatWeekLabel(isoWeek: string): string {

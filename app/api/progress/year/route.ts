@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { getISOWeek } from '@/lib/utils/dates'
 
 export const dynamic = 'force-dynamic'
 
@@ -247,16 +248,6 @@ export async function GET(request: Request) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getISOWeek(date: Date): string {
-  const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
-  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7))
-  const week1 = new Date(d.getFullYear(), 0, 4)
-  const weekNum = 1 + Math.round(
-    ((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7
-  )
-  return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`
-}
 
 function getMondayOfISOWeek(date: Date): string {
   const d = new Date(date)
