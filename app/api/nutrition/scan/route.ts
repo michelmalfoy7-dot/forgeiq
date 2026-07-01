@@ -72,10 +72,19 @@ export async function GET(req: NextRequest) {
         (n['energy_100g'] ? Math.round(n['energy_100g'] / 4.184) : null) ??
         (n['energy-kj_100g'] ? Math.round(n['energy-kj_100g'] / 4.184) : null) ?? null
 
-      // Helper : extraire une valeur micro depuis OFF (retourne null si absent ou 0)
+      // OpenFoodFacts stocke TOUS les nutriments _100g en GRAMMES (vérifié).
+      // Ex: iron_100g = 0.0039 (= 3,9 mg), vitamin-b12_100g = 2.55e-07 (= 0,255 mcg).
+      // micro() renvoie la valeur brute en grammes (ou null si absente/nulle),
+      // microMg/microMcg appliquent la conversion vers l'unité d'affichage.
       const micro = (key: string): number | null => {
         const v = n[key] ?? n[key.replace('_100g', '')] ?? null
         return v != null && v > 0 ? v : null
+      }
+      const microMg  = (key: string): number | null => {
+        const v = micro(key); return v != null ? Math.round(v * 1000 * 100) / 100 : null      // g → mg
+      }
+      const microMcg = (key: string): number | null => {
+        const v = micro(key); return v != null ? Math.round(v * 1_000_000 * 100) / 100 : null  // g → mcg
       }
 
       food = {
@@ -92,13 +101,13 @@ export async function GET(req: NextRequest) {
         sodium_mg: n.sodium_100g ? Math.round(n.sodium_100g * 1000) : null,
         source:    'openfoodfacts' as const,
         image_url: p.image_front_url ?? p.image_url ?? null,
-        iron_mg:       micro('iron_100g'),
-        magnesium_mg:  micro('magnesium_100g'),
-        zinc_mg:       micro('zinc_100g'),
-        calcium_mg:    micro('calcium_100g'),
-        potassium_mg:  micro('potassium_100g'),
-        vitamin_c_mg:  micro('vitamin-c_100g'),
-        vitamin_d_mcg: micro('vitamin-d_100g'),
+        iron_mg:       microMg('iron_100g'),
+        magnesium_mg:  microMg('magnesium_100g'),
+        zinc_mg:       microMg('zinc_100g'),
+        calcium_mg:    microMg('calcium_100g'),
+        potassium_mg:  microMg('potassium_100g'),
+        vitamin_c_mg:  microMg('vitamin-c_100g'),
+        vitamin_d_mcg: microMcg('vitamin-d_100g'),
       }
     } catch {
       // Timeout (5s) ou erreur réseau → 404 propre, pas de 500
