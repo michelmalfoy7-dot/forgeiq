@@ -43,3 +43,13 @@ export type MuscleVolume = {
   mav: number
   status: 'low' | 'optimal' | 'high'  // sous MEV / dans MEV-MAV / au-delà MAV
 }
+
+/**
+ * Classe le volume hebdomadaire d'un groupe musculaire :
+ *  - 'high'    : ≥ MAV (au-delà du volume adaptatif max — surveiller le surentraînement)
+ *  - 'optimal' : entre MEV et MAV (zone de progression)
+ *  - 'low'     : sous le MEV (volume insuffisant pour stimuler)
+ */
+export function classifyVolumeStatus(sets: number, mev: number, mav: number): MuscleVolume['status'] {
+  return sets >= mav ? 'high' : sets >= mev ? 'optimal' : 'low'
+}

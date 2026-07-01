@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { calcDailyTarget } from '@/lib/utils/tdee'
-import { MUSCLE_GROUPS, VOLUME_TARGETS } from '@/lib/utils/volume'
+import { MUSCLE_GROUPS, VOLUME_TARGETS, classifyVolumeStatus } from '@/lib/utils/volume'
 import { AI_MODELS } from '@/lib/utils/ai-models'
 import { buildSystemPrompt, type CoachMemoryEntry } from '@/lib/ai/coach-prompt'
 import { PLAN_SELECT, isFreeUser } from '@/lib/utils/plan'
@@ -341,7 +341,7 @@ export async function POST(req: NextRequest) {
       weeklyVolumeData = Object.entries(VOLUME_TARGETS)
         .map(([muscle, { mev, mav }]) => {
           const sets = counts[muscle] ?? 0
-          const status: 'low' | 'optimal' | 'high' = sets >= mav ? 'high' : sets >= mev ? 'optimal' : 'low'
+          const status = classifyVolumeStatus(sets, mev, mav)
           return { muscle, sets, mev, mav, status }
         })
         .filter(m => m.sets > 0)

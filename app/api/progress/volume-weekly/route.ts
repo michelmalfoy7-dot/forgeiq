@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { MUSCLE_GROUPS, VOLUME_TARGETS, type MuscleVolume } from '@/lib/utils/volume'
+import { MUSCLE_GROUPS, VOLUME_TARGETS, classifyVolumeStatus, type MuscleVolume } from '@/lib/utils/volume'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,7 +75,7 @@ function aggregateVolume(sets: WorkoutSet[]): MuscleVolume[] {
   return Object.entries(VOLUME_TARGETS)
     .map(([muscle, { mev, mav }]) => {
       const s = counts[muscle] ?? 0
-      const status: MuscleVolume['status'] = s >= mav ? 'high' : s >= mev ? 'optimal' : 'low'
+      const status = classifyVolumeStatus(s, mev, mav)
       return { muscle, sets: s, mev, mav, status }
     })
     .filter(m => m.sets > 0 || m.mev > 0) // N'affiche que les muscles ciblés
