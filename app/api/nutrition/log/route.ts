@@ -70,11 +70,16 @@ export async function POST(req: NextRequest) {
       ai_note,
     }
 
+    // Micros v2 (vitamines A/B6/B9/B12/E, phosphore) — persistés séparément en
+    // best-effort : les colonnes food_logs peuvent ne pas encore exister (migration).
+    const extraEntry: Record<string, number> = {}
+
     // Récupérer les micronutriments depuis foods_library si food_id connu
+    // select('*') = résilient : les colonnes v2 absentes reviennent undefined
     if (food_id) {
       const { data: lib } = await supabase
         .from('foods_library')
-        .select('iron_mg,magnesium_mg,zinc_mg,calcium_mg,vitamin_d_mcg,potassium_mg,vitamin_c_mg,sodium_mg')
+        .select('*')
         .eq('id', food_id)
         .maybeSingle()
 
@@ -89,6 +94,19 @@ export async function POST(req: NextRequest) {
         entry.vitamin_c_mg  = lib.vitamin_c_mg  != null ? Math.round(lib.vitamin_c_mg  * r * 100)  / 100  : null
         // Sodium — présent dans foods_library (OpenFoodFacts) et food_logs (colonne ajoutée Sprint 14)
         entry.sodium_mg     = lib.sodium_mg     != null ? Math.round(lib.sodium_mg     * r * 10)   / 10   : null
+
+        // Étendus v2 — calculés à la quantité, persistés en best-effort
+        const l = lib as Record<string, number | null | undefined>
+        const scale = (v: number | null | undefined, dec: number) => v != null ? Math.round(v * r * dec) / dec : null
+        const v2: Record<string, number | null> = {
+          vitamin_a_mcg:   scale(l.vitamin_a_mcg,   100),
+          vitamin_b6_mg:   scale(l.vitamin_b6_mg,   1000),
+          vitamin_b9_mcg:  scale(l.vitamin_b9_mcg,  100),
+          vitamin_b12_mcg: scale(l.vitamin_b12_mcg, 100),
+          vitamin_e_mg:    scale(l.vitamin_e_mg,    100),
+          phosphorus_mg:   scale(l.phosphorus_mg,   10),
+        }
+        for (const [k, val] of Object.entries(v2)) if (val != null) extraEntry[k] = val
       }
     }
 
@@ -109,7 +127,14 @@ export async function POST(req: NextRequest) {
     if (error) throw error
     if (!data) return NextResponse.json({ data: null, error: 'Log non créé' }, { status: 500 })
 
-    return NextResponse.json({ data, error: null })
+    // Persister les micros v2 en best-effort — n'échoue JAMAIS le log si les colonnes n'existent pas encore
+    let merged = data
+    if (Object.keys(extraEntry).length > 0) {
+      const { data: upd } = await supabase.from('food_logs').update(extraEntry).eq('id', data.id).select().maybeSingle()
+      if (upd) merged = upd
+    }
+
+    return NextResponse.json({ data: merged, error: null })
   } catch (err) {
     console.error('Nutrition log error:', err)
     return NextResponse.json({ data: null, error: 'Erreur serveur' }, { status: 500 })

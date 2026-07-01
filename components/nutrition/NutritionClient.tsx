@@ -34,6 +34,13 @@ type FoodLog = {
   potassium_mg:  number | null
   vitamin_c_mg:  number | null
   sodium_mg:     number | null
+  // Étendus v2 (optionnels — absents si colonnes pas encore migrées)
+  vitamin_a_mcg?:   number | null
+  vitamin_b6_mg?:   number | null
+  vitamin_b9_mcg?:  number | null
+  vitamin_b12_mcg?: number | null
+  vitamin_e_mg?:    number | null
+  phosphorus_mg?:   number | null
 }
 
 type FoodResult = {
@@ -2984,11 +2991,19 @@ export function NutritionClient({ initialLogs, targets, today, initialWaterMl = 
       vitamin_d_mcg: acc.vitamin_d_mcg + (l.vitamin_d_mcg ?? 0),
       potassium_mg:  acc.potassium_mg  + (l.potassium_mg  ?? 0),
       vitamin_c_mg:  acc.vitamin_c_mg  + (l.vitamin_c_mg  ?? 0),
+      vitamin_a_mcg:   acc.vitamin_a_mcg   + (l.vitamin_a_mcg   ?? 0),
+      vitamin_b6_mg:   acc.vitamin_b6_mg   + (l.vitamin_b6_mg   ?? 0),
+      vitamin_b9_mcg:  acc.vitamin_b9_mcg  + (l.vitamin_b9_mcg  ?? 0),
+      vitamin_b12_mcg: acc.vitamin_b12_mcg + (l.vitamin_b12_mcg ?? 0),
+      vitamin_e_mg:    acc.vitamin_e_mg    + (l.vitamin_e_mg    ?? 0),
+      phosphorus_mg:   acc.phosphorus_mg   + (l.phosphorus_mg   ?? 0),
       logsWithData:  acc.logsWithData  + (l.iron_mg != null ? 1 : 0),
       totalLogs:     acc.totalLogs     + 1,
     }),
     { iron_mg: 0, magnesium_mg: 0, zinc_mg: 0, calcium_mg: 0,
       vitamin_d_mcg: 0, potassium_mg: 0, vitamin_c_mg: 0,
+      vitamin_a_mcg: 0, vitamin_b6_mg: 0, vitamin_b9_mcg: 0,
+      vitamin_b12_mcg: 0, vitamin_e_mg: 0, phosphorus_mg: 0,
       logsWithData: 0, totalLogs: 0 }
   )
 

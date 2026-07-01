@@ -5,13 +5,20 @@
 // Légèrement majorées vs grand public pour compenser les pertes sudation + métabolisme élevé
 
 export type MicroTotals = {
-  iron_mg:       number
-  magnesium_mg:  number
-  zinc_mg:       number
-  calcium_mg:    number
-  vitamin_d_mcg: number
-  potassium_mg:  number
-  vitamin_c_mg:  number
+  iron_mg:         number
+  magnesium_mg:    number
+  zinc_mg:         number
+  calcium_mg:      number
+  vitamin_d_mcg:   number
+  potassium_mg:    number
+  vitamin_c_mg:    number
+  // Étendus v2 (vs Yazio)
+  vitamin_a_mcg:   number
+  vitamin_b6_mg:   number
+  vitamin_b9_mcg:  number
+  vitamin_b12_mcg: number
+  vitamin_e_mg:    number
+  phosphorus_mg:   number
   logsWithData:  number  // nb d'entrées journal avec données micro
   totalLogs:     number  // nb total d'entrées journal
 }
@@ -54,6 +61,30 @@ export const MICRO_CONFIG: MicroConfig[] = [
   {
     key: 'vitamin_c_mg', label: 'Vit. C', unit: 'mg', target: 82, color: '#F97316', icon: '🍊',
     tip: 'Absorption fer & collagène',
+  },
+  {
+    key: 'vitamin_a_mcg', label: 'Vit. A', unit: 'mcg', target: 900, color: '#F59E0B', icon: '🥕',
+    tip: 'Vision & immunité',
+  },
+  {
+    key: 'vitamin_b6_mg', label: 'Vit. B6', unit: 'mg', target: 1.7, color: '#EC4899', icon: '🧠',
+    tip: 'Métabolisme des protéines',
+  },
+  {
+    key: 'vitamin_b9_mcg', label: 'Folates (B9)', unit: 'mcg', target: 400, color: '#22C55E', icon: '🌿',
+    tip: 'Synthèse cellulaire',
+  },
+  {
+    key: 'vitamin_b12_mcg', label: 'Vit. B12', unit: 'mcg', target: 2.4, color: '#EF4444', icon: '🔴',
+    tip: 'Énergie & nerfs (clé pour végés)',
+  },
+  {
+    key: 'vitamin_e_mg', label: 'Vit. E', unit: 'mg', target: 15, color: '#10B981', icon: '🛡',
+    tip: 'Antioxydant',
+  },
+  {
+    key: 'phosphorus_mg', label: 'Phosphore', unit: 'mg', target: 700, color: '#6366F1', icon: '🦴',
+    tip: 'Os & énergie (ATP)',
   },
 ]
 

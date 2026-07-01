@@ -40,6 +40,8 @@ export async function GET(req: NextRequest) {
       iron_mg: number | null; magnesium_mg: number | null; zinc_mg: number | null
       calcium_mg: number | null; potassium_mg: number | null
       vitamin_c_mg: number | null; vitamin_d_mcg: number | null
+      vitamin_a_mcg: number | null; vitamin_b6_mg: number | null; vitamin_b9_mcg: number | null
+      vitamin_b12_mcg: number | null; vitamin_e_mg: number | null; phosphorus_mg: number | null
     }
 
     try {
@@ -108,6 +110,13 @@ export async function GET(req: NextRequest) {
         potassium_mg:  microMg('potassium_100g'),
         vitamin_c_mg:  microMg('vitamin-c_100g'),
         vitamin_d_mcg: microMcg('vitamin-d_100g'),
+        // Étendus v2 (vs Yazio) — conversions g → mg/mcg
+        vitamin_a_mcg:   microMcg('vitamin-a_100g'),
+        vitamin_b6_mg:   microMg('vitamin-b6_100g'),
+        vitamin_b9_mcg:  microMcg('vitamin-b9_100g') ?? microMcg('folates_100g'),
+        vitamin_b12_mcg: microMcg('vitamin-b12_100g'),
+        vitamin_e_mg:    microMg('vitamin-e_100g'),
+        phosphorus_mg:   microMg('phosphorus_100g'),
       }
     } catch {
       // Timeout (5s) ou erreur réseau → 404 propre, pas de 500
