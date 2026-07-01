@@ -1,9 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { classifyMuscleFreshness, type FreshnessStatus } from '@/lib/utils/freshness'
 
 export const dynamic = 'force-dynamic'
-
-type FreshnessStatus = 'fresh' | 'moderate' | 'fatigued'
 
 export async function GET() {
   try {
@@ -72,13 +71,7 @@ export async function GET() {
     const muscleFreshness: Record<string, FreshnessStatus> = {}
     for (const [muscle, lastUsedTs] of Object.entries(muscleLastUsed)) {
       const daysSince = (now - lastUsedTs) / (1000 * 60 * 60 * 24)
-      if (daysSince < 2) {
-        muscleFreshness[muscle] = 'fatigued'  // < 48h
-      } else if (daysSince < 3) {
-        muscleFreshness[muscle] = 'moderate'  // 48-72h
-      } else {
-        muscleFreshness[muscle] = 'fresh'     // > 72h
-      }
+      muscleFreshness[muscle] = classifyMuscleFreshness(daysSince)
     }
 
     // Retourner aussi la map exercice → muscle_primary pour lookup O(1) côté client
