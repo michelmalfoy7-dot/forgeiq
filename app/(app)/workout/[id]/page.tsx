@@ -501,11 +501,12 @@ export default function WorkoutSessionPage() {
           const [{ data: allLastSets }, { data: allPRs }] = matchIds.length > 0
             ? await Promise.all([
                 supabase.from('workout_sets')
-                  .select('weight_kg, reps, exercise_id, workout_id, workouts!inner(user_id)')
+                  .select('weight_kg, reps, set_number, exercise_id, workout_id, workouts!inner(user_id)')
                   .in('exercise_id', matchIds)
                   .eq('workouts.user_id', user.id)
                   .not('is_warmup', 'eq', true)
                   .order('created_at', { ascending: false })
+                  .order('set_number', { ascending: true })
                   .limit(matchIds.length * 10),
                 supabase.from('personal_records')
                   .select('exercise_id, value')
@@ -681,36 +682,45 @@ export default function WorkoutSessionPage() {
     if (!user) return { lastSession: [], sessionHistory: [], pr: undefined }
 
     // Charger les 20 derniers sets (couvre 3+ séances différentes)
+    // Tri : created_at DESC (séances récentes d'abord) puis set_number ASC.
+    // Indispensable : à la fin d'une séance, tous les sets sont insérés en un
+    // batch → même created_at. Sans set_number, l'ordre d'exécution est perdu
+    // (l'échauffement/opening apparaît après le back-off).
     const { data: lastSets } = await supabase.from('workout_sets')
-      .select('weight_kg, reps, workout_id, workouts!inner(user_id, session_date)')
+      .select('weight_kg, reps, set_number, workout_id, workouts!inner(user_id, session_date)')
       .eq('exercise_id', exId).eq('workouts.user_id', user.id)
-      .not('is_warmup', 'eq', true).order('created_at', { ascending: false }).limit(20)
+      .not('is_warmup', 'eq', true)
+      .order('created_at', { ascending: false })
+      .order('set_number', { ascending: true })
+      .limit(20)
 
-    // Sets de la dernière séance = les 4 premiers du workout_id le plus récent
+    // Sets de la dernière séance = les 4 premiers (dans l'ordre d'exécution) du workout le plus récent
     const firstWorkoutId = lastSets?.[0]?.workout_id ?? null
     const lastSession = (lastSets ?? [])
       .filter(s => s.workout_id === firstWorkoutId)
+      .sort((a, b) => (a.set_number ?? 0) - (b.set_number ?? 0))
       .slice(0, 4)
       .map((s: { weight_kg: number; reps: number }) => ({ weight_kg: s.weight_kg, reps: s.reps }))
 
     // Grouper par workout_id pour construire l'historique compactifié (3 séances)
-    const workoutMap = new Map<string, { date: string; sets: { weight_kg: number; reps: number }[] }>()
+    const workoutMap = new Map<string, { date: string; sets: { weight_kg: number; reps: number; set_number: number }[] }>()
     for (const s of lastSets ?? []) {
       const wId = s.workout_id
       const dateRaw = (s.workouts as unknown as { session_date: string })?.session_date ?? ''
       if (!workoutMap.has(wId)) workoutMap.set(wId, { date: dateRaw, sets: [] })
-      workoutMap.get(wId)!.sets.push({ weight_kg: s.weight_kg, reps: s.reps })
+      workoutMap.get(wId)!.sets.push({ weight_kg: s.weight_kg, reps: s.reps, set_number: (s as { set_number?: number }).set_number ?? 0 })
     }
     // Prendre jusqu'à 3 séances distinctes, formater en texte compact
     const sessionHistory = Array.from(workoutMap.values())
       .slice(0, 3)
       .map(({ date, sets }) => {
+        const ordered = [...sets].sort((a, b) => a.set_number - b.set_number)
         // Top set = plus lourd
-        const top = sets.reduce((best, s) => s.weight_kg > best.weight_kg ? s : best, sets[0])
+        const top = ordered.reduce((best, s) => s.weight_kg > best.weight_kg ? s : best, ordered[0])
         const dateLabel = date
           ? new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(date + 'T12:00:00'))
           : ''
-        const topSetsStr = top ? `${sets.length}×${top.reps} @ ${top.weight_kg}kg` : ''
+        const topSetsStr = top ? `${ordered.length}×${top.reps} @ ${top.weight_kg}kg` : ''
         return { date: dateLabel, topSets: topSetsStr }
       })
       .filter(h => h.topSets)
