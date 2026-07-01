@@ -12,6 +12,7 @@ import { StreakMilestoneModal } from '@/components/ui/StreakMilestoneModal'
 import { PlateCalculatorModal } from '@/components/workout/PlateCalculatorModal'
 import { roundWeight, weightDelta } from '@/lib/utils/numbers'
 import { track } from '@/lib/analytics'
+import { Sparkline } from '@/components/workout/Sparkline'
 
 // ── Types ─────────────────────────────────────────────────────
 type SetType = 'work' | 'top_set' | 'backoff' | 'drop' | 'failure' | 'pause_rep'
@@ -2511,6 +2512,10 @@ function ExerciseCard({
   const [showHistory, setShowHistory] = useState(true)
   const [showPlateCalc, setShowPlateCalc] = useState(false)
   const [show1RM, setShow1RM] = useState(false)
+  // Mini graphique de progression du top set (vs Hevy) — chargé à la demande
+  const [showChart, setShowChart] = useState(false)
+  const [chartPoints, setChartPoints] = useState<number[] | null>(null)
+  const [chartLoading, setChartLoading] = useState(false)
   // ID du set dont la note inline est ouverte (null = aucune)
   const [openNoteSetId, setOpenNoteSetId] = useState<string | null>(null)
   // États du bottomsheet substitutions
@@ -2523,6 +2528,42 @@ function ExerciseCard({
   const isUnilateral = group.is_unilateral ?? false
   const bothSides = group.unilateral_both_sides ?? true
   const inSuperset = !!group.superset_id
+
+  // Charger la progression du top set (max poids par séance) à la demande — vs Hevy
+  async function toggleChart() {
+    const next = !showChart
+    setShowChart(next)
+    if (next && chartPoints === null) {
+      setChartLoading(true)
+      try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) { setChartPoints([]); return }
+        const { data: sets } = await supabase.from('workout_sets')
+          .select('weight_kg, workout_id, workouts!inner(user_id, session_date)')
+          .eq('exercise_id', group.exercise_id).eq('workouts.user_id', user.id)
+          .not('is_warmup', 'eq', true)
+          .order('created_at', { ascending: true })
+        // Top set = poids max par séance (le back-off est plus léger par définition)
+        const byWorkout = new Map<string, { date: string; top: number }>()
+        for (const s of sets ?? []) {
+          const wId = (s as { workout_id: string }).workout_id
+          const date = (s.workouts as unknown as { session_date: string })?.session_date ?? ''
+          const w = s.weight_kg ?? 0
+          const cur = byWorkout.get(wId)
+          if (!cur) byWorkout.set(wId, { date, top: w })
+          else if (w > cur.top) cur.top = w
+        }
+        const points = Array.from(byWorkout.values())
+          .sort((a, b) => a.date.localeCompare(b.date))
+          .slice(-10)
+          .map(v => v.top)
+          .filter(w => w > 0)
+        setChartPoints(points)
+      } catch { setChartPoints([]) }
+      finally { setChartLoading(false) }
+    }
+  }
 
   // Ouvrir le bottomsheet substituts — fetch l'API au tap
   async function openSubstituteSheet() {
@@ -2686,6 +2727,19 @@ function ExerciseCard({
               %
             </button>
           )}
+          {group.pr && (
+            <button
+              onClick={(e) => { e.stopPropagation(); void toggleChart() }}
+              className="flex items-center justify-center w-7 h-7 rounded-lg text-xs"
+              title="Voir la progression du top set"
+              style={{
+                background: showChart ? '#3D8BFF22' : 'var(--fiq-faint)',
+                border: `1px solid ${showChart ? '#3D8BFF44' : 'var(--fiq-border)'}`,
+              }}
+            >
+              📈
+            </button>
+          )}
           {/* Bouton substituer l'exercice */}
           {!group.exercise_id.startsWith('suggested-') && (
             <button
@@ -2758,6 +2812,38 @@ function ExerciseCard({
               </button>
             )
           })}
+        </div>
+      )}
+
+      {/* Progression du top set — mini graphique inline (vs Hevy) */}
+      {showChart && group.pr && (
+        <div className="rounded-lg p-3" style={{ background: 'var(--fiq-faint)' }}>
+          {chartLoading ? (
+            <div className="h-11 rounded animate-pulse" style={{ background: 'var(--fiq-border)' }} />
+          ) : chartPoints && chartPoints.length >= 2 ? (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="fiq-label">Progression top set</span>
+                <span className="text-xs font-black fiq-data" style={{ color: 'var(--fiq-accent)' }}>
+                  {chartPoints[chartPoints.length - 1]}kg
+                  {chartPoints[chartPoints.length - 1] !== chartPoints[0] && (
+                    <span style={{ color: 'var(--fiq-muted)', marginLeft: 6, fontWeight: 600 }}>
+                      {chartPoints[chartPoints.length - 1] > chartPoints[0] ? '+' : ''}
+                      {Math.round((chartPoints[chartPoints.length - 1] - chartPoints[0]) * 10) / 10}kg
+                    </span>
+                  )}
+                </span>
+              </div>
+              <Sparkline points={chartPoints} width={240} height={44} />
+              <p className="text-[10px]" style={{ color: 'var(--fiq-muted)' }}>
+                {chartPoints.length} dernières séances
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-center" style={{ color: 'var(--fiq-muted)' }}>
+              Pas encore assez d&apos;historique pour tracer une courbe.
+            </p>
+          )}
         </div>
       )}
 
