@@ -13,6 +13,7 @@ import { PlateCalculatorModal } from '@/components/workout/PlateCalculatorModal'
 import { roundWeight, weightDelta } from '@/lib/utils/numbers'
 import { track } from '@/lib/analytics'
 import { Sparkline } from '@/components/workout/Sparkline'
+import { CardioBlock } from '@/components/workout/CardioBlock'
 
 // ── Types ─────────────────────────────────────────────────────
 type SetType = 'work' | 'top_set' | 'backoff' | 'drop' | 'failure' | 'pause_rep'
@@ -64,6 +65,9 @@ type ExerciseGroup = {
   unilateral_both_sides?: boolean
   // Exercice au poids du corps (tractions, dips, pompes) — poids pré-rempli avec le PdC
   is_bodyweight?: boolean
+  // Bloc cardio dans la séance (vs Hevy) : la série porte set_type='cardio',
+  // reps = durée en minutes, weight_kg = 0. Rendu par un bloc dédié.
+  is_cardio?: boolean
   sets: SetRow[]
   lastSession?: { weight_kg: number; reps: number }[]
   // Historique des 3 dernières séances distinctes (groupées par workout_id)
@@ -872,6 +876,36 @@ export default function WorkoutSessionPage() {
     })
   }
 
+  // ── Cardio dans la séance (vs Hevy) — bloc dédié sans weight/reps ───────────
+  const CARDIO_ACTIVITIES = ['Course', 'Vélo', 'Rameur', 'Elliptique', 'Marche', 'Corde à sauter', 'Natation']
+
+  function addCardio() {
+    const cid = `cardio-${uid()}`
+    setGroups((prev) => [...prev, {
+      exercise_id: cid,
+      exercise_name: 'Course',
+      is_cardio: true,
+      sets: [{ id: uid(), exercise_id: cid, exercise_name: 'Course', set_number: 1, weight_kg: 0, reps: 20, rpe: '', is_warmup: false, set_type: 'work' }],
+    }])
+    setShowSearch(false)
+  }
+
+  function updateCardio(groupIdx: number, patch: { activity?: string; minutes?: number | '' }) {
+    setGroups((prev) => {
+      const updated = [...prev]
+      const g = updated[groupIdx]
+      if (!g || !g.sets[0]) return prev
+      const name = patch.activity ?? g.exercise_name
+      const reps = patch.minutes !== undefined ? patch.minutes : g.sets[0].reps
+      updated[groupIdx] = { ...g, exercise_name: name, sets: [{ ...g.sets[0], exercise_name: name, reps }] }
+      return updated
+    })
+  }
+
+  function removeGroup(groupIdx: number) {
+    setGroups((prev) => prev.filter((_, i) => i !== groupIdx))
+  }
+
   function addSet(groupIdx: number) {
     let exId = ''
     setGroups((prev) => {
@@ -1083,14 +1117,14 @@ export default function WorkoutSessionPage() {
       // Inclure is_bilateral_dumbbell par groupe pour le calcul correct du tonnage
       sets: groups.flatMap((g) => g.sets.map((s) => ({
         // Les IDs "suggested-..." sont fictifs (exercice non trouvé en bibliothèque) → null pour éviter la contrainte FK
-        exercise_id: s.exercise_id.startsWith('suggested-') ? null : s.exercise_id,
+        exercise_id: (s.exercise_id.startsWith('suggested-') || s.exercise_id.startsWith('cardio-')) ? null : s.exercise_id,
         exercise_name: s.exercise_name,
         set_number: s.set_number,
         weight_kg: parseFloat(String(s.weight_kg).replace(',', '.')) || 0,
         reps: Number(s.reps) || 0,
         rpe: s.rpe !== '' && s.rpe !== null ? parseFloat(String(s.rpe).replace(',', '.')) : null,
         is_warmup: s.is_warmup,
-        set_type: s.is_warmup ? 'warmup' : (s.set_type ?? 'work'),
+        set_type: g.is_cardio ? 'cardio' : (s.is_warmup ? 'warmup' : (s.set_type ?? 'work')),
         is_bilateral_dumbbell: g.is_bilateral_dumbbell ?? false,
         is_unilateral: g.is_unilateral ?? false,
         unilateral_both_sides: g.unilateral_both_sides ?? true,
@@ -1174,9 +1208,9 @@ export default function WorkoutSessionPage() {
     }
   }, [groups, workoutId, STORAGE_KEY, sessionName, sessionNote, completing, completed])
 
-  // Tonnage total séance (travail + échauffement)
-  const totalTonnage = groups.reduce((acc, g) => acc + calcTonnageGroup(g), 0)
-  const totalSets = groups.reduce((acc, g) => acc + g.sets.filter((s) => !s.is_warmup).length, 0)
+  // Tonnage total séance (travail + échauffement) — exclut les blocs cardio
+  const totalTonnage = groups.reduce((acc, g) => acc + (g.is_cardio ? 0 : calcTonnageGroup(g)), 0)
+  const totalSets = groups.reduce((acc, g) => acc + (g.is_cardio ? 0 : g.sets.filter((s) => !s.is_warmup).length), 0)
 
   // Filtres équipement pour la recherche
   const EQUIPMENT_FILTERS = [
@@ -1977,6 +2011,21 @@ export default function WorkoutSessionPage() {
         )}
 
         {groups.map((group, gIdx) => {
+          // Bloc cardio — rendu dédié (activité + durée), pas d'exercice muscu
+          if (group.is_cardio) {
+            return (
+              <div key={group.exercise_id}>
+                <CardioBlock
+                  activity={group.exercise_name}
+                  minutes={group.sets[0]?.reps ?? ''}
+                  activities={CARDIO_ACTIVITIES}
+                  onChangeActivity={(a) => updateCardio(gIdx, { activity: a })}
+                  onChangeMinutes={(m) => updateCardio(gIdx, { minutes: m })}
+                  onRemove={() => removeGroup(gIdx)}
+                />
+              </div>
+            )
+          }
           const nextGroup = groups[gIdx + 1]
           const ssId = group.superset_id
           const isFirstInGroup = ssId && (gIdx === 0 || groups[gIdx - 1].superset_id !== ssId)
@@ -2104,6 +2153,16 @@ export default function WorkoutSessionPage() {
         >
           <Plus className="w-4 h-4 mr-2" style={{ color: 'var(--fiq-accent)' }} />
           Ajouter un exercice
+        </Button>
+
+        <Button
+          variant="outline"
+          className="w-full py-3 font-semibold"
+          onClick={addCardio}
+          style={{ borderColor: 'var(--fiq-border)', color: 'var(--fiq-text)', background: 'transparent' }}
+        >
+          <Plus className="w-4 h-4 mr-2" style={{ color: 'var(--fiq-orange)' }} />
+          Ajouter du cardio
         </Button>
 
         {/* ── Note de séance — accordéon collapsible ── */}

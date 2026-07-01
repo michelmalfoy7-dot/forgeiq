@@ -52,8 +52,11 @@ export async function POST(request: Request) {
       })
       return acc + setTonnage(s.weight_kg, s.reps, multiplier)
     }, 0)
-    const totalSets = workingSets.length
-    const totalReps = workingSets.reduce((acc, s) => acc + s.reps, 0)
+    // Les blocs cardio (set_type='cardio') ne comptent pas comme séries de muscu
+    // (reps = durée en minutes) — exclus des compteurs, mais gardés en base.
+    const strengthWorkingSets = workingSets.filter((s) => s.set_type !== 'cardio')
+    const totalSets = strengthWorkingSets.length
+    const totalReps = strengthWorkingSets.reduce((acc, s) => acc + s.reps, 0)
 
     // Mettre à jour le workout avec les métriques finales
     const { error: wErr } = await supabase
