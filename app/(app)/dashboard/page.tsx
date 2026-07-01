@@ -15,6 +15,7 @@ import { calcDailyTarget } from '@/lib/utils/tdee'
 import { VolumeHebdoWidget } from '@/components/dashboard/VolumeHebdoWidget'
 import { RecoveryScoreCard } from '@/components/dashboard/RecoveryScoreCard'
 import { MuscleFreshnessWidget } from '@/components/dashboard/MuscleFreshnessWidget'
+import { ProgramProgressWidget } from '@/components/dashboard/ProgramProgressWidget'
 import { calcRecoveryScore } from '@/lib/utils/recovery'
 
 export const dynamic = 'force-dynamic'
@@ -517,6 +518,9 @@ export default async function DashboardPage() {
 
       {/* Récupération musculaire par groupe */}
       <MuscleFreshnessWidget />
+
+      {/* Progression du programme actif (vs FitBod) */}
+      <ProgramProgressWidget />
 
       {/* Alerte récupération faible */}
       {recoveryScore !== null && recoveryScore < 4 && (
