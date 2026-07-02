@@ -7,6 +7,7 @@ import {
 } from '@/lib/programs/slots'
 import { AI_MODELS } from '@/lib/utils/ai-models'
 import { PLAN_SELECT, isProUser, isLifetimeUser, type ProfileForPlan } from '@/lib/utils/plan'
+import { rateLimit } from '@/lib/rate-limit'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60   // génération Haiku peut prendre 20-30s
@@ -168,6 +169,11 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
+  }
+
+  // Garde-fou fréquence (indépendant du quota mensuel de 3 générations)
+  if (!rateLimit(`generate:${user.id}`, 4, 60_000)) {
+    return NextResponse.json({ data: null, error: 'Trop de générations — patiente une minute.' }, { status: 429 })
   }
 
   try {

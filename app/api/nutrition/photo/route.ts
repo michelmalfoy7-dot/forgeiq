@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { AI_MODELS } from '@/lib/utils/ai-models'
 import { PLAN_SELECT, isRealProUser, isLifetimeUser, type ProfileForPlan } from '@/lib/utils/plan'
+import { rateLimit } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30 // Vercel — analyse vision peut prendre jusqu'à 30s
@@ -25,6 +26,12 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
+
+    // Garde-fou fréquence — l'appel Vision part avant le log, donc le quota
+    // (basé sur food_logs) est contournable en boucle. Cap le débit à 8/min.
+    if (!rateLimit(`photo:${user.id}`, 8, 60_000)) {
+      return NextResponse.json({ data: null, error: 'Trop d\'analyses photo — patiente une minute.' }, { status: 429 })
+    }
 
     // ── Vérification des limites ────────────────────────────────────────
     const { data: profile } = await supabase

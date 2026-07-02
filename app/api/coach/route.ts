@@ -6,6 +6,7 @@ import { MUSCLE_GROUPS, VOLUME_TARGETS, classifyVolumeStatus } from '@/lib/utils
 import { AI_MODELS } from '@/lib/utils/ai-models'
 import { buildSystemPrompt, type CoachMemoryEntry } from '@/lib/ai/coach-prompt'
 import { PLAN_SELECT, isFreeUser } from '@/lib/utils/plan'
+import { rateLimit } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // Streaming Sonnet — peut prendre 30-50s sur longues réponses
@@ -140,6 +141,11 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ data: null, error: 'Non authentifié' }, { status: 401 })
+
+    // Garde-fou fréquence (indépendant du quota mensuel) — protège le budget Anthropic
+    if (!rateLimit(`coach:${user.id}`, 12, 60_000)) {
+      return NextResponse.json({ data: null, error: 'Trop de messages d\'affilée — patiente une minute.' }, { status: 429 })
+    }
 
     const body = await req.json()
     const userMessage: string = body.message ?? ''

@@ -15,6 +15,14 @@ const store = new Map<string, Entry>()
  */
 export function rateLimit(key: string, max: number, windowMs: number): boolean {
   const now = Date.now()
+
+  // Purge paresseuse — évite la fuite mémoire lente sur instance chaude :
+  // les entrées expirées ne sont sinon jamais retirées tant que la clé n'est
+  // pas re-touchée. Ne se déclenche qu'au-delà d'un seuil (coût amorti).
+  if (store.size > 5000) {
+    for (const [k, v] of store) if (v.resetAt < now) store.delete(k)
+  }
+
   const entry = store.get(key)
 
   if (!entry || entry.resetAt < now) {
