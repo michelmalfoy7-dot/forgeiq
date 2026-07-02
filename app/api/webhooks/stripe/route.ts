@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStripe } from '@/lib/stripe'
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createServerClient } from '@supabase/supabase-js'
 import Stripe from 'stripe'
 
 export const dynamic = 'force-dynamic'
+
+// Client service-role : un webhook Stripe n'a PAS de session utilisateur.
+// Le client SSR anon (cookies) verrait auth.uid() = NULL → RLS bloquerait
+// silencieusement tous les UPDATE profiles → le plan Pro ne s'activerait jamais.
+// Le service-role bypass la RLS (comme les crons). Jamais exposé au client.
+function createAdminClient() {
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
 
 const RESEND_API_KEY  = process.env.RESEND_API_KEY
 const ADMIN_EMAIL     = process.env.ADMIN_EMAIL
@@ -100,7 +112,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Signature invalide' }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   try {
     switch (event.type) {
