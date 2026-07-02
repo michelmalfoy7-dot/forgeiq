@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 import { PricingClient } from '@/components/pricing/PricingClient'
 import { PLAN_SELECT, isRealProUser, isLifetimeUser, type ProfileForPlan } from '@/lib/utils/plan'
 
@@ -22,7 +21,15 @@ export const metadata: Metadata = {
 export default async function PricingPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login?redirect=/pricing')
+
+  // Visiteur non connecté (acquisition — ex. clic depuis TikTok) : on affiche
+  // les prix. Le CTA "S'abonner" de PricingClient redirige vers login au moment
+  // du checkout (gère déjà l'erreur 'Non authentifié').
+  if (!user) {
+    return (
+      <PricingClient isPro={false} isLifetime={false} subscriptionPlan={null} hasStripeCustomer={false} />
+    )
+  }
 
   const { data: profile } = await supabase
     .from('profiles')
