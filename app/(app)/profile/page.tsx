@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ProfileClient } from '@/components/profile/ProfileClient'
+import { ReferralCard } from '@/components/profile/ReferralCard'
 import { HealthImportWidget } from '@/components/profile/HealthImportWidget'
 import { Users, ClipboardList } from 'lucide-react'
 import { FiqDumbbell } from '@/components/ui/FiqIcons'
@@ -141,6 +142,8 @@ export default async function ProfilePage() {
         </div>
         <span style={{ color: 'var(--fiq-muted)', fontSize: 18 }}>›</span>
       </Link>
+
+      <ReferralCard />
 
       <ProfileClient
         profile={profile}
